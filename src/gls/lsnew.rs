@@ -1,4 +1,3 @@
-use approx::assert_relative_eq;
 use ndarray::Array1;
 
 use crate::feval::feval;
@@ -16,11 +15,12 @@ pub fn lsnew(
     flist: &mut Vec<f64>,
     amin: f64,
     amax: f64,
-    mut alp: f64,
     abest: f64,
     fmed: f64,
     unitlen: f64,
-) -> (f64, f64) {
+) -> (f64, //alp
+      f64 // fac
+) {
     let leftok = if alist[0] <= amin {
         0
     } else if flist[0] >= fmed.max(flist[1]) {
@@ -40,12 +40,12 @@ pub fn lsnew(
     let step = if sinit == 1 { s - 1 } else { 1 };
     let mut fac = short;
 
-    if leftok != 0 && (flist[0] < flist[s - 1] || rightok == 0) {
+    let alp = if leftok != 0 && (flist[0] < flist[s - 1] || rightok == 0) {
         let al = alist[0] - (alist[step] - alist[0]) / small;
-        alp = amin.max(al);
+        amin.max(al)
     } else if rightok != 0 {
         let au = alist[s - 1] + (alist[s - 1] - alist[s - 1 - step]) / small;
-        alp = amax.min(au);
+        amax.min(au)
     } else {
         let lenth: Vec<f64> = alist[1..s].iter().zip(&alist[0..s - 1]).map(|(i, j)| i - j).collect();
         let dist: Vec<f64> = alist[1..s].iter()
@@ -58,9 +58,9 @@ pub fn lsnew(
         let (i_max, _) = wid.iter().enumerate().max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap()).unwrap();
 
         let (new_alp, new_fac) = lssplit(i_max, alist, flist, short).unwrap();
-        alp = new_alp;
         fac = new_fac;
-    }
+        new_alp
+    };
 
     let falp = feval(&(x + alp * p));
     alist.push(alp);
@@ -72,6 +72,7 @@ pub fn lsnew(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use approx::assert_relative_eq;
     use ndarray::array;
 
     #[test]
@@ -87,13 +88,12 @@ mod tests {
         let mut flist = vec![3.0, 2.0, 1.0];
         let amin = -1.0;
         let amax = 2.0;
-        let alp = 0.0;
         let abest = 0.5;
         let fmed = 2.5;
         let unitlen = 1.0;
 
         let (result_alp, result_fac) = lsnew(nloc, small, sinit, short, &x, &p, s,
-                                             &mut alist, &mut flist, amin, amax, alp, abest, fmed, unitlen,
+                                             &mut alist, &mut flist, amin, amax, abest, fmed, unitlen,
         );
 
         assert_relative_eq!(result_alp, 2.0, epsilon = 1e-10);
@@ -115,13 +115,12 @@ mod tests {
         let mut flist = vec![4.0, 3.0, 2.0];
         let amin = -1.0;
         let amax = 2.0;
-        let alp = 0.0;
         let abest = 0.0;
         let fmed = 3.5;
         let unitlen = 1.0;
 
         let (result_alp, result_fac) = lsnew(nloc, small, sinit, short, &x, &p, s,
-                                             &mut alist, &mut flist, amin, amax, alp, abest, fmed, unitlen,
+                                             &mut alist, &mut flist, amin, amax, abest, fmed, unitlen,
         );
 
         assert_relative_eq!(result_alp, 2.0, epsilon = 1e-10);
@@ -142,20 +141,19 @@ mod tests {
         let mut flist = vec![1.0, 0.5, 0.3];
         let amin = 0.0;
         let amax = 2.0;
-        let alp = 0.0;
         let abest = 1.0;
         let fmed = 0.75;
         let unitlen = 1.0;
 
         let (result_alp, result_fac) = lsnew(nloc, small, sinit, short, &x, &p, s,
-                                             &mut alist, &mut flist, amin, amax, alp, abest, fmed, unitlen,
+                                             &mut alist, &mut flist, amin, amax, abest, fmed, unitlen,
         );
 
         assert_relative_eq!(result_alp, 0.0, epsilon = 1e-10);
         assert_relative_eq!(result_fac, 0.5, epsilon = 1e-10);
         assert_eq!(alist, vec![0.5, 1.5, 2.0, 0.0]);
     }
-    
+
     #[test]
     fn test_no_extrapolation() {
         let nloc = 2;
@@ -169,13 +167,12 @@ mod tests {
         let mut flist = vec![2.0, 1.8, 10.0];
         let amin = 0.1;
         let amax = 1.0;
-        let alp = 0.0;
         let abest = 0.15;
         let fmed = 1.9;
         let unitlen = 1.0;
 
         let (result_alp, result_fac) = lsnew(nloc, small, sinit, short, &x, &p, s,
-                                             &mut alist, &mut flist, amin, amax, alp, abest, fmed, unitlen,
+                                             &mut alist, &mut flist, amin, amax, abest, fmed, unitlen,
         );
 
         assert_relative_eq!(result_alp, -5.52, epsilon = 1e-10);
@@ -196,14 +193,12 @@ mod tests {
         let mut flist = vec![1.9, 1.4, 1.2, 1.0];
         let amin = 0.1;
         let amax = 0.9;
-        let alp = 0.0;
         let abest = 0.5;
         let fmed = 1.5;
         let unitlen = 1.0;
 
         let (result_alp, result_fac) = lsnew(nloc, small, sinit, short, &x, &p, s,
-                                             &mut alist, &mut flist, amin, amax, alp, abest, fmed, unitlen,
-        );
+                                             &mut alist, &mut flist, amin, amax, abest, fmed, unitlen);
 
         assert_relative_eq!(result_alp, 0.66, epsilon = 1e-10);
         assert_relative_eq!(result_fac, 0.3, epsilon = 1e-10);

@@ -10,7 +10,11 @@ pub fn lsinit(
     amin: f64,
     amax: f64,
     scale: f64,
-) -> (f64, f64, f64, f64) {
+) -> (f64, //alp
+      f64, //alp1
+      f64, //alp2
+      f64, //falp
+) {
     let mut alp = 0.0;
     let mut alp1 = 0.0;
     let mut alp2 = 0.0;
