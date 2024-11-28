@@ -1,10 +1,9 @@
 use crate::feval::feval;
-use ndarray::Array1;
 use std::process;
 
 pub fn lsinit(
-    x: &Array1<f64>,
-    p: &Array1<f64>,
+    x: &[f64],
+    p: &[f64],
     alist: &mut Vec<f64>,
     flist: &mut Vec<f64>,
     amin: f64,
@@ -30,8 +29,8 @@ pub fn lsinit(
             alp = amax;
         }
         // New function value
-        let step = p * alp;
-        falp = feval(&(x + &step));
+        let step = p.iter().map(|i| *i * alp).collect::<Vec<f64>>();
+        falp = feval(&(x.iter().zip(step).map(|(x, z)| *x + z).collect::<Vec<f64>>()));
         alist.push(alp);
         flist.push(falp);
     } else if alist.len() == 1 {
@@ -45,8 +44,8 @@ pub fn lsinit(
         }
         if (alist[0] - alp).abs() > f64::EPSILON {
             // New function value
-            let step = p * alp;
-            falp = feval(&(x + &step));
+            let step = p.iter().map(|i| *i * alp).collect::<Vec<f64>>();
+            falp = feval(&(x.iter().zip(step).map(|(x, z)| *x + z).collect::<Vec<f64>>()));
             alist.push(alp);
             flist.push(falp);
         }
@@ -75,8 +74,8 @@ pub fn lsinit(
         }
         if alp < aamin || alp > aamax {
             // New function value
-            let step = p * alp;
-            falp = feval(&(x + &step));
+            let step = p.iter().map(|i| *i * alp).collect::<Vec<f64>>();
+            falp = feval(&(x.iter().zip(step).map(|(x, z)| *x + z).collect::<Vec<f64>>()));
             alist.push(alp);
             flist.push(falp);
         }
@@ -94,12 +93,11 @@ pub fn lsinit(
 mod tests {
     use super::*;
     use approx::assert_relative_eq;
-    use ndarray::Array1;
 
     #[test]
     fn test_1() {
-        let x = Array1::from_vec(vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.6]);
-        let p = Array1::from_vec(vec![1., 0., 0., 0., 0., 0.]);
+        let x = vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.6];
+        let p = vec![1., 0., 0., 0., 0., 0.];
         let mut alist: Vec<f64> = Vec::new();
         let mut flist: Vec<f64> = Vec::new();
         let amin = -1.0;
@@ -127,8 +125,8 @@ mod tests {
 
     #[test]
     fn test_2() {
-        let x = Array1::from_vec(vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.6]);
-        let p = Array1::from_vec(vec![0., 1., 0., 0., 0., 0.]);
+        let x = vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.6];
+        let p = vec![0., 1., 0., 0., 0., 0.];
         let mut alist: Vec<f64> = Vec::from([0.0, 0.1]);
         let mut flist: Vec<f64> = Vec::from([0.0, 0.1]);
         let amin = -1.0;

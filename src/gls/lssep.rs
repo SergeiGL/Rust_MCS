@@ -2,7 +2,6 @@ use crate::feval::feval;
 use crate::gls::lsnew::lsnew;
 use crate::gls::lssort::lssort;
 
-use ndarray::Array1;
 use std::cmp::Ordering;
 
 
@@ -11,8 +10,8 @@ pub fn lssep(
     small: f64,
     sinit: i32,
     short: f64,
-    x: &Array1<f64>,
-    p: &Array1<f64>,
+    x: &[f64],
+    p: &[f64],
     alist: &mut Vec<f64>,
     flist: &mut Vec<f64>,
     amin: f64,
@@ -78,7 +77,7 @@ pub fn lssep(
 
         // If there are more midpoints than `nloc`, select the best `nloc`
         if aa.len() > nloc as usize {
-            let mut ff: Vec<f64> = ind
+            let ff: Vec<f64> = ind
                 .iter()
                 .map(|&i| flist[i].min(flist[i - 1])) // select minimum flist for those pairs
                 .collect();
@@ -91,7 +90,8 @@ pub fn lssep(
         // For each midpoint alp, evaluate the function and update lists
         for &alp_elem in &aa {
             alp = alp_elem;
-            let falp = feval(&(x + &(p * alp_elem)));
+
+            let falp = feval(&(x.iter().zip(p).map(|(&x, &p)| x + alp * p).collect::<Vec<f64>>()));
             alist.push(alp_elem);
             flist.push(falp);
             nsep += 1;
@@ -101,24 +101,7 @@ pub fn lssep(
         }
 
         // Sort the lists using `lssort`
-        let (
-            sorted_alist, permuted_flist, new_abest, new_fbest, new_fmed, sorted_up,
-            sorted_down, new_monotone, sorted_minima, new_nmin, new_unitlen, new_s
-        ) = lssort(alist, flist);
-
-        // Reassign all sorted values after sorting
-        *alist = sorted_alist;
-        *flist = permuted_flist;
-        abest = new_abest;
-        fbest = new_fbest;
-        fmed = new_fmed;
-        *up = sorted_up;
-        *down = sorted_down;
-        monotone = new_monotone;
-        *minima = sorted_minima;
-        nmin = new_nmin;
-        unitlen = new_unitlen;
-        s = new_s;
+        (abest, fbest, fmed, *up, *down, monotone, *minima, nmin, unitlen, s) = lssort(alist, flist);
     }
 
     // To account for missing separations, add points globally using lsnew
@@ -129,24 +112,7 @@ pub fn lssep(
         );
         alp = res.0;
 
-        let (
-            sorted_alist, permuted_flist, new_abest, new_fbest, new_fmed, sorted_up,
-            sorted_down, new_monotone, sorted_minima, new_nmin, new_unitlen, new_s
-        ) = lssort(alist, flist);
-
-        // Reassign variables based on `lssort` results
-        *alist = sorted_alist;
-        *flist = permuted_flist;
-        abest = new_abest;
-        fbest = new_fbest;
-        fmed = new_fmed;
-        *up = sorted_up;
-        *down = sorted_down;
-        monotone = new_monotone;
-        *minima = sorted_minima;
-        nmin = new_nmin;
-        unitlen = new_unitlen;
-        s = new_s;
+        (abest, fbest, fmed, *up, *down, monotone, *minima, nmin, unitlen, s) = lssort(alist, flist);
     }
 
     (amin, amax, alp, abest, fbest, fmed, monotone, nmin, unitlen, s)
@@ -155,7 +121,6 @@ pub fn lssep(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ndarray::array;
 
     #[test]
     fn test_0() {
@@ -163,8 +128,8 @@ mod tests {
         let small = 1e-6;
         let sinit = 1;
         let short = 0.1;
-        let x = array![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
-        let p = array![-1.0, -2.0, -3.0, -4.0, -5.0, -6.0];
+        let x = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let p = vec![-1.0, -2.0, -3.0, -4.0, -5.0, -6.0];
         let mut alist = vec![3.0, 2.0];
         let mut flist = vec![3.0, 2.0];
         let amin = 0.0;
@@ -199,8 +164,8 @@ mod tests {
         let small = 1e-6;
         let sinit = 1;
         let short = 0.1;
-        let x = array![1000.0, 2000.0, 3000.0, 4000.0, 5000.0, 6000.0];
-        let p = array![-1000.0, -2000.0, -3000.0, -4000.0, -5000.0, -6000.0];
+        let x = vec![1000.0, 2000.0, 3000.0, 4000.0, 5000.0, 6000.0];
+        let p = vec![-1000.0, -2000.0, -3000.0, -4000.0, -5000.0, -6000.0];
         let mut alist = vec![3000.0, 2000.0];
         let mut flist = vec![3000.0, 2000.0];
         let amin = 0.0;
@@ -236,8 +201,8 @@ mod tests {
         let small = 0.0;
         let sinit = 0;
         let short = 0.0;
-        let x = array![0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
-        let p = array![0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+        let x = vec![0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+        let p = vec![0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
         let mut alist = vec![0.0, 0.0];
         let mut flist = vec![0.0, 0.0];
         let amin = 0.0;

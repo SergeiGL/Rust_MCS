@@ -22,6 +22,7 @@ pub fn lsguard(mut alp: f64, alist: &mut Vec<f64>, amax: f64, amin: f64, small: 
     alp
 }
 
+
 #[cfg(test)]
 mod tests {
     use super::*;

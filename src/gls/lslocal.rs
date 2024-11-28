@@ -2,13 +2,12 @@ use crate::feval::feval;
 use crate::gls::lsguard::lsguard;
 use crate::gls::lssort::lssort;
 
-use ndarray::Array1;
 
 pub fn lslocal(
     nloc: i32,
     small: f64,
-    x: &Array1<f64>,
-    p: &Array1<f64>,
+    x: &[f64],
+    p: &[f64],
     alist: &mut Vec<f64>,
     flist: &mut Vec<f64>,
     amin: f64,
@@ -69,7 +68,7 @@ pub fn lslocal(
         .collect();
 
     // Sort minima by function values and get permutation
-    let mut ff: Vec<f64> = imin.iter().map(|&i| flist[i]).collect();
+    let ff: Vec<f64> = imin.iter().map(|&i| flist[i]).collect();
     let mut perm: Vec<usize> = (0..ff.len()).collect();
     perm.sort_by(|&a, &b| ff[a].partial_cmp(&ff[b]).unwrap());
 
@@ -216,37 +215,14 @@ pub fn lslocal(
 
         if cas >= 0 && (final_check || !close) {
             nadd += 1;
-            let falp = feval(&(x + &(alp * p)));
+            let falp = feval(&(x.iter().zip(p).map(|(x, p)| *x + alp * *p).collect::<Vec<f64>>()));
             alist.push(alp);
             flist.push(falp);
         }
     }
 
     if nadd > 0 {
-        let (new_alist, new_flist, new_abest, new_fbest, new_fmed, new_up,
-            new_down, new_monotone, new_minima, new_nmin, new_unitlen, new_s) =
-            lssort(alist, flist);
-
-        // Update all vectors and values
-        alist.clear();
-        alist.extend(new_alist);
-        flist.clear();
-        flist.extend(new_flist);
-        up.clear();
-        up.extend(new_up);
-        down.clear();
-        down.extend(new_down);
-        minima.clear();
-        minima.extend(new_minima);
-
-        // Update scalar values
-        abest = new_abest;
-        fbest = new_fbest;
-        fmed = new_fmed;
-        monotone = new_monotone;
-        nmin = new_nmin;
-        unitlen = new_unitlen;
-        s = new_s;
+        (abest, fbest, fmed, *up, *down, monotone, *minima, nmin, unitlen, s) = lssort(alist, flist);
     }
 
     (alp, abest, fbest, fmed, monotone, nmin, unitlen, s, saturated)
@@ -257,15 +233,13 @@ pub fn lslocal(
 mod tests {
     use super::*;
     use approx::assert_relative_eq;
-    use ndarray::Array1;
-
 
     #[test]
     fn test_basic_minimum() {
         let nloc = 3;
         let small = 1e-6;
-        let x = Array1::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
-        let p = Array1::from_vec(vec![0.1, 0.1, 0.1, 0.1, 0.1, 0.1]);
+        let x = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let p = vec![0.1, 0.1, 0.1, 0.1, 0.1, 0.1];
         let mut alist = vec![0.0, 0.5, 1.0, 1.5, 2.0];
         let mut flist = vec![10.0, 8.0, 7.0, 8.0, 10.0];
         let amin = 0.0;
@@ -318,8 +292,8 @@ mod tests {
     fn test_multiple_minima() {
         let nloc = 3;
         let small = 1e-6;
-        let x = Array1::from_vec(vec![1.0; 6]);
-        let p = Array1::from_vec(vec![0.2; 6]);
+        let x = vec![1.0; 6];
+        let p = vec![0.2; 6];
         let mut alist = vec![0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0];
         let mut flist = vec![10.0, 8.0, 6.0, 9.0, 5.0, 7.0, 10.0];
         let amin = 0.0;
@@ -370,8 +344,8 @@ mod tests {
     fn test_boundary_minimum_left() {
         let nloc = 3;
         let small = 1e-6;
-        let x = Array1::from_vec(vec![2.0, 3.0, 4.0, 5.0, 6.0, 7.0]);
-        let p = Array1::from_vec(vec![-0.1; 6]);
+        let x = vec![2.0, 3.0, 4.0, 5.0, 6.0, 7.0];
+        let p = vec![-0.1; 6];
         let mut alist = vec![0.0, 0.5, 1.0, 1.5, 2.0];
         let mut flist = vec![5.0, 6.0, 7.0, 8.0, 9.0];
         let amin = 0.0;
@@ -418,8 +392,8 @@ mod tests {
     fn test_boundary_minimum_right() {
         let nloc = 3;
         let small = 1e-6;
-        let x = Array1::from_vec(vec![2.0, 3.0, 4.0, 5.0, 6.0, 7.0]);
-        let p = Array1::from_vec(vec![0.1; 6]);
+        let x = vec![2.0, 3.0, 4.0, 5.0, 6.0, 7.0];
+        let p = vec![0.1; 6];
         let mut alist = vec![0.0, 0.5, 1.0, 1.5, 2.0];
         let mut flist = vec![9.0, 8.0, 7.0, 6.0, 5.0];
         let amin = 0.0;
@@ -465,8 +439,8 @@ mod tests {
     fn test_saturated_case() {
         let nloc = 2;
         let small = 1e-6;
-        let x = Array1::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
-        let p = Array1::from_vec(vec![0.1; 6]);
+        let x = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let p = vec![0.1; 6];
         let mut alist = vec![0.0, 0.25, 0.5, 0.75, 1.0];
         let mut flist = vec![10.0, 8.0, 7.0, 8.0, 10.0];
         let amin = 0.0;
@@ -494,6 +468,11 @@ mod tests {
             lslocal(nloc, small, &x, &p, &mut alist, &mut flist, amin, amax, alp, abest, fbest, fmed,
                     &mut up, &mut down, monotone, &mut minima, nmin, unitlen, s, saturated);
 
+        assert_eq!(alist, expected_alist);
+        assert_eq!(flist, expected_flist);
+        assert_eq!(up, expected_up);
+        assert_eq!(down, expected_down);
+        assert_eq!(minima, expected_minima);
         assert_relative_eq!(alp_out, 0.525);
         assert_relative_eq!(abest_out, 0.525);
         assert_relative_eq!(fbest_out, -1.00989834152592e-196);

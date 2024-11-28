@@ -2,204 +2,145 @@ use crate::minq::ldlrk1::ldlrk1;
 use nalgebra::{DMatrix, DVector};
 
 pub fn ldlup(
-    mut L: Vec<Vec<f64>>,
-    mut d: Vec<f64>,
+    L: &mut Vec<Vec<f64>>,
+    d: &mut Vec<f64>,
     j: usize,
-    g: Vec<f64>,
-) -> (Vec<Vec<f64>>, Vec<f64>, Vec<f64>) {
+    g: &[f64],
+) ->
+    Vec<f64>
+{
+    let mut p = vec![];
     let eps = 2.2204e-16;
     let n = d.len();
 
     // Create index vectors I and K
     let I: Vec<usize> = (0..j).collect();
-    let K: Vec<usize> = (j + 1..n).collect();
+    let K: Vec<usize> = ((j + 1)..n).collect();
+
+    // Declare variables at function scope
+    let mut q = Vec::new();
+    let mut w_vec = Vec::new();
+    let mut dK = Vec::new();
+    let delta;
+    let u;
+    let v;
+    let LII;
+    let mut LKI = DMatrix::zeros(0, 0);
 
     // Special case for j == 0
     if j == 0 {
-        let delta = g[j];
+        delta = g[j];
 
         if delta <= (n as f64) * eps {
-            let mut p = vec![0.0; n];
+            p = vec![0.0; n];
             p[0] = 1.0;
-            return (L, d, p);
+            return p;
         }
 
-        // Clear row j (equivalent to L[j,I] = v.T in Python)
         for i in I {
             L[0][i] = 0.0;
         }
         d[0] = delta;
-
-        return (L, d, vec![]);
+        return p;
     }
 
-    // Extract LII submatrix
-    let mut lii_data = Vec::new();
-    for &i in &I {
-        for &j in &I {
-            lii_data.push(L[i][j]);
-        }
-    }
-    let LII = DMatrix::from_vec(I.len(), I.len(), lii_data);
 
-    // Extract gI vector
-    let gI: Vec<f64> = I.iter().map(|&i| g[i]).collect();
-    let gI = DVector::from_vec(gI);
+    LII = DMatrix::from_fn(j, j, |row, col| L[row][col]);
+
+    let gI = DVector::from_fn(j, |i, _| g[i]);
 
     // Solve LII * u = gI
-    let u = LII.clone().lu().solve(&gI).unwrap();
+    u = LII.clone().lu().solve(&gI).unwrap();
 
     // Calculate v
-    let dI: Vec<f64> = I.iter().map(|&i| d[i]).collect();
-    let v: DVector<f64> = u.component_div(&DVector::from_vec(dI));
+    v = u.component_div(&DVector::from_fn(j, |i, _| d[i]));
 
     // Calculate delta
-    let delta = g[j] - u.dot(&v);
+    delta = g[j] - u.dot(&v);
 
     if delta <= (n as f64) * eps {
-        let v_solve = LII.transpose().clone().lu().solve(&v).unwrap();
-        let mut p = vec![0.0; n];
-        for (i, val) in v_solve.iter().enumerate() {
+        p = vec![0.0; n];
+        for (i, val) in LII.clone()
+            .transpose()
+            .lu()
+            .solve(&v)
+            .unwrap()
+            .iter()
+            .enumerate() {
             p[i] = *val;
         }
         p[j] = -1.0;
-        return (L, d, p);
+        return p;
     }
-
-    let mut q = Vec::new();
 
     if !K.is_empty() {
-        // Extract LKI submatrix
-        let mut lki_data = Vec::new();
-        for &k in &K {
-            for &i in &I {
-                lki_data.push(L[k][i]);
-            }
-        }
-        let LKI = DMatrix::from_vec(K.len(), I.len(), lki_data);
+        LKI = DMatrix::from_fn(K.len(), I.len(), |row, col| L[K[row]][col]);
+
+        // Extract gK vector
+        let gK = DVector::from_fn(K.len(), |i, _| g[K[i]]);
 
         // Calculate w
-        let gK: Vec<f64> = K.iter().map(|&k| g[k]).collect();
-        let gK = DVector::from_vec(gK);
-        let w = (gK - &LKI * &u) / delta;
+        let w = (gK - &LKI * u).scale(1.0 / delta);
+        w_vec = w.data.as_vec().to_vec();
 
-        // Extract LKK submatrix
-        let mut lkk_data = Vec::new();
+
+        let mut LKK = Vec::with_capacity(K.len());
         for &k1 in &K {
-            for &k2 in &K {
-                lkk_data.push(L[k1][k2]);
-            }
+            LKK.push(K.iter().map(|&k2| L[k1][k2]).collect::<Vec<_>>());
         }
-        let LKK = DMatrix::from_vec(K.len(), K.len(), lkk_data);
 
-        let dK: Vec<f64> = K.iter().map(|&k| d[k]).collect();
+        // Extract dK
+        dK = K.iter().map(|&k| d[k]).collect();
 
         // Call ldlrk1
-        let (lkk_new, dk_new, q_new) = ldlrk1(
-            LKK.as_slice().chunks(K.len()).map(|row| row.to_vec()).collect(),
-            dK,
-            -delta,
-            w.as_slice().to_vec(),
-        );
+        q = ldlrk1(&mut LKK, &mut dK, -delta, &mut w_vec);
 
-        // Update L and d with results
-        for (i, &k1) in K.iter().enumerate() {
-            for (j, &k2) in K.iter().enumerate() {
-                L[k1][k2] = lkk_new[i][j];
-            }
-            d[k1] = dk_new[i];
+        // Update d
+        for (i, &k) in K.iter().enumerate() {
+            d[k] = dK[i];
         }
-
-        q = q_new;
+    } else {
+        q = vec![];
     }
 
-    if q.is_empty() {
-        // Create new rows for L matrix
-        let mut new_L = vec![vec![0.0; n]; n];
+    if !K.is_empty() && q.is_empty() { //TODO: strange
+        // Update second row (j-th row)
+        let v_vec = v.data.as_vec();
+        for (idx, &i) in I.iter().enumerate() {
+            L[j][i] = v_vec[idx];
+        }
+        L[j][j] = 1.0;
 
-        // Copy original rows for I indices
-        for &i in &I {
-            new_L[i] = L[i].clone();
+        // Update L[K,j] with w values
+        for (k_idx, &k) in K.iter().enumerate() {
+            L[k][j] = w_vec[k_idx];
         }
 
-        // Update row j
-        for i in 0..n {
-            new_L[j][i] = if i < j {
-                v[i]
-            } else if i == j {
-                1.0
-            } else {
-                L[j][i]
-            };
-        }
-
-        // Update rows for K indices
-        for &k in &K {
-            for i in 0..n {
-                if i <= j {
-                    new_L[k][i] = if i < j {
-                        L[k][i]
-                    } else {
-                        g[k] / delta
-                    };
-                } else {
-                    new_L[k][i] = L[k][i];
-                }
-            }
-        }
-
-        L = new_L;
         d[j] = delta;
-        (L, d, vec![])
-    } else {
-        // Create new L matrix
-        let mut new_L = vec![vec![0.0; n]; n];
-
-        // Copy rows 0 to j
-        for i in 0..=j {
-            new_L[i] = L[i].clone();
-        }
-
-        // Update remaining rows
-        for (idx, &k) in K.iter().enumerate() {
-            // Copy LKI part
-            for (j_idx, &i) in I.iter().enumerate() {
-                new_L[k][i] = L[k][i];
-            }
-            // Set column j
-            new_L[k][j] = g[k] / delta;
-            // Copy LKK part
-            for (j_idx, &k2) in K.iter().enumerate() {
-                new_L[k][k2] = L[k][k2];
-            }
-        }
-
-        L = new_L;
-
-        let w = DVector::from_vec(K.iter().map(|&k| g[k] / delta).collect());
-        let q_vec = DVector::from_vec(q.clone());
-
+    } else if !K.is_empty() { //TODO: strange
+        // Calculate final p vector
+        let w = DVector::from_vec(w_vec);
+        let q_vec = DVector::from_vec(q);
         let pi = w.dot(&q_vec);
-        let piv = &v * pi;
-
-        let lki_data: Vec<f64> = K.iter().flat_map(|&k| I.iter().map({
-            let value = L.clone();
-            move |&i| value[k][i]
-        })).collect();
-        let LKI = DMatrix::from_vec(K.len(), I.len(), lki_data);
-
+        let piv = v.scale(pi);
         let lki_q = &LKI.transpose() * &q_vec;
         let piv_lki_q = piv - lki_q;
+        let pi_solve = LII.transpose().lu().solve(&piv_lki_q).unwrap();
 
-        let p_solve = LII.transpose().clone().lu().solve(&piv_lki_q).unwrap();
-
-        let mut p = Vec::with_capacity(n);
-        p.extend(p_solve.iter());
+        p = Vec::with_capacity(n);
+        p.extend(pi_solve.iter());
         p.push(-pi);
-        p.extend(q.iter());
-
-        (L, d, p)
+        p.extend(q_vec.iter());
+    } else { //TODO: strange
+        let v_vec = v.data.as_vec();
+        for (idx, &i) in I.iter().enumerate() {
+            L[j][i] = v_vec[idx];
+        }
+        L[j][j] = 1.0;
+        d[j] = delta;
     }
+
+    p
 }
 
 
@@ -209,20 +150,47 @@ mod tests {
     use approx::assert_relative_eq;
 
     #[test]
+    fn test_mistake_0() {
+        let mut L = vec![
+            vec![1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            vec![0.0034964020620132778, 1.0, 0.0, 0.0, 0.0, 0.0],
+            vec![0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
+            vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+            vec![0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+            vec![0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+        ];
+        let mut d = vec![23.127986525843045, 18.57643856292412, 1.0, 1.0, 1.0, 1.0];
+        let j = 2;
+        let g = vec![1.7538162952525622, -0.5909985456367551, 24.55657908379219, 0.0, 0.0, 0.0];
+
+        let p = ldlup(&mut L, &mut d, j, &g);
+
+        assert_eq!(L, vec![
+            vec![1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            vec![0.0034964020620132778, 1.0, 0.0, 0.0, 0.0, 0.0],
+            vec![0.07583091132005203, -0.03214451416643742, 1.0, 0.0, 0.0, 0.0],
+            vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+            vec![0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+            vec![0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+        ]);
+
+        assert_eq!(d, vec![23.127986525843045, 18.57643856292412, 24.40439112304386, 1.0, 1.0, 1.0]);
+        assert_eq!(p, vec![]);
+    }
+
+    #[test]
     fn test_j_start_row() {
-        // Initialize L as a 2x2 matrix
-        let L = vec![
+        let mut L = vec![
             vec![1.0, 0.0],
             vec![0.5, 1.0],
         ];
 
-        // Initialize vectors
-        let d = vec![1.0, 2.0];
+        let mut d = vec![1.0, 2.0];
         let j = 0;
         let g = vec![1.0, 0.0];
 
-        // Call the function
-        let (L_new, d_new, p) = ldlup(L, d, j, g);
+        let p = ldlup(&mut L, &mut d, j, &g);
+
         let L_expected = vec![
             vec![1.0, 0.0],
             vec![0.5, 1.0],
@@ -230,11 +198,10 @@ mod tests {
         let d_expected = vec![1.0, 2.0];
         let p_expected: Vec<f64> = vec![]; // Empty vector
 
-        // Assert results using relative comparison for floating point numbers
         for i in 0..2 {
             for j in 0..2 {
                 assert_relative_eq!(
-                    L_new[i][j],
+                    L[i][j],
                     L_expected[i][j],
                     epsilon = 1e-10
                 );
@@ -243,7 +210,7 @@ mod tests {
 
         for i in 0..2 {
             assert_relative_eq!(
-                d_new[i],
+                d[i],
                 d_expected[i],
                 epsilon = 1e-10
             );
@@ -255,18 +222,18 @@ mod tests {
     #[test]
     fn test_j_last_row() {
         // Initialize L as a 2x2 matrix
-        let L = vec![
+        let mut L = vec![
             vec![1.0, 0.0],
             vec![0.5, 1.0],
         ];
 
         // Initialize vectors
-        let d = vec![1.0, 2.0];
+        let mut d = vec![1.0, 2.0];
         let j = 1;
         let g = vec![0.5, 2.0];
 
         // Call the function
-        let (L_new, d_new, p) = ldlup(L, d, j, g);
+        let p = ldlup(&mut L, &mut d, j, &g);
 
         // Expected results
         let L_expected = vec![
@@ -280,7 +247,7 @@ mod tests {
         for i in 0..2 {
             for j in 0..2 {
                 assert_relative_eq!(
-                    L_new[i][j],
+                    L[i][j],
                     L_expected[i][j],
                     epsilon = 1e-10
                 );
@@ -289,7 +256,7 @@ mod tests {
 
         for i in 0..2 {
             assert_relative_eq!(
-                d_new[i],
+                d[i],
                 d_expected[i],
                 epsilon = 1e-10
             );
@@ -301,7 +268,7 @@ mod tests {
     #[test]
     fn test_large_matrix_size() {
         // Initialize L as a 2x2 matrix
-        let L = vec![
+        let mut L = vec![
             vec![1.0, 0.0, 0.0, 0.0],
             vec![0.2, 1.0, 0.0, 0.0],
             vec![0.3, 0.6, 1.0, 0.0],
@@ -309,12 +276,12 @@ mod tests {
         ];
 
         // Initialize vectors
-        let d = vec![1.0, 2.0, 3.0, 4.0];
+        let mut d = vec![1.0, 2.0, 3.0, 4.0];
         let j = 2;
         let g = vec![0.0, 0.0, 3.0, 0.0];
 
         // Call the function
-        let (L_new, d_new, p) = ldlup(L, d, j, g);
+        let p = ldlup(&mut L, &mut d, j, &g);
 
         // Expected results
         let L_expected = vec![
@@ -330,7 +297,7 @@ mod tests {
         for i in 0..2 {
             for j in 0..2 {
                 assert_relative_eq!(
-                    L_new[i][j],
+                    L[i][j],
                     L_expected[i][j],
                     epsilon = 1e-10
                 );
@@ -339,7 +306,7 @@ mod tests {
 
         for i in 0..2 {
             assert_relative_eq!(
-                d_new[i],
+                d[i],
                 d_expected[i],
                 epsilon = 1e-10
             );
@@ -351,7 +318,7 @@ mod tests {
     #[test]
     fn test_3() {
         // Initialize L as a 2x2 matrix
-        let L = vec![
+        let mut L = vec![
             vec![1.0, 0.0, 0.0, 0.0],
             vec![0.2, 1.0, 0.0, 0.0],
             vec![0.3, 0.6, 1.0, 0.0],
@@ -359,12 +326,12 @@ mod tests {
         ];
 
         // Initialize vectors
-        let d = vec![1.0, 2.0, 3.0, 4.0];
+        let mut d = vec![1.0, 2.0, 3.0, 4.0];
         let j = 2;
         let g = vec![-100.0, 0.0, 3.0, 0.0];
 
         // Call the function
-        let (L_new, d_new, p) = ldlup(L, d, j, g);
+        let p = ldlup(&mut L, &mut d, j, &g);
 
         // Expected results
         let L_expected = vec![
@@ -380,7 +347,7 @@ mod tests {
         for i in 0..2 {
             for j in 0..2 {
                 assert_relative_eq!(
-                    L_new[i][j],
+                    L[i][j],
                     L_expected[i][j],
                     epsilon = 1e-10
                 );
@@ -389,7 +356,7 @@ mod tests {
 
         for i in 0..2 {
             assert_relative_eq!(
-                d_new[i],
+                d[i],
                 d_expected[i],
                 epsilon = 1e-10
             );

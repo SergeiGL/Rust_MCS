@@ -1,9 +1,4 @@
-/*
-    The function adjusts alist[i]
-    based on the relationship between flist[i] and flist[i+1]
-*/
-
-pub fn lssplit(i: usize, alist: &mut Vec<f64>, flist: &mut Vec<f64>, short: f64) -> Result<(f64, f64), String> {
+pub fn lssplit(i: usize, alist: &[f64], flist: &[f64], short: f64) -> Result<(f64, f64), String> {
     if (i + 1 >= flist.len()) || (i + 1 >= alist.len()) {
         return Err("Index out of bounds".to_string());
     }
@@ -27,47 +22,47 @@ mod tests {
 
     #[test]
     fn test_flist_increasing() {
-        let mut alist = vec![10.0, 20.0];
-        let mut flist = vec![1.0, 2.0];
+        let alist = vec![10.0, 20.0];
+        let flist = vec![1.0, 2.0];
         let short = 0.3;
-        let result = lssplit(0, &mut alist, &mut flist, short);
+        let result = lssplit(0, &alist, &flist, short);
         assert_eq!(result, Ok((13.0, 0.3)));
     }
 
     #[test]
     fn test_flist_decreasing() {
-        let mut alist = vec![10.0, 20.0];
-        let mut flist = vec![2.0, 1.0];
+        let alist = vec![10.0, 20.0];
+        let flist = vec![2.0, 1.0];
         let short = 0.3;
-        let result = lssplit(0, &mut alist, &mut flist, short);
+        let result = lssplit(0, &alist, &flist, short);
         assert_eq!(result, Ok((17.0, 0.7)));
     }
 
     #[test]
     fn test_flist_equal() {
-        let mut alist = vec![10.0, 20.0];
-        let mut flist = vec![2.0, 2.0];
+        let alist = vec![10.0, 20.0];
+        let flist = vec![2.0, 2.0];
         let short = 0.3;
-        let result = lssplit(0, &mut alist, &mut flist, short);
+        let result = lssplit(0, &alist, &flist, short);
         assert_eq!(result, Ok((15.0, 0.5)));
     }
 
     #[test]
     fn test_edge_case_empty_lists() {
-        let mut alist: Vec<f64> = vec![];
-        let mut flist: Vec<f64> = vec![];
+        let alist: Vec<f64> = vec![];
+        let flist: Vec<f64> = vec![];
         let short = 0.3;
-        let result = lssplit(0, &mut alist, &mut flist, short);
+        let result = lssplit(0, &alist, &flist, short);
         assert!(result.is_err());
         assert_eq!(result, Err("Index out of bounds".to_string()));
     }
 
     #[test]
     fn test_edge_case_single_element() {
-        let mut alist: Vec<f64> = vec![10.0];
-        let mut flist: Vec<f64> = vec![2.0];
+        let alist: Vec<f64> = vec![10.0];
+        let flist: Vec<f64> = vec![2.0];
         let short = 0.3;
-        let result = lssplit(0, &mut alist, &mut flist, short);
+        let result = lssplit(0, &alist, &flist, short);
         assert!(result.is_err());
         assert_eq!(result, Err("Index out of bounds".to_string()));
     }

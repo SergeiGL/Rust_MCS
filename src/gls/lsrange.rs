@@ -1,25 +1,22 @@
-use ndarray::Array1;
-
 #[derive(Debug)]
 pub enum LineSearchError {
     ZeroSearchDirection,
     NoAdmissibleStep,
-    Generic(String),
 }
 
 
 pub fn lsrange(
-    x: &Array1<f64>,
-    p: &Array1<f64>,
-    xl: &Array1<f64>,
-    xu: &Array1<f64>,
+    x: &[f64],
+    p: &[f64],
+    xl: &[f64],
+    xu: &[f64],
     bend: bool,
 ) -> Result<(f64, //amin
              f64, //amax
              f64, //scale
 ), LineSearchError> {
     // Check for zero search direction
-    if p.fold(0.0, |acc: f64, &x| acc.max(x.abs())) == 0.0 {
+    if p.into_iter().fold(0.0, |acc: f64, &x| acc.max(x.abs())) == 0.0 {
         return Err(LineSearchError::ZeroSearchDirection);
     }
 
@@ -92,14 +89,13 @@ pub fn lsrange(
 mod tests {
     use super::*;
     use approx::assert_abs_diff_eq;
-    use ndarray::array;
 
     #[test]
     fn test_0() {
-        let xl = array![0.0, 0.0];
-        let xu = array![10.0, 10.0];
-        let x = array![5.0, 5.0];
-        let p = array![1.0, 1.0];
+        let xl = vec![0.0, 0.0];
+        let xu = vec![10.0, 10.0];
+        let x = vec![5.0, 5.0];
+        let p = vec![1.0, 1.0];
         let bend = false;
 
         let result = lsrange(&x, &p, &xl, &xu, bend).expect("Line search failed");
@@ -114,10 +110,10 @@ mod tests {
 
     #[test]
     fn test_3() {
-        let xl = array![0.0, 0.0];
-        let xu = array![10.0, 10.0];
-        let x = array![5.0, 5.0];
-        let p = array![0.0, 0.0]; // zero search direction
+        let xl = vec![0.0, 0.0];
+        let xu = vec![10.0, 10.0];
+        let x = vec![5.0, 5.0];
+        let p = vec![0.0, 0.0]; // zero search direction
         let bend = false;
 
         // Expect an error indicating a zero search direction
@@ -127,10 +123,10 @@ mod tests {
 
     #[test]
     fn test_5() {
-        let xl = array![0.0, 2.0];
-        let xu = array![10.0, 20.0];
-        let x = array![-5.0, 0.5];
-        let p = array![-10.0, 1.0];
+        let xl = vec![0.0, 2.0];
+        let xu = vec![10.0, 20.0];
+        let x = vec![-5.0, 0.5];
+        let p = vec![-10.0, 1.0];
         let bend = true;
 
         let result = lsrange(&x, &p, &xl, &xu, bend).expect("Line search failed");

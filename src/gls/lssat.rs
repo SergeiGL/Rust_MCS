@@ -10,7 +10,7 @@ pub fn lssat(
 ) -> (f64, //alp
       bool //saturated
 ) {
-    let mut cont = saturated;
+    let cont = saturated;
 
     if cont {
         // check boundary minimizer

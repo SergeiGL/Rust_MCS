@@ -1,5 +1,3 @@
-use ndarray::Array1;
-
 use crate::feval::feval;
 use crate::gls::lssplit::lssplit;
 
@@ -8,8 +6,8 @@ pub fn lsnew(
     small: f64,
     sinit: i32,
     short: f64,
-    x: &Array1<f64>,
-    p: &Array1<f64>,
+    x: &[f64],
+    p: &[f64],
     s: usize,
     alist: &mut Vec<f64>,
     flist: &mut Vec<f64>,
@@ -62,7 +60,8 @@ pub fn lsnew(
         new_alp
     };
 
-    let falp = feval(&(x + alp * p));
+
+    let falp = feval(&(x.iter().zip(p).map(|(&xi, &pi)| xi + alp * pi).collect::<Vec<f64>>()));
     alist.push(alp);
     flist.push(falp);
 
@@ -73,7 +72,6 @@ pub fn lsnew(
 mod tests {
     use super::*;
     use approx::assert_relative_eq;
-    use ndarray::array;
 
     #[test]
     fn test_lsnew_basic() {
@@ -81,8 +79,8 @@ mod tests {
         let small = 0.1;
         let sinit = 1;
         let short = 0.5;
-        let x = array![0.1, 0.2, 0.3, 0.4, 0.5, 0.66];
-        let p = array![1.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+        let x = vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.66];
+        let p = vec![1.0, 0.0, 0.0, 0.0, 0.0, 0.0];
         let s = 3;
         let mut alist = vec![0.0, 0.5, 1.0];
         let mut flist = vec![3.0, 2.0, 1.0];
@@ -108,8 +106,8 @@ mod tests {
         let small = 0.1;
         let sinit = 1;
         let short = 0.5;
-        let x = array![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
-        let p = array![0.0, 1.0, 0.0, 0.0, 0.0, 0.0];
+        let x = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let p = vec![0.0, 1.0, 0.0, 0.0, 0.0, 0.0];
         let s = 3;
         let mut alist = vec![-1.0, 0.0, 1.0];
         let mut flist = vec![4.0, 3.0, 2.0];
@@ -134,8 +132,8 @@ mod tests {
         let small = 0.1;
         let sinit = 1;
         let short = 0.5;
-        let x = array![0.2, 0.4, 0.6, 0.8, 1.0, 0.42];
-        let p = array![1.0, 1.0, 0.0, 0.0, 0.0, 1.0];
+        let x = vec![0.2, 0.4, 0.6, 0.8, 1.0, 0.42];
+        let p = vec![1.0, 1.0, 0.0, 0.0, 0.0, 1.0];
         let s = 3;
         let mut alist = vec![0.5, 1.5, 2.0];
         let mut flist = vec![1.0, 0.5, 0.3];
@@ -160,8 +158,8 @@ mod tests {
         let small = 0.05;
         let sinit = 1;
         let short = 0.6;
-        let x = array![0.15, 0.25, 0.35, 0.45, 0.55, 0.65];
-        let p = array![0.0, 1.0, 0.0, 1.0, 0.0, 0.0];
+        let x = vec![0.15, 0.25, 0.35, 0.45, 0.55, 0.65];
+        let p = vec![0.0, 1.0, 0.0, 1.0, 0.0, 0.0];
         let s = 2;
         let mut alist = vec![-10.0, 1.2, 9.0];
         let mut flist = vec![2.0, 1.8, 10.0];
@@ -186,8 +184,8 @@ mod tests {
         let small = 0.1;
         let sinit = 1;
         let short = 0.7;
-        let x = array![0.5, 0.3, 0.2, 0.4, 0.1, 0.6];
-        let p = array![1.0, 0.0, 0.0, 0.0, 0.0, 1.0];
+        let x = vec![0.5, 0.3, 0.2, 0.4, 0.1, 0.6];
+        let p = vec![1.0, 0.0, 0.0, 0.0, 0.0, 1.0];
         let s = 4;
         let mut alist = vec![0.1, 0.3, 1.5, 1.7];
         let mut flist = vec![1.9, 1.4, 1.2, 1.0];

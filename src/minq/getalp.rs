@@ -67,6 +67,27 @@ mod tests {
     }
 
     #[test]
+    fn test_1() {
+        let alpu = f64::NEG_INFINITY;
+        let alpo = 1.0;
+        let gTp = -1.0;
+        let pTGp = 0.0;
+        let (alp, lba, uba, ier) = getalp(alpu, alpo, gTp, pTGp);
+        assert_eq!((alp, lba, uba, ier), (1.0, false, true, IerEnum::LocalMinimizerFound));
+    }
+
+    #[test]
+    fn test_2() {
+        let alpu = -1.0;
+        let alpo = f64::INFINITY;
+        let gTp = 1.0;
+        let pTGp = 0.0;
+        let (alp, lba, uba, ier) = getalp(alpu, alpo, gTp, pTGp);
+        assert_eq!((alp, lba, uba, ier), (-1.0, true, false, IerEnum::LocalMinimizerFound));
+    }
+
+
+    #[test]
     fn test_finite_minimizer() {
         let alpu = -10.0;
         let alpo = 10.0;
