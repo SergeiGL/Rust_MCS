@@ -1,26 +1,29 @@
+use nalgebra::SVector;
+
 #[derive(Debug)]
 pub enum LineSearchError {
     ZeroSearchDirection,
     NoAdmissibleStep,
 }
 
-
-pub fn lsrange(
-    x: &[f64],
-    p: &[f64],
-    xl: &[f64],
-    xu: &[f64],
+pub fn lsrange<const N: usize>(
+    x: &[f64; N],
+    p: &SVector<f64, N>,
+    u: &[f64; N],
+    v: &[f64; N],
     bend: bool,
-) -> Result<(f64, //amin
-             f64, //amax
-             f64, //scale
+) -> Result<(
+    f64, // amin
+    f64, // amax
+    f64, // scale
 ), LineSearchError> {
+
     // Check for zero search direction
     if p.into_iter().fold(0.0, |acc: f64, &x| acc.max(x.abs())) == 0.0 {
         return Err(LineSearchError::ZeroSearchDirection);
     }
 
-    // Find sensible step size scale
+    // Find sensible STEP size scale
     let nonzero_mask = p.iter().map(|&x| x != 0.0).collect::<Vec<_>>();
     let pp = p.iter()
         .zip(nonzero_mask.iter())
@@ -28,17 +31,17 @@ pub fn lsrange(
         .map(|(&val, _)| val.abs())
         .collect::<Vec<_>>();
 
-    let u = x.iter()
+    let u_vec = x.iter()
         .zip(nonzero_mask.iter())
         .filter(|(_, &mask)| mask)
         .zip(pp.iter())
         .map(|((x_val, _), p_val)| x_val.abs() / p_val)
         .collect::<Vec<_>>();
 
-    let mut scale = u.iter().copied().fold(f64::INFINITY, f64::min);
+    let mut scale = u_vec.iter().copied().fold(f64::INFINITY, f64::min);
 
     if scale == 0.0 {
-        let new_u: Vec<f64> = u.iter()
+        let new_u: Vec<f64> = u_vec.iter()
             .zip(pp.iter())
             .map(|(&u_val, &p_val)| if u_val == 0.0 { 1.0 / p_val } else { u_val })
             .collect();
@@ -52,11 +55,11 @@ pub fn lsrange(
 
         for (i, &p_i) in p.iter().enumerate() {
             if p_i > 0.0 {
-                amin = amin.max((xl[i] - x[i]) / p_i);
-                amax = amax.min((xu[i] - x[i]) / p_i);
+                amin = amin.max((u[i] - x[i]) / p_i);
+                amax = amax.min((v[i] - x[i]) / p_i);
             } else if p_i < 0.0 {
-                amin = amin.max((xu[i] - x[i]) / p_i);
-                amax = amax.min((xl[i] - x[i]) / p_i);
+                amin = amin.max((v[i] - x[i]) / p_i);
+                amax = amax.min((u[i] - x[i]) / p_i);
             }
         }
 
@@ -72,11 +75,11 @@ pub fn lsrange(
 
         for (i, &p_i) in p.iter().enumerate() {
             if p_i > 0.0 {
-                amin = amin.min((xl[i] - x[i]) / p_i);
-                amax = amax.max((xu[i] - x[i]) / p_i);
+                amin = amin.min((u[i] - x[i]) / p_i);
+                amax = amax.max((v[i] - x[i]) / p_i);
             } else if p_i < 0.0 {
-                amin = amin.min((xu[i] - x[i]) / p_i);
-                amax = amax.max((xl[i] - x[i]) / p_i);
+                amin = amin.min((v[i] - x[i]) / p_i);
+                amax = amax.max((u[i] - x[i]) / p_i);
             }
         }
 
@@ -88,54 +91,47 @@ pub fn lsrange(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use approx::assert_abs_diff_eq;
 
     #[test]
     fn test_0() {
-        let xl = vec![0.0, 0.0];
-        let xu = vec![10.0, 10.0];
-        let x = vec![5.0, 5.0];
-        let p = vec![1.0, 1.0];
+        let xl = [0.0, 0.0];
+        let xu = [10.0, 10.0];
+        let x = [5.0, 5.0];
+        let p = SVector::<f64, 2>::from_row_slice(&[1.0, 1.0]);
         let bend = false;
 
-        let result = lsrange(&x, &p, &xl, &xu, bend).expect("Line search failed");
+        let (amin, amax, scale) = lsrange(&x, &p, &xl, &xu, bend).expect("Line search failed");
 
-        let (amin, amax, scale) = result;
-
-        // Check that returned values are as expected
-        assert_abs_diff_eq!(amin, -5.0, epsilon = 1e-6);
-        assert_abs_diff_eq!(amax, 5.0, epsilon = 1e-6);
-        assert_abs_diff_eq!(scale, 5.0, epsilon = 1e-6);
+        assert_eq!(amin, -5.0);
+        assert_eq!(amax, 5.0);
+        assert_eq!(scale, 5.0);
     }
 
     #[test]
     fn test_3() {
-        let xl = vec![0.0, 0.0];
-        let xu = vec![10.0, 10.0];
-        let x = vec![5.0, 5.0];
-        let p = vec![0.0, 0.0]; // zero search direction
+        let xl = [0.0, 0.0];
+        let xu = [10.0, 10.0];
+        let x = [5.0, 5.0];
+        let p = SVector::<f64, 2>::repeat(0.0); // zero search direction
         let bend = false;
 
-        // Expect an error indicating a zero search direction
         let result = lsrange(&x, &p, &xl, &xu, bend);
+
         assert!(matches!(result, Err(LineSearchError::ZeroSearchDirection)));
     }
 
     #[test]
     fn test_5() {
-        let xl = vec![0.0, 2.0];
-        let xu = vec![10.0, 20.0];
-        let x = vec![-5.0, 0.5];
-        let p = vec![-10.0, 1.0];
+        let xl = [0.0, 2.0];
+        let xu = [10.0, 20.0];
+        let x = [-5.0, 0.5];
+        let p = SVector::<f64, 2>::from_row_slice(&[-10.0, 1.0]);
         let bend = true;
 
-        let result = lsrange(&x, &p, &xl, &xu, bend).expect("Line search failed");
+        let (amin, amax, scale) = lsrange(&x, &p, &xl, &xu, bend).expect("Line search failed");
 
-        let (amin, amax, scale) = result;
-
-        // Check that returned values are as expected
-        assert_abs_diff_eq!(amin, -1.5, epsilon = 1e-6);
-        assert_abs_diff_eq!(amax, 19.5, epsilon = 1e-6);
-        assert_abs_diff_eq!(scale, 0.5, epsilon = 1e-6);
+        assert_eq!(amin, -1.5);
+        assert_eq!(amax, 19.5);
+        assert_eq!(scale, 0.5);
     }
 }

@@ -7,29 +7,27 @@ pub fn lssat(
     amax: f64,
     s: usize,
     mut saturated: bool,
-) -> (f64, //alp
-      bool //saturated
+) -> (
+    f64, // alp
+    bool // saturated
 ) {
     let cont = saturated;
 
     if cont {
-        // check boundary minimizer
         let i = flist
             .iter()
             .position(|&val| val == *flist.iter().min_by(|x, y| x.partial_cmp(y).unwrap()).unwrap())
             .unwrap();
         if !(i == 0 || i == s - 1) {
-            // Select three points for parabolic interpolation
-            let aa: Vec<f64> = alist[(i - 1)..=(i + 1)].to_vec();
-            let ff: Vec<f64> = flist[(i - 1)..=(i + 1)].to_vec();
+            // Select 3 points for parabolic interpolation
+            let aa = &alist[(i - 1)..=(i + 1)];
+            let ff = &flist[(i - 1)..=(i + 1)];
 
-            // Get divided differences
             let f12 = (ff[1] - ff[0]) / (aa[1] - aa[0]);
             let f23 = (ff[2] - ff[1]) / (aa[2] - aa[1]);
             let f123 = (f23 - f12) / (aa[2] - aa[0]);
 
             if f123 > 0.0 {
-                // Parabolic minimizer
                 alp = 0.5 * (aa[1] + aa[2] - f23 / f123);
                 alp = alp.clamp(amin, amax);
 

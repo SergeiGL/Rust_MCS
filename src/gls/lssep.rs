@@ -1,17 +1,16 @@
 use crate::feval::feval;
 use crate::gls::lsnew::lsnew;
 use crate::gls::lssort::lssort;
+use nalgebra::SVector;
 
-use std::cmp::Ordering;
 
-
-pub fn lssep(
-    nloc: i32,
+pub fn lssep<const N: usize>(
+    nloc: usize,
     small: f64,
-    sinit: i32,
+    sinit: usize,
     short: f64,
-    x: &[f64],
-    p: &[f64],
+    x: &[f64; N],
+    p: &SVector<f64, N>,
     alist: &mut Vec<f64>,
     flist: &mut Vec<f64>,
     amin: f64,
@@ -27,16 +26,17 @@ pub fn lssep(
     mut nmin: usize,
     mut unitlen: f64,
     mut s: usize,
-) -> (f64,  //amin
-      f64,  //amax
-      f64,  //alp
-      f64,  //abest
-      f64,  //fbest
-      f64,  //fmed
-      bool, //monotone
-      usize, //nmin
-      f64,  //unitlen
-      usize //s
+) -> (
+    f64,   // amin
+    f64,   // amax
+    f64,   // alp
+    f64,   // abest
+    f64,   // fbest
+    f64,   // fmed
+    bool,  // monotone
+    usize, // nmin
+    f64,   // unitlen
+    usize  // s
 ) {
     let mut nsep = 0;  // the original separation counter
 
@@ -83,7 +83,7 @@ pub fn lssep(
                 .collect();
 
             let mut indices: Vec<usize> = (0..ff.len()).collect();
-            indices.sort_by(|&i, &j| ff[i].partial_cmp(&ff[j]).unwrap_or(Ordering::Equal)); // sort by f values
+            indices.sort_by(|&i, &j| ff[i].partial_cmp(&ff[j]).unwrap()); // sort by f values
             aa = indices.iter().take(nloc as usize).map(|&i| aa[i]).collect(); // pick the top nloc values
         }
 
@@ -91,7 +91,7 @@ pub fn lssep(
         for &alp_elem in &aa {
             alp = alp_elem;
 
-            let falp = feval(&(x.iter().zip(p).map(|(&x, &p)| x + alp * p).collect::<Vec<f64>>()));
+            let falp = feval(&std::array::from_fn::<f64, N, _>(|i| x[i] + alp * p[i]));
             alist.push(alp_elem);
             flist.push(falp);
             nsep += 1;
@@ -106,7 +106,6 @@ pub fn lssep(
 
     // To account for missing separations, add points globally using lsnew
     for _ in 0..(nmin - nsep) {
-        println!("2323");
         let res = lsnew(
             nloc, small, sinit, short, x, p, s, alist, flist, amin, amax, abest, fmed, unitlen,
         );
@@ -128,8 +127,8 @@ mod tests {
         let small = 1e-6;
         let sinit = 1;
         let short = 0.1;
-        let x = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
-        let p = vec![-1.0, -2.0, -3.0, -4.0, -5.0, -6.0];
+        let x = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let p = SVector::<f64, 6>::from_row_slice(&[-1.0, -2.0, -3.0, -4.0, -5.0, -6.0]);
         let mut alist = vec![3.0, 2.0];
         let mut flist = vec![3.0, 2.0];
         let amin = 0.0;
@@ -164,8 +163,8 @@ mod tests {
         let small = 1e-6;
         let sinit = 1;
         let short = 0.1;
-        let x = vec![1000.0, 2000.0, 3000.0, 4000.0, 5000.0, 6000.0];
-        let p = vec![-1000.0, -2000.0, -3000.0, -4000.0, -5000.0, -6000.0];
+        let x = [1000.0, 2000.0, 3000.0, 4000.0, 5000.0, 6000.0];
+        let p = SVector::<f64, 6>::from_row_slice(&[-1000.0, -2000.0, -3000.0, -4000.0, -5000.0, -6000.0]);
         let mut alist = vec![3000.0, 2000.0];
         let mut flist = vec![3000.0, 2000.0];
         let amin = 0.0;
@@ -201,8 +200,8 @@ mod tests {
         let small = 0.0;
         let sinit = 0;
         let short = 0.0;
-        let x = vec![0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
-        let p = vec![0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+        let x = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+        let p = SVector::<f64, 6>::from_row_slice(&[0.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
         let mut alist = vec![0.0, 0.0];
         let mut flist = vec![0.0, 0.0];
         let amin = 0.0;

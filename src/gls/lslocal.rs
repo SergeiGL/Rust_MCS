@@ -1,13 +1,14 @@
 use crate::feval::feval;
 use crate::gls::lsguard::lsguard;
 use crate::gls::lssort::lssort;
+use nalgebra::SVector;
 
 
-pub fn lslocal(
-    nloc: i32,
+pub fn lslocal<const N: usize>(
+    nloc: usize,
     small: f64,
-    x: &[f64],
-    p: &[f64],
+    x: &[f64; N],
+    p: &SVector<f64, N>,
     alist: &mut Vec<f64>,
     flist: &mut Vec<f64>,
     amin: f64,
@@ -24,15 +25,16 @@ pub fn lslocal(
     mut unitlen: f64,
     mut s: usize,
     mut saturated: bool,
-) -> (f64, //alp
-      f64, //abest
-      f64, //fbest
-      f64, //fmed
-      bool, //monotone
-      usize, //nmin
-      f64, //unitlen
-      usize, //s
-      bool //saturated
+) -> (
+    f64,    // alp
+    f64,    // abest
+    f64,    // fbest
+    f64,    // fmed
+    bool,   // monotone
+    usize,  // nmin
+    f64,    // unitlen
+    usize,  // s
+    bool    // saturated
 ) {
     // Calculate up and down vectors
     up.clear();
@@ -74,7 +76,7 @@ pub fn lslocal(
 
     // Apply permutation to imin
     imin = perm.iter().map(|&i| imin[i]).collect();
-    let nind = std::cmp::min(nloc as usize, imin.len());
+    let nind = std::cmp::min(nloc, imin.len());
     // Match Python's slice exactly: imin[nind-1::-1]
     if nind > 0 {
         imin = imin[..nind].iter().rev().cloned().collect();
@@ -88,11 +90,11 @@ pub fn lslocal(
     for &i in &imin {
         // Select nearest five points for local formula
         let (ind, ii) = if i <= 1 {
-            ((0..5).collect::<Vec<usize>>(), i)
+            ([0, 1, 2, 3, 4], i)
         } else if i >= s - 2 {
-            ((s - 5..s).collect::<Vec<usize>>(), i - (s - 1) + 4)
+            ([s - 5, s - 4, s - 3, s - 2, s - 1], i + 5 - s)
         } else {
-            ((i - 2..i + 3).collect::<Vec<usize>>(), 2)
+            ([i - 2, i - 1, i, i + 1, i + 2], 2)
         };
 
         let aa: Vec<f64> = ind.iter().map(|&j| alist[j]).collect();
@@ -193,7 +195,7 @@ pub fn lslocal(
             _ => {}
         }
 
-        // Calculate tolerance for accepting new step
+        // Calculate tolerance for accepting new STEP
         let alptol = if cas < 0 || flist[i] > fmed {
             0.0
         } else if i == 0 {
@@ -215,7 +217,7 @@ pub fn lslocal(
 
         if cas >= 0 && (final_check || !close) {
             nadd += 1;
-            let falp = feval(&(x.iter().zip(p).map(|(x, p)| *x + alp * *p).collect::<Vec<f64>>()));
+            let falp = feval(&std::array::from_fn::<f64, N, _>(|i| x[i] + alp * p[i]));
             alist.push(alp);
             flist.push(falp);
         }
@@ -232,14 +234,13 @@ pub fn lslocal(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use approx::assert_relative_eq;
 
     #[test]
     fn test_basic_minimum() {
         let nloc = 3;
         let small = 1e-6;
-        let x = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
-        let p = vec![0.1, 0.1, 0.1, 0.1, 0.1, 0.1];
+        let x = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let p = SVector::<f64, 6>::from_row_slice(&[0.1, 0.1, 0.1, 0.1, 0.1, 0.1]);
         let mut alist = vec![0.0, 0.5, 1.0, 1.5, 2.0];
         let mut flist = vec![10.0, 8.0, 7.0, 8.0, 10.0];
         let amin = 0.0;
@@ -267,22 +268,17 @@ mod tests {
             lslocal(nloc, small, &x, &p, &mut alist, &mut flist, amin, amax, alp, abest, fbest, fmed,
                     &mut up, &mut down, monotone, &mut minima, nmin, unitlen, s, saturated);
 
-        // Check return values
-        assert_relative_eq!(alp_out, 1.05);
-        assert_relative_eq!(abest_out, 1.05);
-        assert_relative_eq!(fbest_out, -2.3696287132470126e-202);
-        assert_relative_eq!(fmed_out, 8.0);
+        assert_eq!(alp_out, 1.05);
+        assert_eq!(abest_out, 1.05);
+        assert_eq!(fbest_out, -2.3696287132470126e-202);
+        assert_eq!(fmed_out, 8.0);
         assert_eq!(monotone_out, false);
         assert_eq!(nmin_out, 1);
-        assert_relative_eq!(unitlen_out, 1.05);
+        assert_eq!(unitlen_out, 1.05);
         assert_eq!(s_out, 6);
         assert_eq!(saturated_out, false);
-
-        // Check modified vectors
         assert_eq!(alist, expected_alist);
-        for (f1, f2) in flist.iter().zip(expected_flist.iter()) {
-            assert_relative_eq!(*f1, *f2);
-        }
+        assert_eq!(flist, expected_flist);
         assert_eq!(up, expected_up);
         assert_eq!(down, expected_down);
         assert_eq!(minima, expected_minima);
@@ -292,8 +288,8 @@ mod tests {
     fn test_multiple_minima() {
         let nloc = 3;
         let small = 1e-6;
-        let x = vec![1.0; 6];
-        let p = vec![0.2; 6];
+        let x = [1.0; 6];
+        let p = SVector::<f64, 6>::from_row_slice(&[0.2; 6]);
         let mut alist = vec![0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0];
         let mut flist = vec![10.0, 8.0, 6.0, 9.0, 5.0, 7.0, 10.0];
         let amin = 0.0;
@@ -321,20 +317,17 @@ mod tests {
             lslocal(nloc, small, &x, &p, &mut alist, &mut flist, amin, amax, alp, abest, fbest, fmed,
                     &mut up, &mut down, monotone, &mut minima, nmin, unitlen, s, saturated);
 
-        assert_relative_eq!(alp_out, 2.019230769230769);
-        assert_relative_eq!(abest_out, 0.95);
-        assert_relative_eq!(fbest_out, -1.2948375496133751e-8);
-        assert_relative_eq!(fmed_out, 7.0);
+        assert_eq!(alp_out, 2.019230769230769);
+        assert_eq!(abest_out, 0.95);
+        assert_eq!(fbest_out, -1.2948375496133751e-8);
+        assert_eq!(fmed_out, 7.0);
         assert_eq!(monotone_out, false);
         assert_eq!(nmin_out, 2);
-        assert_relative_eq!(unitlen_out, 1.0692307692307692);
+        assert_eq!(unitlen_out, 1.0692307692307692);
         assert_eq!(s_out, 9);
         assert_eq!(saturated_out, false);
-
         assert_eq!(alist, expected_alist);
-        for (f1, f2) in flist.iter().zip(expected_flist.iter()) {
-            assert_relative_eq!(*f1, *f2);
-        }
+        assert_eq!(flist, expected_flist);
         assert_eq!(up, expected_up);
         assert_eq!(down, expected_down);
         assert_eq!(minima, expected_minima);
@@ -344,8 +337,8 @@ mod tests {
     fn test_boundary_minimum_left() {
         let nloc = 3;
         let small = 1e-6;
-        let x = vec![2.0, 3.0, 4.0, 5.0, 6.0, 7.0];
-        let p = vec![-0.1; 6];
+        let x = [2.0, 3.0, 4.0, 5.0, 6.0, 7.0];
+        let p = SVector::<f64, 6>::from_row_slice(&[-0.1; 6]);
         let mut alist = vec![0.0, 0.5, 1.0, 1.5, 2.0];
         let mut flist = vec![5.0, 6.0, 7.0, 8.0, 9.0];
         let amin = 0.0;
@@ -370,17 +363,15 @@ mod tests {
             lslocal(nloc, small, &x, &p, &mut alist, &mut flist, amin, amax, alp, abest, fbest, fmed,
                     &mut up, &mut down, monotone, &mut minima, nmin, unitlen, s, saturated);
 
-        assert_relative_eq!(alp_out, 0.16666666666666666);
-        assert_relative_eq!(abest_out, 0.0);
-        assert_relative_eq!(fbest_out, 5.0);
-        assert_relative_eq!(fmed_out, 7.0);
+        assert_eq!(alp_out, 0.16666666666666666);
+        assert_eq!(abest_out, 0.0);
+        assert_eq!(fbest_out, 5.0);
+        assert_eq!(fmed_out, 7.0);
         assert_eq!(monotone_out, true);
         assert_eq!(nmin_out, 1);
-        assert_relative_eq!(unitlen_out, 1.0);
+        assert_eq!(unitlen_out, 1.0);
         assert_eq!(s_out, 5);
         assert_eq!(saturated_out, true);
-
-        // Original lists should remain unchanged in this case
         assert_eq!(alist, vec![0.0, 0.5, 1.0, 1.5, 2.0]);
         assert_eq!(flist, vec![5.0, 6.0, 7.0, 8.0, 9.0]);
         assert_eq!(up, expected_up);
@@ -392,8 +383,8 @@ mod tests {
     fn test_boundary_minimum_right() {
         let nloc = 3;
         let small = 1e-6;
-        let x = vec![2.0, 3.0, 4.0, 5.0, 6.0, 7.0];
-        let p = vec![0.1; 6];
+        let x = [2.0, 3.0, 4.0, 5.0, 6.0, 7.0];
+        let p = SVector::<f64, 6>::from_row_slice(&[0.1; 6]);
         let mut alist = vec![0.0, 0.5, 1.0, 1.5, 2.0];
         let mut flist = vec![9.0, 8.0, 7.0, 6.0, 5.0];
         let amin = 0.0;
@@ -418,16 +409,15 @@ mod tests {
             lslocal(nloc, small, &x, &p, &mut alist, &mut flist, amin, amax, alp, abest, fbest, fmed,
                     &mut up, &mut down, monotone, &mut minima, nmin, unitlen, s, saturated);
 
-        assert_relative_eq!(alp_out, 1.8333333333333333);
-        assert_relative_eq!(abest_out, 2.0);
-        assert_relative_eq!(fbest_out, 5.0);
-        assert_relative_eq!(fmed_out, 7.0);
+        assert_eq!(alp_out, 1.8333333333333333);
+        assert_eq!(abest_out, 2.0);
+        assert_eq!(fbest_out, 5.0);
+        assert_eq!(fmed_out, 7.0);
         assert_eq!(monotone_out, true);
         assert_eq!(nmin_out, 1);
-        assert_relative_eq!(unitlen_out, 1.0);
+        assert_eq!(unitlen_out, 1.0);
         assert_eq!(s_out, 5);
         assert_eq!(saturated_out, true);
-
         assert_eq!(alist, vec![0.0, 0.5, 1.0, 1.5, 2.0]);
         assert_eq!(flist, vec![9.0, 8.0, 7.0, 6.0, 5.0]);
         assert_eq!(up, expected_up);
@@ -439,8 +429,8 @@ mod tests {
     fn test_saturated_case() {
         let nloc = 2;
         let small = 1e-6;
-        let x = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
-        let p = vec![0.1; 6];
+        let x = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let p = SVector::<f64, 6>::from_row_slice(&[0.1; 6]);
         let mut alist = vec![0.0, 0.25, 0.5, 0.75, 1.0];
         let mut flist = vec![10.0, 8.0, 7.0, 8.0, 10.0];
         let amin = 0.0;
@@ -468,13 +458,13 @@ mod tests {
             lslocal(nloc, small, &x, &p, &mut alist, &mut flist, amin, amax, alp, abest, fbest, fmed,
                     &mut up, &mut down, monotone, &mut minima, nmin, unitlen, s, saturated);
 
+        assert_eq!(alp_out, 0.525);
+        assert_eq!(abest_out, 0.525);
+        assert_eq!(fbest_out, -1.00989834152592e-196);
         assert_eq!(alist, expected_alist);
         assert_eq!(flist, expected_flist);
         assert_eq!(up, expected_up);
         assert_eq!(down, expected_down);
         assert_eq!(minima, expected_minima);
-        assert_relative_eq!(alp_out, 0.525);
-        assert_relative_eq!(abest_out, 0.525);
-        assert_relative_eq!(fbest_out, -1.00989834152592e-196);
     }
 }

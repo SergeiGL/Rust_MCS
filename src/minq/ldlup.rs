@@ -1,367 +1,526 @@
 use crate::minq::ldlrk1::ldlrk1;
-use nalgebra::{DMatrix, DVector};
+use nalgebra::{DMatrix, DVector, SMatrix, SVector};
 
-pub fn ldlup(
-    L: &mut Vec<Vec<f64>>,
-    d: &mut Vec<f64>,
+pub fn ldlup<const N: usize>(
+    L: &mut SMatrix<f64, N, N>,
+    d: &mut SVector<f64, N>,
     j: usize,
-    g: &[f64],
+    g: &SVector<f64, N>,
 ) ->
-    Vec<f64>
+    Option<SVector<f64, N>> // p
 {
-    let mut p = vec![];
+    let mut p_option: Option<SVector<f64, N>> = None;
     let eps = 2.2204e-16;
-    let n = d.len();
 
     // Create index vectors I and K
     let I: Vec<usize> = (0..j).collect();
-    let K: Vec<usize> = ((j + 1)..n).collect();
-
-    // Declare variables at function scope
-    let mut q = Vec::new();
-    let mut w_vec = Vec::new();
-    let mut dK = Vec::new();
-    let delta;
-    let u;
-    let v;
-    let LII;
-    let mut LKI = DMatrix::zeros(0, 0);
+    let K: Vec<usize> = ((j + 1)..N).collect();
 
     // Special case for j == 0
     if j == 0 {
-        delta = g[j];
-
-        if delta <= (n as f64) * eps {
-            p = vec![0.0; n];
-            p[0] = 1.0;
-            return p;
+        let delta = g[j];
+        if delta <= (N as f64) * eps {
+            p_option = Some(SVector::<f64, N>::zeros());
+            if let Some(ref mut p_vect) = p_option {
+                p_vect[0] = 1.0;
+            }
+            return p_option;
         }
 
-        for i in I {
-            L[0][i] = 0.0;
+        for &i in &I {
+            L[(0, i)] = 0.0;
         }
         d[0] = delta;
-        return p;
+        return p_option;
     }
 
-
-    LII = DMatrix::from_fn(j, j, |row, col| L[row][col]);
-
+    let LII = DMatrix::from_fn(j, j, |row, col| L[(row, col)]);
     let gI = DVector::from_fn(j, |i, _| g[i]);
+    let u = LII.clone().lu().solve(&gI).unwrap();
 
-    // Solve LII * u = gI
-    u = LII.clone().lu().solve(&gI).unwrap();
+    let v = u.component_div(&DVector::from_fn(j, |i, _| d[i]));
 
-    // Calculate v
-    v = u.component_div(&DVector::from_fn(j, |i, _| d[i]));
+    let delta = g[j] - u.dot(&v);
 
-    // Calculate delta
-    delta = g[j] - u.dot(&v);
-
-    if delta <= (n as f64) * eps {
-        p = vec![0.0; n];
-        for (i, val) in LII.clone()
-            .transpose()
-            .lu()
-            .solve(&v)
-            .unwrap()
-            .iter()
-            .enumerate() {
-            p[i] = *val;
+    if delta <= (N as f64) * eps {
+        // Negative or zero curvature
+        p_option = Some(SVector::<f64, N>::zeros());
+        let p1 =
+            LII.transpose()
+                .lu()
+                .solve(&v)
+                .unwrap()
+                .iter()
+                .cloned()
+                .collect::<Vec<f64>>();
+        for (i, &val) in p1.iter().enumerate() {
+            if let Some(ref mut p_vect) = p_option {
+                p_vect[i] = val;
+            }
         }
-        p[j] = -1.0;
-        return p;
+        if let Some(ref mut p_vect) = p_option {
+            p_vect[j] = -1.0;
+        }
+        return p_option;
     }
 
-    if !K.is_empty() {
-        LKI = DMatrix::from_fn(K.len(), I.len(), |row, col| L[K[row]][col]);
 
-        // Extract gK vector
+    let (q, w, LKI) = if !K.is_empty() {
+        let LKI = DMatrix::from_fn(K.len(), I.len(), |row, col| L[(K[row], col)]);
+
         let gK = DVector::from_fn(K.len(), |i, _| g[K[i]]);
 
-        // Calculate w
-        let w = (gK - &LKI * u).scale(1.0 / delta);
-        w_vec = w.data.as_vec().to_vec();
+        let mut w = (gK - (&LKI * &u)).scale(1.0 / delta);
 
+        let mut LKK = DMatrix::from_fn(K.len(), K.len(), |row, col| L[(K[row], K[col])]);
 
-        let mut LKK = Vec::with_capacity(K.len());
-        for &k1 in &K {
-            LKK.push(K.iter().map(|&k2| L[k1][k2]).collect::<Vec<_>>());
-        }
+        let mut dK = DVector::from_fn(K.len(), |i, _| d[K[i]]);
 
-        // Extract dK
-        dK = K.iter().map(|&k| d[k]).collect();
+        let q = ldlrk1(&mut LKK, &mut dK, -delta, &mut w);
 
-        // Call ldlrk1
-        q = ldlrk1(&mut LKK, &mut dK, -delta, &mut w_vec);
-
-        // Update d
         for (i, &k) in K.iter().enumerate() {
             d[k] = dK[i];
         }
+        (q, w, LKI)
     } else {
-        q = vec![];
-    }
+        (
+            DVector::<f64>::zeros(0),
+            DVector::<f64>::zeros(0),
+            DMatrix::<f64>::zeros(0, 0),
+        )
+    };
 
     if !K.is_empty() && q.is_empty() { //TODO: strange
-        // Update second row (j-th row)
-        let v_vec = v.data.as_vec();
         for (idx, &i) in I.iter().enumerate() {
-            L[j][i] = v_vec[idx];
+            L[(j, i)] = v[idx];
         }
-        L[j][j] = 1.0;
+        L[(j, j)] = 1.0;
 
         // Update L[K,j] with w values
         for (k_idx, &k) in K.iter().enumerate() {
-            L[k][j] = w_vec[k_idx];
+            L[(k, j)] = w[k_idx];
         }
 
         d[j] = delta;
     } else if !K.is_empty() { //TODO: strange
-        // Calculate final p vector
-        let w = DVector::from_vec(w_vec);
-        let q_vec = DVector::from_vec(q);
-        let pi = w.dot(&q_vec);
+        let pi = w.dot(&q);
         let piv = v.scale(pi);
-        let lki_q = &LKI.transpose() * &q_vec;
+        let lki_q = &LKI.transpose() * &q;
         let piv_lki_q = piv - lki_q;
         let pi_solve = LII.transpose().lu().solve(&piv_lki_q).unwrap();
 
-        p = Vec::with_capacity(n);
-        p.extend(pi_solve.iter());
-        p.push(-pi);
-        p.extend(q_vec.iter());
+        // Chain all iterators together
+        let combined_iter = pi_solve.iter().cloned().chain(std::iter::once(-pi)).chain(q.iter().cloned());
+
+        // Construct the SVector from the combined iterator
+        p_option = Some(SVector::from_iterator(combined_iter));
     } else { //TODO: strange
-        let v_vec = v.data.as_vec();
         for (idx, &i) in I.iter().enumerate() {
-            L[j][i] = v_vec[idx];
+            L[(j, i)] = v[idx];
         }
-        L[j][j] = 1.0;
+        L[(j, j)] = 1.0;
         d[j] = delta;
     }
-
-    p
+    p_option
 }
 
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use approx::assert_relative_eq;
+
+    #[test]
+    fn test_coverage_0() {
+        const N: usize = 3;
+        let mut L = SMatrix::<f64, N, N>::from_row_slice(&[
+            1.0, -2.0, 3.0,
+            4.0, -5.0, 6.0,
+            -7.0, 8.0, 9.0,
+        ]);
+        let mut d = SVector::<f64, N>::from_row_slice(&[
+            0.0, 0.0, 0.0,
+        ]);
+        let j = 2;
+        let g = SVector::<f64, N>::from_row_slice(&[
+            1.23, -1.0, 1.0,
+        ]);
+        let p = ldlup(&mut L, &mut d, j, &g);
+        let expected_L = SMatrix::<f64, N, N>::from_row_slice(&[
+            1.0, -2.0, 3.0,
+            4.0, -5.0, 6.0,
+            -7.0, 8.0, 9.0,
+        ]);
+        let expected_d = SVector::<f64, N>::from_row_slice(&[
+            0.0, 0.0, 0.0,
+        ]);
+        let expected_p = Some(SVector::<f64, N>::from_row_slice(&[
+            f64::INFINITY, f64::NEG_INFINITY, -1.0,
+        ]));
+        assert_eq!(L, expected_L);
+        assert_eq!(d, expected_d);
+        assert_eq!(p, expected_p);
+        assert_eq!(j, 2);
+    }
+
+    #[test]
+    fn test_coverage_1() {
+        const N: usize = 3;
+        let mut L = SMatrix::<f64, N, N>::from_row_slice(&[
+            1.0, -2.0, 3.0,
+            4.0, -5.0, 6.0,
+            -7.0, 8.0, 9.0,
+        ]);
+        let mut d = SVector::<f64, N>::from_row_slice(&[
+            1.5, 4.1, 0.2,
+        ]);
+        let j = 1;
+        let g = SVector::<f64, N>::from_row_slice(&[
+            0.3, 0.1, 0.3,
+        ]);
+        let p = ldlup(&mut L, &mut d, j, &g);
+        let expected_L = SMatrix::<f64, N, N>::from_row_slice(&[
+            1.0, -2.0, 3.0,
+            4.0, -5.0, 6.0,
+            -7.0, 8.0, 9.0,
+        ]);
+        let expected_d = SVector::<f64, N>::from_row_slice(&[
+            1.5, 4.1, 0.2,
+        ]);
+        let expected_p = Some(SVector::<f64, N>::from_row_slice(&[
+            2.1111111111111103, -6.666666666666663, 0.1111111111111111,
+        ]));
+        assert_eq!(L, expected_L);
+        assert_eq!(d, expected_d);
+        assert_eq!(p, expected_p);
+        assert_eq!(j, 1);
+    }
+
+    #[test]
+    fn test_coverage_2() {
+        const N: usize = 3;
+        let mut L = SMatrix::<f64, N, N>::from_row_slice(&[
+            1.0, -2.0, 3.0,
+            4.0, -5.0, 6.0,
+            -7.0, 8.0, 9.0,
+        ]);
+        let mut d = SVector::<f64, N>::from_row_slice(&[
+            1.5, 4.1, 0.2,
+        ]);
+        let j = 2;
+        let g = SVector::<f64, N>::from_row_slice(&[
+            0.3, 0.1, 0.3,
+        ]);
+        let p = ldlup(&mut L, &mut d, j, &g);
+        let expected_L = SMatrix::<f64, N, N>::from_row_slice(&[
+            1.0, -2.0, 3.0,
+            4.0, -5.0, 6.0,
+            -0.28888888888888886, -0.08943089430894309, 1.0,
+        ]);
+        let expected_d = SVector::<f64, N>::from_row_slice(&[
+            1.5, 4.1, 0.1420234869015357,
+        ]);
+        let expected_p: Option<SVector<f64, N>> = None;
+        assert_eq!(L, expected_L);
+        assert_eq!(d, expected_d);
+        assert_eq!(p, expected_p);
+        assert_eq!(j, 2);
+    }
+
+
+    #[test]
+    fn test_coverage_3() {
+        const N: usize = 3;
+        let mut L = SMatrix::<f64, N, N>::from_row_slice(&[
+            1.0, -1.0, 3.0,
+            4.0, -1.0, 6.0,
+            -8.0, 8.0, 8.0,
+        ]);
+        let mut d = SVector::<f64, N>::from_row_slice(&[
+            1.5, 0.0, 0.2,
+        ]);
+        let j = 1;
+        let g = SVector::<f64, N>::from_row_slice(&[
+            0.0, 0.1, 0.3,
+        ]);
+        let p = ldlup(&mut L, &mut d, j, &g);
+        let expected_L = SMatrix::<f64, N, N>::from_row_slice(&[
+            1.0, -1.0, 3.0,
+            4.0, -1.0, 6.0,
+            -8.0, 8.0, 8.0,
+        ]);
+        let expected_d = SVector::<f64, N>::from_row_slice(&[
+            1.5, 0.0, 0.2,
+        ]);
+        let expected_p = Some(SVector::<f64, N>::from_row_slice(&[
+            1.0, -0.375, 0.125,
+        ]));
+        assert_eq!(L, expected_L);
+        assert_eq!(d, expected_d);
+        assert_eq!(p, expected_p);
+        assert_eq!(j, 1);
+    }
+
+
+    #[test]
+    fn test_coverage_4() {
+        const N: usize = 3;
+        let mut L = SMatrix::<f64, N, N>::from_row_slice(&[
+            1.0, -1.0, 0.0,
+            2.0, -1.0, -1.0,
+            1.0, 0.0, 3.0,
+        ]);
+        let mut d = SVector::<f64, N>::from_row_slice(&[
+            1.5, 1.0, 0.0,
+        ]);
+        let j = 0;
+        let g = SVector::<f64, N>::from_row_slice(&[
+            0.0, 0.1, 0.3,
+        ]);
+        let p = ldlup(&mut L, &mut d, j, &g);
+        let expected_L = SMatrix::<f64, N, N>::from_row_slice(&[
+            1.0, -1.0, 0.0,
+            2.0, -1.0, -1.0,
+            1.0, 0.0, 3.0,
+        ]);
+        let expected_d = SVector::<f64, N>::from_row_slice(&[
+            1.5, 1.0, 0.0,
+        ]);
+        let expected_p = Some(SVector::<f64, N>::from_row_slice(&[
+            1.0, 0.0, 0.0,
+        ]));
+        assert_eq!(L, expected_L);
+        assert_eq!(d, expected_d);
+        assert_eq!(p, expected_p);
+        assert_eq!(j, 0);
+    }
+    #[test]
+    fn test_coverage_5() {
+        const N: usize = 3;
+        let mut L = SMatrix::<f64, N, N>::from_row_slice(&[
+            1.0, -1.0, 0.0,
+            2.0, -1.0, -1.0,
+            1.0, 0.0, 3.0,
+        ]);
+        let mut d = SVector::<f64, N>::from_row_slice(&[
+            1.5, 1.0, 0.0,
+        ]);
+        let j = 1;
+        let g = SVector::<f64, N>::from_row_slice(&[
+            0.0, 0.1, 0.3,
+        ]);
+        let p = ldlup(&mut L, &mut d, j, &g);
+        let expected_L = SMatrix::<f64, N, N>::from_row_slice(&[
+            1.0, -1.0, 0.0,
+            2.0, -1.0, -1.0,
+            1.0, 0.0, 3.0,
+        ]);
+        let expected_d = SVector::<f64, N>::from_row_slice(&[
+            1.5, 1.0, 0.0,
+        ]);
+        let expected_p = Some(SVector::<f64, N>::from_row_slice(&[
+            -0.3333333333333333, -1.0, 0.3333333333333333,
+        ]));
+        assert_eq!(L, expected_L);
+        assert_eq!(d, expected_d);
+        assert_eq!(p, expected_p);
+        assert_eq!(j, 1);
+    }
+
+    #[test]
+    fn test_coverage_6() {
+        const N: usize = 3;
+        let mut L = SMatrix::<f64, N, N>::from_row_slice(&[
+            1.0, -1.0, 0.0,
+            2.0, -1.0, -1.0,
+            1.0, 0.0, 3.0,
+        ]);
+        let mut d = SVector::<f64, N>::from_row_slice(&[
+            1.5, 1.0, 0.0,
+        ]);
+        let j = 2;
+        let g = SVector::<f64, N>::from_row_slice(&[
+            0.0, 0.1, 0.3,
+        ]);
+        let p = ldlup(&mut L, &mut d, j, &g);
+        let expected_L = SMatrix::<f64, N, N>::from_row_slice(&[
+            1.0, -1.0, 0.0,
+            2.0, -1.0, -1.0,
+            0.06666666666666667, 0.1, 1.0,
+        ]);
+        let expected_d = SVector::<f64, N>::from_row_slice(&[
+            1.5, 1.0, 0.2833333333333333,
+        ]);
+        let expected_p: Option<SVector<f64, N>> = None;
+        assert_eq!(L, expected_L);
+        assert_eq!(d, expected_d);
+        assert_eq!(p, expected_p);
+        assert_eq!(j, 2);
+    }
+
 
     #[test]
     fn test_mistake_0() {
-        let mut L = vec![
-            vec![1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-            vec![0.0034964020620132778, 1.0, 0.0, 0.0, 0.0, 0.0],
-            vec![0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
-            vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
-            vec![0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
-            vec![0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
-        ];
-        let mut d = vec![23.127986525843045, 18.57643856292412, 1.0, 1.0, 1.0, 1.0];
-        let j = 2;
-        let g = vec![1.7538162952525622, -0.5909985456367551, 24.55657908379219, 0.0, 0.0, 0.0];
-
-        let p = ldlup(&mut L, &mut d, j, &g);
-
-        assert_eq!(L, vec![
-            vec![1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-            vec![0.0034964020620132778, 1.0, 0.0, 0.0, 0.0, 0.0],
-            vec![0.07583091132005203, -0.03214451416643742, 1.0, 0.0, 0.0, 0.0],
-            vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
-            vec![0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
-            vec![0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+        const N: usize = 6;
+        let mut L = SMatrix::<f64, N, N>::from_row_slice(&[
+            1.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+            0.0034964020620132778, 1.0, 0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 1.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0, 1.0, 0.0,
+            0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
         ]);
-
-        assert_eq!(d, vec![23.127986525843045, 18.57643856292412, 24.40439112304386, 1.0, 1.0, 1.0]);
-        assert_eq!(p, vec![]);
+        let mut d = SVector::<f64, N>::from_row_slice(&[
+            23.127986525843045, 18.57643856292412, 1.0, 1.0, 1.0, 1.0,
+        ]);
+        let j = 2;
+        let g = SVector::<f64, N>::from_row_slice(&[
+            1.7538162952525622, -0.5909985456367551, 24.55657908379219, 0.0, 0.0, 0.0,
+        ]);
+        let p = ldlup(&mut L, &mut d, j, &g);
+        let expected_L = SMatrix::<f64, N, N>::from_row_slice(&[
+            1.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+            0.0034964020620132778, 1.0, 0.0, 0.0, 0.0, 0.0,
+            0.07583091132005203, -0.03214451416643742, 1.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0, 1.0, 0.0,
+            0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+        ]);
+        let expected_d = SVector::<f64, N>::from_row_slice(&[
+            23.127986525843045, 18.57643856292412, 24.40439112304386, 1.0, 1.0, 1.0,
+        ]);
+        let expected_p: Option<SVector<f64, N>> = None;
+        assert_eq!(L, expected_L);
+        assert_eq!(d, expected_d);
+        assert_eq!(p, expected_p);
     }
+
 
     #[test]
     fn test_j_start_row() {
-        let mut L = vec![
-            vec![1.0, 0.0],
-            vec![0.5, 1.0],
-        ];
-
-        let mut d = vec![1.0, 2.0];
+        const N: usize = 2;
+        let mut L = SMatrix::<f64, N, N>::from_row_slice(&[
+            1.0, 0.0,
+            0.5, 1.0,
+        ]);
+        let mut d = SVector::<f64, N>::from_row_slice(&[
+            1.0, 2.0,
+        ]);
         let j = 0;
-        let g = vec![1.0, 0.0];
-
+        let g = SVector::<f64, N>::from_row_slice(&[
+            1.0, 0.0,
+        ]);
         let p = ldlup(&mut L, &mut d, j, &g);
-
-        let L_expected = vec![
-            vec![1.0, 0.0],
-            vec![0.5, 1.0],
-        ];
-        let d_expected = vec![1.0, 2.0];
-        let p_expected: Vec<f64> = vec![]; // Empty vector
-
-        for i in 0..2 {
-            for j in 0..2 {
-                assert_relative_eq!(
-                    L[i][j],
-                    L_expected[i][j],
-                    epsilon = 1e-10
-                );
-            }
-        }
-
-        for i in 0..2 {
-            assert_relative_eq!(
-                d[i],
-                d_expected[i],
-                epsilon = 1e-10
-            );
-        }
-
-        assert_eq!(p.len(), p_expected.len());
+        let expected_L = SMatrix::<f64, N, N>::from_row_slice(&[
+            1.0, 0.0,
+            0.5, 1.0,
+        ]);
+        let expected_d = SVector::<f64, N>::from_row_slice(&[
+            1.0, 2.0,
+        ]);
+        let expected_p: Option<SVector<f64, N>> = None;
+        assert_eq!(L, expected_L);
+        assert_eq!(d, expected_d);
+        assert_eq!(p, expected_p);
+        assert_eq!(j, 0);
     }
+
 
     #[test]
     fn test_j_last_row() {
-        // Initialize L as a 2x2 matrix
-        let mut L = vec![
-            vec![1.0, 0.0],
-            vec![0.5, 1.0],
-        ];
-
-        // Initialize vectors
-        let mut d = vec![1.0, 2.0];
+        const N: usize = 2;
+        let mut L = SMatrix::<f64, N, N>::from_row_slice(&[
+            1.0, 0.0,
+            0.5, 1.0,
+        ]);
+        let mut d = SVector::<f64, N>::from_row_slice(&[
+            1.0, 2.0,
+        ]);
         let j = 1;
-        let g = vec![0.5, 2.0];
-
-        // Call the function
+        let g = SVector::<f64, N>::from_row_slice(&[
+            0.5, 2.0,
+        ]);
         let p = ldlup(&mut L, &mut d, j, &g);
-
-        // Expected results
-        let L_expected = vec![
-            vec![1.0, 0.0],
-            vec![0.5, 1.0],
-        ];
-        let d_expected = vec![1.0, 1.75];
-        let p_expected: Vec<f64> = vec![];
-
-        // Assert results using relative comparison for floating point numbers
-        for i in 0..2 {
-            for j in 0..2 {
-                assert_relative_eq!(
-                    L[i][j],
-                    L_expected[i][j],
-                    epsilon = 1e-10
-                );
-            }
-        }
-
-        for i in 0..2 {
-            assert_relative_eq!(
-                d[i],
-                d_expected[i],
-                epsilon = 1e-10
-            );
-        }
-
-        assert_eq!(p.len(), p_expected.len());
+        let expected_L = SMatrix::<f64, N, N>::from_row_slice(&[
+            1.0, 0.0,
+            0.5, 1.0,
+        ]);
+        let expected_d = SVector::<f64, N>::from_row_slice(&[
+            1.0, 1.75,
+        ]);
+        let expected_p: Option<SVector<f64, N>> = None;
+        assert_eq!(L, expected_L);
+        assert_eq!(d, expected_d);
+        assert_eq!(p, expected_p);
     }
+
 
     #[test]
     fn test_large_matrix_size() {
-        // Initialize L as a 2x2 matrix
-        let mut L = vec![
-            vec![1.0, 0.0, 0.0, 0.0],
-            vec![0.2, 1.0, 0.0, 0.0],
-            vec![0.3, 0.6, 1.0, 0.0],
-            vec![0.4, 0.7, 0.8, 1.0],
-        ];
-
-        // Initialize vectors
-        let mut d = vec![1.0, 2.0, 3.0, 4.0];
+        const N: usize = 4;
+        let mut L = SMatrix::<f64, N, N>::from_row_slice(&[
+            1.0, 0.0, 0.0, 0.0,
+            0.2, 1.0, 0.0, 0.0,
+            0.3, 0.6, 1.0, 0.0,
+            0.4, 0.7, 0.8, 1.0,
+        ]);
+        let mut d = SVector::<f64, N>::from_row_slice(&[
+            1.0, 2.0, 3.0, 4.0,
+        ]);
         let j = 2;
-        let g = vec![0.0, 0.0, 3.0, 0.0];
-
-        // Call the function
+        let g = SVector::<f64, N>::from_row_slice(&[
+            0.0, 0.0, 3.0, 0.0,
+        ]);
         let p = ldlup(&mut L, &mut d, j, &g);
-
-        // Expected results
-        let L_expected = vec![
-            vec![1.0, 0.0, 0.0, 0.0],
-            vec![0.2, 1.0, 0.0, 0.0],
-            vec![0.3, 0.6, 1.0, 0.0],
-            vec![0.4, 0.7, 0.8, 1.0],
-        ];
-        let d_expected = vec![1.0, 2.0, 3.0, 4.0];
-        let p_expected: Vec<f64> = vec![];
-
-        // Assert results using relative comparison for floating point numbers
-        for i in 0..2 {
-            for j in 0..2 {
-                assert_relative_eq!(
-                    L[i][j],
-                    L_expected[i][j],
-                    epsilon = 1e-10
-                );
-            }
-        }
-
-        for i in 0..2 {
-            assert_relative_eq!(
-                d[i],
-                d_expected[i],
-                epsilon = 1e-10
-            );
-        }
-
-        assert_eq!(p.len(), p_expected.len());
+        let expected_L = SMatrix::<f64, N, N>::from_row_slice(&[
+            1.0, 0.0, 0.0, 0.0,
+            0.2, 1.0, 0.0, 0.0,
+            0.0, 0.0, 1.0, 0.0,
+            0.4, 0.7, 0.0, 1.0,
+        ]);
+        let expected_d = SVector::<f64, N>::from_row_slice(&[
+            1.0, 2.0, 3.0, 4.0,
+        ]);
+        let expected_p: Option<SVector<f64, N>> = None;
+        assert_eq!(L, expected_L);
+        assert_eq!(d, expected_d);
+        assert_eq!(p, expected_p);
+        assert_eq!(g, SVector::<f64, N>::from_row_slice(&[
+            0.0, 0.0, 3.0, 0.0,
+        ]));
     }
+
 
     #[test]
     fn test_3() {
-        // Initialize L as a 2x2 matrix
-        let mut L = vec![
-            vec![1.0, 0.0, 0.0, 0.0],
-            vec![0.2, 1.0, 0.0, 0.0],
-            vec![0.3, 0.6, 1.0, 0.0],
-            vec![0.4, 0.7, 0.8, 1.0],
-        ];
-
-        // Initialize vectors
-        let mut d = vec![1.0, 2.0, 3.0, 4.0];
+        const N: usize = 4;
+        let mut L = SMatrix::<f64, N, N>::from_row_slice(&[
+            1.0, 0.0, 0.0, 0.0,
+            0.2, 1.0, 0.0, 0.0,
+            0.3, 0.6, 1.0, 0.0,
+            0.4, 0.7, 0.8, 1.0,
+        ]);
+        let mut d = SVector::<f64, N>::from_row_slice(&[
+            1.0, 2.0, 3.0, 4.0,
+        ]);
         let j = 2;
-        let g = vec![-100.0, 0.0, 3.0, 0.0];
-
-        // Call the function
+        let g = SVector::<f64, N>::from_row_slice(&[
+            -100.0, 0.0, 3.0, 0.0,
+        ]);
         let p = ldlup(&mut L, &mut d, j, &g);
-
-        // Expected results
-        let L_expected = vec![
-            vec![1.0, 0.0, 0.0, 0.0],
-            vec![0.2, 1.0, 0.0, 0.0],
-            vec![0.3, 0.6, 1.0, 0.0],
-            vec![0.4, 0.7, 0.8, 1.0],
-        ];
-        let d_expected = vec![1.0, 2.0, 3.0, 4.0];
-        let p_expected: Vec<f64> = vec![-102.0, 10.0, -1.0, 0.0];
-
-        // Assert results using relative comparison for floating point numbers
-        for i in 0..2 {
-            for j in 0..2 {
-                assert_relative_eq!(
-                    L[i][j],
-                    L_expected[i][j],
-                    epsilon = 1e-10
-                );
-            }
-        }
-
-        for i in 0..2 {
-            assert_relative_eq!(
-                d[i],
-                d_expected[i],
-                epsilon = 1e-10
-            );
-        }
-
-        assert_eq!(p.len(), p_expected.len());
+        let expected_L = SMatrix::<f64, N, N>::from_row_slice(&[
+            1.0, 0.0, 0.0, 0.0,
+            0.2, 1.0, 0.0, 0.0,
+            0.3, 0.6, 1.0, 0.0,
+            0.4, 0.7, 0.8, 1.0,
+        ]);
+        let expected_d = SVector::<f64, N>::from_row_slice(&[
+            1.0, 2.0, 3.0, 4.0,
+        ]);
+        let expected_p = Some(SVector::<f64, N>::from_row_slice(&[
+            -102.0, 10.0, -1.0, 0.0,
+        ]));
+        assert_eq!(L, expected_L);
+        assert_eq!(d, expected_d);
+        assert_eq!(p, expected_p);
     }
 }

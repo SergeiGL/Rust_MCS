@@ -1,14 +1,15 @@
 use nalgebra::{DMatrix, DVector};
 
 pub fn ldlrk1(
-    L: &mut Vec<Vec<f64>>,
-    d: &mut Vec<f64>,
+    L: &mut DMatrix<f64>,
+    d: &mut DVector<f64>,
     mut alp: f64,
-    u: &mut Vec<f64>,
+    u: &mut DVector<f64>,
 ) ->
-    Vec<f64> //p
+    DVector<f64> // p
 {
-    let mut p: Vec<f64> = vec![];
+    let mut p: DVector<f64> = DVector::zeros(0);
+
     if alp == 0.0 {
         return p;
     }
@@ -17,58 +18,34 @@ pub fn ldlrk1(
     let n: usize = u.len();
     let neps: f64 = n as f64 * eps;
 
-    // Collect indices for which u[i] != 0 to avoid borrowing issues
-    let indices: Vec<usize> = (0..n).filter(|&i| u[i] != 0.0).collect();
-
-    // Update process
-    for &k in &indices {
+    for k in 0..n {
+        if u[k] == 0.0 { continue; };
         let delta: f64 = d[k] + alp * u[k].powi(2);
+
         if alp < 0.0 && delta <= neps {
-            // Update not definite
-            p = vec![0.0; n];
-            p[k] = 1.0;
+            let p0K = DVector::from_iterator(k + 1, std::iter::once(1.).chain(std::iter::repeat(0.).take(k)));
+            let L0K = DMatrix::from_fn(k + 1, k + 1, |row, col| L[(row, col)]);
+            let p0K = L0K.lu().solve(&p0K).unwrap();
 
-            let flattened_L0K: Vec<f64> = {
-                let mut vec = Vec::with_capacity((k + 1) * (k + 1));
-                for i in 0..=k {
-                    vec.extend_from_slice(&L[i][..=k]); // Extend the vector with a slice of the current row
+            p = DVector::from_fn(n, |i, _| {
+                if i < k + 1 {
+                    p0K[i]
+                } else {
+                    0.
                 }
-                vec
-            };
+            });
 
-            let p0K: Vec<f64> = p.iter().take(k + 1).cloned().collect();
-
-            let matrix = DMatrix::from_vec(k + 1, k + 1, flattened_L0K);
-            let vector = DVector::from_vec(p0K);
-            let result_vector = matrix.lu().solve(&vector).unwrap();
-            let p0K: Vec<f64> = result_vector.data.into();
-
-
-            for i in 0..n {
-                if i <= k {
-                    p[i] = p0K[i];
-                }
-            }
             return p;
         }
 
         let q = d[k] / delta;
         d[k] = delta;
 
-        let ind: Vec<usize> = ((k + 1)..n).collect();
-        let LindK: Vec<f64> = ind.iter().map(|&i| L[i][k]).collect();
+        let LindK: Vec<f64> = ((k + 1)..n).map(|i| L[(i, k)]).collect();
+        let c: Vec<f64> = LindK.iter().map(|&lk| lk * u[k]).collect();
 
-        let uk: f64 = u[k];
-        let c: Vec<f64> = LindK
-            .iter()
-            .map(|&lk| lk * uk)
-            .collect();
-
-        for (i, &index) in ind.iter().enumerate() {
-            L[index][k] = LindK[i] * q + (alp * u[k] / delta) * u[index];
-        }
-
-        for (i, &index) in ind.iter().enumerate() {
+        for (i, index) in ((k + 1)..n).enumerate() {
+            L[(index, k)] = LindK[i] * q + (alp * u[k] / delta) * u[index];
             u[index] -= c[i];
         }
 
@@ -86,26 +63,93 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_real() {
-        let mut L = vec![
-            vec![1.0, 0.0, -1.45],
-            vec![-0.6, -1.0, 4.0],
-            vec![-1.6, 1.0, 0.01]
-        ];
-        let mut d = vec![0.01, 0.002, 0.03];
-        let alp = -10.0;
-        let mut u = vec![1.23, -10.0, 5.0];
+    fn test_coverage_0() {
+        let mut L = DMatrix::<f64>::from_row_slice(3, 3, &[
+            1., -2., 3.,
+            4., -5., 6.,
+            -7., 8., 9.
+        ]);
+        let mut d = DVector::from_row_slice(&[0.1, 0.2, 0.3]);
+        let alp = 4.4;
+        let mut u = DVector::from_row_slice(&[1.23, -1.0, 1.0]);
 
         let p = ldlrk1(&mut L, &mut d, alp, &mut u);
 
-        assert_eq!(L, vec![
-            vec![1.0, 0.0, -1.45],
-            vec![-0.6, -1.0, 4.0],
-            vec![-1.6, 1.0, 0.01]
-        ]);
+        assert_eq!(L, DMatrix::<f64>::from_row_slice(3, 3, &[1.0, -2.0, 3.0, -0.7417756439476909, -5.0, 6.0, 0.6973756652596808, -0.8479315955240974, 9.0]));
 
-        assert_eq!(d, vec![0.01, 0.002, 0.03]);
-        assert_eq!(p, vec![1.0, 0.0, 0.0]);
+        assert_eq!(d, DVector::<f64>::from_row_slice(&[6.75676, 2.482220472534174, 17.329279155304317]));
+        assert_eq!(p, DVector::<f64>::from_row_slice(&[]));
+
+        assert_eq!(alp, 4.4);
+        assert_eq!(u, DVector::from_row_slice(&[1.23, -5.92, 56.97]));
+    }
+
+    #[test]
+    fn test_coverage_1() {
+        let mut L = DMatrix::<f64>::from_row_slice(3, 3, &[
+            1., 2., 3.,
+            4., 5., 6.,
+            7., 8., 9.
+        ]);
+        let mut d = DVector::from_row_slice(&[0.1, 0.2, 0.3]);
+        let alp = -0.4;
+        let mut u = DVector::from_row_slice(&[1.23, -1.0, 1.0]);
+
+        let p = ldlrk1(&mut L, &mut d, alp, &mut u);
+
+        assert_eq!(L, DMatrix::<f64>::from_row_slice(3, 3, &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0]));
+
+        assert_eq!(d, DVector::from_row_slice(&[0.1, 0.2, 0.3]));
+        assert_eq!(p, DVector::from_row_slice(&[1., 0., 0.]));
+
+        assert_eq!(alp, -0.4);
+        assert_eq!(u, DVector::from_row_slice(&[1.23, -1., 1.]));
+    }
+
+
+    #[test]
+    fn test_coverage_break_case() {
+        let mut L = DMatrix::<f64>::from_row_slice(3, 3, &[
+            1., -2., 3.,
+            4., -5., 6.,
+            -7., 8., 9.
+        ]);
+        let mut d = DVector::from_row_slice(&[0.0, 0.0, 0.0]);
+        let alp = 0.01;
+        let mut u = DVector::from_row_slice(&[1.23, -1.0, 1.0]);
+
+        let p = ldlrk1(&mut L, &mut d, alp, &mut u);
+
+        assert_eq!(L, DMatrix::<f64>::from_row_slice(3, 3, &[1.0, -2.0, 3.0, -0.8130081300813008, -5.0, 6.0, 0.8130081300813008, 8.0, 9.0]));
+
+        assert_eq!(d, DVector::from_row_slice(&[0.015129, 0., 0.]));
+        assert_eq!(p, DVector::<f64>::from_row_slice(&[]));
+
+        assert_eq!(alp, 0.01);
+        assert_eq!(u, DVector::from_row_slice(&[1.23, -5.92, 9.61]));
+    }
+
+    #[test]
+    fn test_real() {
+        let mut L = DMatrix::<f64>::from_row_slice(3, 3, &[
+            1.0, 0.0, -1.45,
+            -0.6, -1.0, 4.0,
+            -1.6, 1.0, 0.01
+        ]);
+        let mut d = DVector::from_row_slice(&[0.01, 0.002, 0.03]);
+        let alp = -10.0;
+        let mut u = DVector::from_row_slice(&[1.23, -10.0, 5.0]);
+
+        let p = ldlrk1(&mut L, &mut d, alp, &mut u);
+
+        assert_eq!(L, DMatrix::<f64>::from_row_slice(3, 3, &[
+            1.0, 0.0, -1.45,
+            -0.6, -1.0, 4.0,
+            -1.6, 1.0, 0.01
+        ]));
+
+        assert_eq!(d, DVector::from_row_slice(&[0.01, 0.002, 0.03]));
+        assert_eq!(p, DVector::from_row_slice(&[1.0, 0.0, 0.0]));
 
         assert_eq!(alp, -10.0);
     }
@@ -113,87 +157,101 @@ mod tests {
 
     #[test]
     fn test_0() {
-        let mut L = vec![
-            vec![1.0, 0.0],
-            vec![0.5, 1.0],
-        ];
-        let mut d = vec![2.0, 3.0];
+        let mut L = DMatrix::<f64>::from_row_slice(2, 2, &[
+            1.0, 0.0,
+            0.5, 1.0,
+        ]);
+        let mut d = DVector::from_row_slice(&[2.0, 3.0]);
         let alp = 1.0;
-        let mut u = vec![1.0, 1.0];
+        let mut u = DVector::from_row_slice(&[1.0, 1.0]);
 
         let p = ldlrk1(&mut L, &mut d, alp, &mut u);
 
-        assert_eq!(L, vec![
-            vec![1.0, 0.0],
-            vec![0.6666666666666666, 1.0],
-        ]);
+        assert_eq!(L, DMatrix::<f64>::from_row_slice(2, 2, &[
+            1.0, 0.0,
+            0.6666666666666666, 1.0,
+        ]));
 
-        assert_eq!(d, vec![3.0, 3.1666666666666666]);
-        assert_eq!(p, vec![]);
+        assert_eq!(d, DVector::<f64>::from_row_slice(&[3.0, 3.1666666666666665]));
+        assert_eq!(p, DVector::<f64>::from_row_slice(&[]));
         assert_eq!(alp, 1.0);
     }
 
     #[test]
     fn test_1() {
-        let mut L = vec![vec![1.0]];
-        let mut d = vec![2.0];
+        let mut L = DMatrix::<f64>::from_row_slice(1, 1, &[1.0]);
+        let mut d = DVector::from_row_slice(&[2.0]);
         let alp = 0.0;
-        let mut u = vec![1.0];
+        let mut u = DVector::from_row_slice(&[1.0]);
 
         let p = ldlrk1(&mut L, &mut d, alp, &mut u);
 
-        assert_eq!(L, vec![vec![1.0]]);
-        assert_eq!(d, vec![2.0]);
-        assert_eq!(p, vec![]);
+        assert_eq!(L, DMatrix::<f64>::from_row_slice(1, 1, &[1.0]));
+        assert_eq!(d, DVector::from_row_slice(&[2.0]));
+        assert_eq!(p, DVector::<f64>::from_row_slice(&[]));
     }
 
     #[test]
     fn test_2() {
-        let mut L = vec![
-            vec![1.0, 0.0],
-            vec![0.5, 1.0],
-        ];
-        let mut d = vec![1.0, 1.0];
+        let mut L = DMatrix::<f64>::from_row_slice(2, 2, &[
+            1.0, 0.0,
+            0.5, 1.0,
+        ]);
+        let mut d = DVector::from_row_slice(&[1.0, 1.0]);
         let alp = -0.5;
-        let mut u = vec![1.0, 1.0];
+        let mut u = DVector::from_row_slice(&[1.0, 1.0]);
 
         let p = ldlrk1(&mut L, &mut d, alp, &mut u);
 
-        assert_eq!(L, vec![
-            vec![1.0, 0.0],
-            vec![0.0, 1.0],
-        ]);
+        assert_eq!(L, DMatrix::<f64>::from_row_slice(2, 2, &[
+            1.0, 0.0,
+            0.0, 1.0,
+        ]));
 
-        assert_eq!(d, vec![0.5, 0.75]);
-        assert_eq!(p, vec![]);
+        assert_eq!(d, DVector::from_row_slice(&[0.5, 0.75]));
+        assert_eq!(p, DVector::<f64>::from_row_slice(&[]));
     }
 
     #[test]
     fn test_3() {
-        let mut L = vec![vec![1.0]];
-        let mut d = vec![2.0];
+        let mut L = DMatrix::<f64>::from_row_slice(1, 1, &[1.0]);
+        let mut d = DVector::from_row_slice(&[2.0]);
         let alp = 1.0;
-        let mut u = vec![2.0];
+        let mut u = DVector::from_row_slice(&[2.0]);
 
         let p = ldlrk1(&mut L, &mut d, alp, &mut u);
 
 
-        assert_eq!(L, vec![vec![1.0]]);
-        assert_eq!(d, vec![6.0]);
-        assert_eq!(p, vec![]);
+        assert_eq!(L, DMatrix::<f64>::from_row_slice(1, 1, &[1.0]));
+        assert_eq!(d, DVector::from_row_slice(&[6.0]));
+        assert_eq!(p, DVector::<f64>::from_row_slice(&[]));
     }
 
     #[test]
     fn test_4() {
-        let mut L = vec![vec![1.0]];
-        let mut d = vec![2.0];
+        let mut L = DMatrix::<f64>::from_row_slice(1, 1, &[1.0]);
+        let mut d = DVector::from_row_slice(&[2.0]);
         let alp = -1.0;
-        let mut u = vec![2.0];
+        let mut u = DVector::from_row_slice(&[2.0]);
 
         let p = ldlrk1(&mut L, &mut d, alp, &mut u);
 
-        assert_eq!(L, vec![vec![1.0]]);
-        assert_eq!(d, vec![2.0]);
-        assert_eq!(p, vec![1.0]);
+        assert_eq!(L, DMatrix::<f64>::from_row_slice(1, 1, &[1.0]));
+        assert_eq!(d, DVector::from_row_slice(&[2.0]));
+        assert_eq!(p, DVector::from_row_slice(&[1.0]));
+    }
+
+    #[test]
+    fn test_5() {
+        let mut L = DMatrix::<f64>::from_row_slice(2, 2, &[0.0132305353535357669842, -0.4234767083209478906, 0.5000000000001, 1.50000034343434340000001]);
+        let mut d = DVector::from_row_slice(&[2.3133333333334354666, 3.77777777909802358971908208]);
+        let alp = 1.131313131313131313131313133146024;
+        let mut u = DVector::from_row_slice(&[1., 1.]);
+
+        let p = ldlrk1(&mut L, &mut d, alp, &mut u);
+
+        assert_eq!(L, DMatrix::<f64>::from_row_slice(2, 2, &[0.013230535353535766, -0.4234767083209479, 0.6642132426251283, 1.5000003434343434]));
+        assert_eq!(d, DVector::from_row_slice(&[3.444646464646567, 3.96771776306761]));
+        assert_eq!(p, DVector::from_row_slice(&[]));
     }
 }

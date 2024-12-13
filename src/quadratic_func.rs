@@ -30,8 +30,7 @@ pub fn quadpol(x: f64, d: &[f64; 3], x0: &[f64; 3]) -> f64 {
 
 #[cfg(test)]
 mod tests {
-    use super::quadmin;
-    use approx::assert_abs_diff_eq;
+    use super::*;
 
     #[test]
     fn test_1_no_quadratic_term_d2_zero() {
@@ -40,7 +39,7 @@ mod tests {
         let d = [0.0, 1.0, 0.0];
         let x0 = [0.0, 0.5, 1.0];
         let result = quadmin(a, b, &d, &x0);
-        assert_abs_diff_eq!(result, a, epsilon = 1e-17);
+        assert_eq!(result, a);
     }
 
     #[test]
@@ -50,7 +49,7 @@ mod tests {
         let d = [0.0, -0.2, 0.0];  // d[2] is 0, d[1] is <= 0
         let x0 = [0.0, 0.5, 1.0];
         let result = quadmin(a, b, &d, &x0);
-        assert_abs_diff_eq!(result, b, epsilon = 1e-17);
+        assert_eq!(result, b,);
     }
 
     #[test]
@@ -60,7 +59,7 @@ mod tests {
         let d = [0.01, 0.5, 0.3];
         let x0 = [0.1, 0.9, 1.0];
         let result = quadmin(a, b, &d, &x0);
-        assert_abs_diff_eq!(result, a, epsilon = 1e-17);
+        assert_eq!(result, a);
     }
 
     #[test]
@@ -70,7 +69,7 @@ mod tests {
         let d = [0.01, -1.0, 2.0];
         let x0 = [0.1, 0.2, 1.0];
         let result = quadmin(a, b, &d, &x0);
-        assert_abs_diff_eq!(result, a, epsilon = 1e-17);
+        assert_eq!(result, a);
     }
 
     #[test]
@@ -80,7 +79,7 @@ mod tests {
         let d = [0.01, 1.0, 0.01];
         let x0 = [0.0, 0.5, 1.0];
         let result = quadmin(a, b, &d, &x0);
-        assert_abs_diff_eq!(result, a, epsilon = 1e-17);
+        assert_eq!(result, a);
     }
 
     #[test]
@@ -90,7 +89,7 @@ mod tests {
         let d = [0.1, 1.0, -0.5];
         let x0 = [0.0, 0.5, 1.0];
         let result = quadmin(a, b, &d, &x0);
-        assert_abs_diff_eq!(result, a, epsilon = 1e-17);
+        assert_eq!(result, a);
     }
 
     #[test]
@@ -100,7 +99,7 @@ mod tests {
         let d = [0.321, -1.0, 10.5];
         let x0 = [0.0, 0.5, 1.0];
         let result = quadmin(a, b, &d, &x0);
-        assert_abs_diff_eq!(result, 0.2976190476190476, epsilon = 1e-17);
+        assert_eq!(result, 0.2976190476190476);
     }
 
     #[test]
@@ -110,6 +109,6 @@ mod tests {
         let d = [0.0, 0.0, 10.5];
         let x0 = [0.0, 0.5, 1.0];
         let result = quadmin(a, b, &d, &x0);
-        assert_abs_diff_eq!(result, 0.25, epsilon = 1e-17);
+        assert_eq!(result, 0.25);
     }
 }

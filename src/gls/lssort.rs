@@ -1,5 +1,3 @@
-use std::cmp::Ordering;
-
 pub fn lssort(alist: &mut Vec<f64>, flist: &mut Vec<f64>) -> (
     f64,         // abest
     f64,         // fbest
@@ -14,10 +12,10 @@ pub fn lssort(alist: &mut Vec<f64>, flist: &mut Vec<f64>) -> (
 ) {
     // Create permutation indices for sorting
     let mut indices: Vec<usize> = (0..alist.len()).collect();
-    indices.sort_by(|&a, &b| alist[a].partial_cmp(&alist[b]).unwrap_or(Ordering::Equal));
+    indices.sort_by(|&a, &b| alist[a].partial_cmp(&alist[b]).unwrap());
 
     // Sort alist and apply permutation to flist
-    alist.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
+    alist.sort_by(|a, b| a.partial_cmp(b).unwrap());
 
     *flist = indices.iter().map(|&i| flist[i]).collect();
 
@@ -55,13 +53,13 @@ pub fn lssort(alist: &mut Vec<f64>, flist: &mut Vec<f64>) -> (
     let nmin = minima.iter().filter(|&&x| x).count();
 
     // Find best value and its index
-    let fbest = *flist.iter().min_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal)).unwrap();
+    let fbest = *flist.iter().min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap();
     let i = flist.iter().position(|&x| x == fbest).unwrap();
     let abest = alist[i];
 
     // Calculate median - corrected version
     let mut sorted_flist = flist.clone();
-    sorted_flist.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
+    sorted_flist.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let fmed = if s % 2 == 0 {
         (sorted_flist[s / 2 - 1] + sorted_flist[s / 2]) / 2.0
     } else {
@@ -81,7 +79,7 @@ pub fn lssort(alist: &mut Vec<f64>, flist: &mut Vec<f64>) -> (
 
         al.iter()
             .map(|&x| (x - abest).abs())
-            .min_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal))
+            .min_by(|a, b| a.partial_cmp(b).unwrap())
             .unwrap_or(0.0)
     } else {
         (alist[s - 1] - abest).max(abest - alist[0])
@@ -94,6 +92,7 @@ pub fn lssort(alist: &mut Vec<f64>, flist: &mut Vec<f64>) -> (
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
     fn test_0() {
         let mut alist = vec![0.0, 1.0, 2.0, 3.0, 4.0];
@@ -102,16 +101,16 @@ mod tests {
 
         assert_eq!(alist, vec![0.0, 1.0, 2.0, 3.0, 4.0]);
         assert_eq!(flist, vec![10.0, 9.0, 8.0, 7.0, 6.0]);
-        assert_eq!(abest, 4.0); // abest
-        assert_eq!(fbest, 6.0); // fbest
-        assert_eq!(fmed, 8.0); // fmed
-        assert_eq!(up, vec![false, false, false, false]); // up
-        assert_eq!(down, vec![true, true, true, true]); // down
+        assert_eq!(abest, 4.0);
+        assert_eq!(fbest, 6.0);
+        assert_eq!(fmed, 8.0);
+        assert_eq!(up, vec![false, false, false, false]);
+        assert_eq!(down, vec![true, true, true, true]);
         assert!(monotone); // monotone
-        assert_eq!(minima, vec![false, false, false, false, true]); // minima
-        assert_eq!(nmin, 1); // nmin
-        assert_eq!(unitlen, 4.0); // unitlen
-        assert_eq!(s, 5); // s
+        assert_eq!(minima, vec![false, false, false, false, true]);
+        assert_eq!(nmin, 1);
+        assert_eq!(unitlen, 4.0);
+        assert_eq!(s, 5);
     }
 
     #[test]
@@ -122,16 +121,16 @@ mod tests {
 
         assert_eq!(alist, vec![0.0, 1.0, 2.0, 3.0, 4.0]);
         assert_eq!(flist, vec![10.0, 9.0, 6.0, 8.0, 7.0]);
-        assert_eq!(abest, 2.0); // abest
-        assert_eq!(fbest, 6.0); // fbest
-        assert_eq!(fmed, 8.0); // fmed
-        assert_eq!(up, vec![false, false, true, false]); // up
-        assert_eq!(down, vec![true, true, false, true]); // down
-        assert!(!monotone); // monotone
-        assert_eq!(minima, vec![false, false, true, false, true]); // minima
-        assert_eq!(nmin, 2); // nmin
-        assert_eq!(unitlen, 2.0); // unitlen
-        assert_eq!(s, 5); // s
+        assert_eq!(abest, 2.0);
+        assert_eq!(fbest, 6.0);
+        assert_eq!(fmed, 8.0);
+        assert_eq!(up, vec![false, false, true, false]);
+        assert_eq!(down, vec![true, true, false, true]);
+        assert!(!monotone);
+        assert_eq!(minima, vec![false, false, true, false, true]);
+        assert_eq!(nmin, 2);
+        assert_eq!(unitlen, 2.0);
+        assert_eq!(s, 5);
     }
 
     #[test]
@@ -142,16 +141,16 @@ mod tests {
 
         assert_eq!(alist, vec![1.0, 1.0, 1.0]);
         assert_eq!(flist, vec![2.0, 2.0, 2.0]);
-        assert_eq!(abest, 1.0); // abest
-        assert_eq!(fbest, 2.0); // fbest
-        assert_eq!(fmed, 2.0); // fmed
-        assert_eq!(up, vec![false, false]); // up
-        assert_eq!(down, vec![true, false]); // down
+        assert_eq!(abest, 1.0);
+        assert_eq!(fbest, 2.0);
+        assert_eq!(fmed, 2.0);
+        assert_eq!(up, vec![false, false]);
+        assert_eq!(down, vec![true, false]);
         assert!(monotone); // monotone
-        assert_eq!(minima, vec![false, false, false]); // minima
-        assert_eq!(nmin, 0); // nmin
-        assert_eq!(unitlen, 0.0); // unitlen
-        assert_eq!(s, 3); // s
+        assert_eq!(minima, vec![false, false, false]);
+        assert_eq!(nmin, 0);
+        assert_eq!(unitlen, 0.0);
+        assert_eq!(s, 3);
     }
 
     #[test]
@@ -162,15 +161,15 @@ mod tests {
 
         assert_eq!(alist, vec![-5.0, -3.0, 0.0, 2.0, 9.0]);
         assert_eq!(flist, vec![3.0, 1.0, 2.0, 5.0, 7.0]);
-        assert_eq!(abest, -3.0); // abest
-        assert_eq!(fbest, 1.0); // fbest
-        assert_eq!(fmed, 3.0); // fmed
-        assert_eq!(up, vec![false, true, true, true]); // up
-        assert_eq!(down, vec![true, false, false, false]); // down
-        assert!(!monotone); // monotone
-        assert_eq!(minima, vec![false, true, false, false, false]); // minima
-        assert_eq!(nmin, 1); // nmin
-        assert_eq!(unitlen, 12.0); // unitlen
-        assert_eq!(s, 5); // s
+        assert_eq!(abest, -3.0);
+        assert_eq!(fbest, 1.0);
+        assert_eq!(fmed, 3.0);
+        assert_eq!(up, vec![false, true, true, true]);
+        assert_eq!(down, vec![true, false, false, false]);
+        assert!(!monotone);
+        assert_eq!(minima, vec![false, true, false, false, false]);
+        assert_eq!(nmin, 1);
+        assert_eq!(unitlen, 12.0);
+        assert_eq!(s, 5);
     }
 }
