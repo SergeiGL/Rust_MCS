@@ -161,7 +161,7 @@ pub fn initbox<const N: usize>(
                         x0[(i, j + 2)], // Third column
                     ];
                     d = polint(&x0_arr, (&f0.column(i)).as_ref());
-                    let u1 = if j < 0 { x0[(i, j + 1)] } else { v[i] };
+                    let u1 = v[i]; // j is always < 0
 
                     xl = quadmin(x0[(i, j)], u1, &d, &x0_arr);
                     fl = fl.min(quadpol(xl, &d, &x0_arr));

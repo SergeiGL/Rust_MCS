@@ -37,7 +37,7 @@ pub fn lsearch<const N: usize>(
 
     let x0: Vec<f64> = u.iter()
         .zip(v.iter())
-        .map(|(&u_i, &v_i)| u_i.clamp(0.0, v_i))
+        .map(|(&u_i, &v_i)| 0.0_f64.clamp(u_i, v_i))
         .collect();
 
     let mut eps0 = 0.001;

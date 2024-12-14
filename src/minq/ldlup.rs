@@ -90,7 +90,8 @@ pub fn ldlup<const N: usize>(
         )
     };
 
-    if !K.is_empty() && q.is_empty() { //TODO: strange
+    // TODO: strange
+    if !K.is_empty() && q.is_empty() {
         for (idx, &i) in I.iter().enumerate() {
             L[(j, i)] = v[idx];
         }
@@ -102,7 +103,7 @@ pub fn ldlup<const N: usize>(
         }
 
         d[j] = delta;
-    } else if !K.is_empty() { //TODO: strange
+    } else if !K.is_empty() {
         let pi = w.dot(&q);
         let piv = v.scale(pi);
         let lki_q = &LKI.transpose() * &q;
@@ -114,7 +115,7 @@ pub fn ldlup<const N: usize>(
 
         // Construct the SVector from the combined iterator
         p_option = Some(SVector::from_iterator(combined_iter));
-    } else { //TODO: strange
+    } else {
         for (idx, &i) in I.iter().enumerate() {
             L[(j, i)] = v[idx];
         }

@@ -57,7 +57,6 @@ pub fn lspar<const N: usize>(
             ([s - 3, s - 2, s - 1], i + 3 - s)
         } else {
             panic!();
-            // ([ii - 1, i, i + 1], 1) // TODO: strange
         };
 
         // Retrieve values from alist and flist based on ind
