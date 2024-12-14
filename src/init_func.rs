@@ -1,7 +1,7 @@
 use crate::feval::feval;
 use crate::sign::sign;
 use crate::{polint::polint, quadratic_func::quadmin, quadratic_func::quadpol};
-use nalgebra::SMatrix;
+use nalgebra::{Matrix3xX, SMatrix};
 
 pub fn subint(mut x1: f64, mut x2: f64) ->
 (
@@ -18,49 +18,39 @@ pub fn subint(mut x1: f64, mut x2: f64) ->
     (x1, x2)
 }
 
-pub fn init<const N: usize>(x0: &SMatrix<f64, N, 3>, l: &[usize; N], L: &[usize; N]) -> (
-    [[f64; N]; 3], // f0
-    [usize; N],    // istar
-    usize          // ncall
+
+// l is always full of 1;
+// L is always full of 2
+pub fn init<const N: usize>(x0: &SMatrix<f64, N, 3>) -> (
+    Matrix3xX<f64>, // f0 = [[f64; N];3]
+    [usize; N],    //  istar
+    usize          //  ncall
 ) {
     let mut ncall = 0_usize;
 
-    // Initialize x vector with zeros
-    let mut x = [0.0; N];
+    let mut x: [f64; N] = std::array::from_fn(|ind| x0[(ind, 1)]);
 
-    // Fetch initial point x0
-    for i in 0..N {
-        x[i] = x0[(i, l[i])];  // value at l[i] is the index of midpoint
-    }
-
-    // Compute initial function value
     let mut f1 = feval(&x);
     ncall += 1;
 
-    // Initialize f0 matrix with zeros
-    let mut f0 = [[0.0_f64; N]; 3]; // TODO: check L[0] is always = 3
-    f0[l[0]][0] = f1;  // computing f(x) at initial point x0
+    let mut f0 = Matrix3xX::<f64>::repeat(N, 0.0); // L[0] is always = 3
+    f0[(1, 0)] = f1;
 
-    // Initialize istar vector for storing optimal indices
     let mut istar = [0_usize; N];
 
-    // For all coordinates k (in this case i) in dim n
     for i in 0..N {
-        istar[i] = l[i];  // set i* to midpoint
+        istar[i] = 1;
 
-        // Iterate through possible values for current coordinate
-        for j in 0..=L[i] {  // using =L[i] for inclusive range
-            if j == l[i] {
-                if i != 0 {
-                    f0[j][i] = f0[istar[i - 1]][i - 1];
-                }
+        for j in 0..3 {
+            if j == 1 {
+                if i != 0 { f0[(j, i)] = f0[(istar[i - 1], i - 1)]; }
             } else {
                 x[i] = x0[(i, j)];
-                f0[j][i] = feval(&x);
+                f0[(j, i)] = feval(&x);
                 ncall += 1;
 
-                if f0[j][i] < f1 {
-                    f1 = f0[j][i];
+                if f0[(j, i)] < f1 {
+                    f1 = f0[(j, i)];
                     istar[i] = j;
                 }
             }
@@ -74,17 +64,17 @@ pub fn init<const N: usize>(x0: &SMatrix<f64, N, 3>, l: &[usize; N], L: &[usize;
 }
 
 
+// l is always full of 1;
+// L is always full of 2
 pub fn initbox<const N: usize>(
     x0: &SMatrix<f64, N, 3>,
-    f0: &[[f64; N]; 3],
-    l: &[usize; N],
-    L: &[usize; N],
+    f0: &Matrix3xX<f64>,
     istar: &[usize; N],
     u: &[f64; N],
     v: &[f64; N],
     isplit: &mut Vec<isize>,
     level: &mut Vec<usize>,
-    ipar: &mut Vec<usize>,
+    ipar: &mut Vec<Option<usize>>,
     ichild: &mut Vec<isize>,
     f: &mut [Vec<f64>; 2],
     nboxes: &mut usize,
@@ -93,10 +83,10 @@ pub fn initbox<const N: usize>(
     [f64; N],     // xbest
     f64           // fbest
 ) {
-    ipar[0] = usize::MAX; // parent of root box is -1
+    ipar[0] = None; // parent of root box is -1
     level[0] = 1;  // root box level is 1
     ichild[0] = 1; // root has one child initially
-    f[0][0] = f0[l[0]][0];  // first element set to initial function values corresponding to l[0] and first function values
+    f[0][0] = f0[(1, 0)];
 
     let mut par = 0_usize; // parent index is 0
     let mut var = [0.0_f64; N]; // variability for dimensions initialized to 0
@@ -111,14 +101,13 @@ pub fn initbox<const N: usize>(
         if x0[(i, 0)] > u[i] {
             *nboxes += 1; // generate a new box
             nchild += 1;
-            ipar[*nboxes] = par; // parent index
+            ipar[*nboxes] = Some(par); // parent index
             level[*nboxes] = level[par] + 1; // Increment level for the child
             ichild[*nboxes] = -nchild; // update child information with negative value
-            f[0][*nboxes] = f0[0][i]; // set function value
+            f[0][*nboxes] = f0[(0, i)]; // set function value
         }
 
-        // Preparation for interpolation
-        let v1 = if L[i] == 2 { v[i] } else { x0[(i, 2)] };
+        let v1 = v[i];
 
         // Perform polynomial interpolation and quadratic minimization
         let x0_arr: [f64; 3] = [
@@ -126,10 +115,8 @@ pub fn initbox<const N: usize>(
             x0[(i, 1)],
             x0[(i, 2)],
         ];
-        let f0_arr: [f64; 3] = f0[0..3].iter().map(|r| r[i]).collect::<Vec<f64>>()
-            .try_into().expect("Expected exactly 3 elements in f0");
 
-        let mut d = polint(&x0_arr, &f0_arr);
+        let mut d = polint(&x0_arr, (&f0.column(i)).as_ref());
         let mut xl = quadmin(u[i], v1, &d, &x0_arr); // left bound minimization
         let mut fl = quadpol(xl, &d, &x0_arr); // compute function value
 
@@ -148,35 +135,33 @@ pub fn initbox<const N: usize>(
         }
 
         // Iterate over L[i], generate new boxes for splitting
-        for j in 0..L[i] {
+        for j in 0..2 {
             *nboxes += 1;
             nchild += 1;
 
             // Decide the level increment, based on function value comparisons
-            let s = if f0[j][i] <= f0[j + 1][i] { 1 } else { 2 };
-            ipar[*nboxes] = par;
+            let s = if f0[(j, i)] <= f0[(j + 1, i)] { 1 } else { 2 };
+            ipar[*nboxes] = Some(par);
             level[*nboxes] = level[par] + s;
             ichild[*nboxes] = -nchild;
-            f[0][*nboxes] = f0[j][i];  // assign function value
+            f[0][*nboxes] = f0[(j, i)];  // assign function value
 
             if j >= 1 {
                 if istar[i] == j {
                     if xl <= x0[(i, j)] {
-                        par1 = *nboxes - 1;
+                        par1 = *nboxes - 1; // nboxes is at least 1
                     } else {
                         par1 = *nboxes;
                     }
                 }
-                if j <= L[i] - 2 {
+                if j == 0 { // j can only be 0, not less (WTF)
                     let x0_arr: [f64; 3] = [
                         x0[(i, j)],     // First column
                         x0[(i, j + 1)], // Second column
                         x0[(i, j + 2)], // Third column
                     ];
-                    let f0_arr: [f64; 3] = f0[j..j + 3].iter().map(|r| r[i]).collect::<Vec<f64>>()
-                        .try_into().expect("Expected exactly 3 elements in f0");
-                    d = polint(&x0_arr, &f0_arr);
-                    let u1 = if j < L[i] - 2 { x0[(i, j + 1)] } else { v[i] };
+                    d = polint(&x0_arr, (&f0.column(i)).as_ref());
+                    let u1 = if j < 0 { x0[(i, j + 1)] } else { v[i] };
 
                     xl = quadmin(x0[(i, j)], u1, &d, &x0_arr);
                     fl = fl.min(quadpol(xl, &d, &x0_arr));
@@ -188,26 +173,26 @@ pub fn initbox<const N: usize>(
 
             *nboxes += 1;
             nchild += 1;
-            ipar[*nboxes] = par;
+            ipar[*nboxes] = Some(par);
             level[*nboxes] = level[par] + 3 - s;
             ichild[*nboxes] = -nchild;
-            f[0][*nboxes] = f0[j + 1][i]; // update function value for the next box
+            f[0][*nboxes] = f0[(j + 1, i)]; // update function value for the next box
         }
 
         // If the upper end of x0 is below v, generate a final box
-        if x0[(i, L[i])] < v[i] {
+        if x0[(i, 2)] < v[i] {
             *nboxes += 1;
             nchild += 1;
-            ipar[*nboxes] = par;
+            ipar[*nboxes] = Some(par);
             level[*nboxes] = level[par] + 1;
             ichild[*nboxes] = -nchild;
-            f[0][*nboxes] = f0[L[i]][i];
+            f[0][*nboxes] = f0[(2, i)];
         }
 
-        if istar[i] == L[i] {
-            if x0[(i, L[i])] < v[i] {
-                if xl <= x0[(i, L[i])] {
-                    par1 = *nboxes - 1;
+        if istar[i] == 2 {
+            if x0[(i, 2)] < v[i] {
+                if xl <= x0[(i, 2)] {
+                    par1 = *nboxes - 1; // nboxes is at least 1
                 } else {
                     par1 = *nboxes;
                 }
@@ -225,7 +210,7 @@ pub fn initbox<const N: usize>(
     }
 
     // Finding the best function value
-    let fbest = f0[istar[N - 1]][N - 1];
+    let fbest = f0[(istar[N - 1], N - 1)];
 
     let mut p = [0_usize; N]; // stores the indices of best points
     let mut xbest = [0.0; N]; // best point values
@@ -256,39 +241,34 @@ mod tests {
             0.0, 0.5, 1.0,
             0.0, 0.5, 1.0,
         ]);
-
-        let f0 = [
-            [-0.62323147, -0.86038255, -0.5152638, -0.98834122, -0.37914019, -0.05313547],
-            [-0.50531499, -0.62323147, -0.86038255, -0.86038255, -0.98834122, -0.98834122],
-            [-0.08793206, -0.09355143, -0.32139218, -0.0251343, -0.65273189, -0.37750674],
-        ];
-
-        let l = [1, 1, 1, 1, 1, 1];
-        let L = [2, 2, 2, 2, 2, 2];
+        let f0 = Matrix3xX::<f64>::from_row_slice(&[
+            -0.62323147, -0.86038255, -0.5152638, -0.98834122, -0.37914019, -0.05313547,
+            -0.50531499, -0.62323147, -0.86038255, -0.86038255, -0.98834122, -0.98834122,
+            -0.08793206, -0.09355143, -0.32139218, -0.0251343, -0.65273189, -0.37750674,
+        ]);
         let istar = [0, 0, 1, 0, 1, 1];
         let u = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
         let v = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0];
-
-
         let mut isplit = vec![0_isize; N];
         let mut level = vec![0_usize; N];
-        let mut ipar = vec![0_usize; N];
+        let mut ipar = vec![Some(0_usize); N];
         let mut ichild = vec![0_isize; N];
         let mut f = [vec![0.0; N], vec![0.0; N]];
         let mut nboxes = 0_usize;
 
         let (p, xbest, fbest) =
             initbox(
-                &x0, &f0, &l, &L, &istar, &u, &v,
+                &x0, &f0, &istar, &u, &v,
                 &mut isplit, &mut level, &mut ipar, &mut ichild,
                 &mut f,
                 &mut nboxes,
             );
 
         let expected_ipar = [
-            usize::MAX, 0, 0, 0, 0, 1, 1, 1, 1, 5, 5, 5, 5,
-            10, 10, 10, 10, 13, 13, 13, 13, 19, 19, 19, 19, 0,
-            0, 0, 0, 0];
+            None, Some(0), Some(0), Some(0), Some(0), Some(1), Some(1), Some(1), Some(1), Some(5), Some(5), Some(5), Some(5),
+            Some(10), Some(10), Some(10), Some(10), Some(13), Some(13), Some(13), Some(13), Some(19), Some(19), Some(19), Some(19), Some(0),
+            Some(0), Some(0), Some(0), Some(0)];
+
         let expected_level = [
             0, 0, 3, 2, 3, 0, 4, 3, 4, 5, 0, 4, 5, 0, 6, 5, 6,
             7, 6, 0, 7, 8, 7, 7, 8, 0, 0, 0, 0, 0];
@@ -322,6 +302,82 @@ mod tests {
         assert_eq!(f, expected_f);
         assert_eq!(nboxes, expected_nboxes);
     }
+
+    #[test]
+    fn initbox_test_1() {
+        const N: usize = 30;
+
+        let x0: SMatrix<f64, 6, 3> = SMatrix::from_row_slice(&[
+            0., 1., 2.,
+            10., 11., 12.,
+            20., 21., 22.,
+            30., 31., 32.,
+            40., 41., 42.,
+            50., 51., 52.,
+        ]);
+
+        let f0 = Matrix3xX::<f64>::from_row_slice(&[
+            -0.1, -1.1, -11.1, 0.1, 1.1, 11.1,
+            -0.2, -2.2, -21.2, 0.2, 2.2, 21.2,
+            -0.3, -3.3, -31.3, 0.3, 3.3, 31.3
+        ]);
+
+        let istar = [0, 1, 2, 0, 1, 2];
+        let u = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+        let v = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0];
+
+        let mut isplit = vec![-15, -14, -13, -12, -11, -10, -9, -8, -7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14];
+        let mut level = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29];
+        let mut ipar = vec![Some(0_usize); N];
+        ipar[0] = None;
+        let mut ichild = vec![-15, -14, -13, -12, -11, -10, -9, -8, -7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14];
+        let mut f = [
+            vec![0., 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1., 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2., 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.9],
+            vec![-1.5, -1.4, -1.3, -1.2, -1.1, -1., -0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0., 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1., 1.1, 1.2, 1.3, 1.4]
+        ];
+        let mut nboxes = 0_usize;
+
+        let (p, xbest, fbest) =
+            initbox(
+                &x0, &f0, &istar, &u, &v,
+                &mut isplit, &mut level, &mut ipar, &mut ichild,
+                &mut f,
+                &mut nboxes,
+            );
+
+        let expected_ipar = [
+            None, Some(0), Some(0), Some(0), Some(0), Some(1), Some(1), Some(1), Some(1), Some(1), Some(7), Some(7), Some(7), Some(7), Some(7), Some(14), Some(14), Some(14), Some(14), Some(14), Some(15), Some(15), Some(15), Some(15), Some(15), Some(22), Some(22), Some(22), Some(22), Some(22)
+        ];
+        let expected_level = [
+            0, 0, 2, 3, 2, 4, 5, 0, 5, 4, 5, 6, 5, 6, 0, 0, 6, 7, 6, 7, 7, 7, 0, 7, 8, 9, 9, 10, 9, 10
+        ];
+        let expected_ichild = [
+            1, -1, -2, -3, -4, -1, -2, -3, -4, -5, -1, -2, -3, -4, -5, -1, -2, -3, -4, -5, -1, -2, -3, -4, -5, -1, -2, -3, -4, -5
+        ];
+        let expected_f = [
+            [-0.2, -0.1, -0.2, -0.2, -0.3, -1.1, -1.1, -2.2, -2.2, -3.3, -11.1, -11.1, -21.2, -21.2, -31.3, 0.1, 0.1, 0.2, 0.2, 0.3, 1.1, 1.1, 2.2, 2.2, 3.3, 11.1, 11.1, 21.2, 21.2, 31.3],
+            [-1.5, -1.4, -1.3, -1.2, -1.1, -1.0, -0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4]
+        ];
+        let expected_isplit = [
+            -1, -2, -13, -12, -11, -10, -9, -3, -7, -6, -5, -4, -3, -2, -4, -5, 1, 2, 3, 4, 5, 6, -6, 8, 9, 10, 11, 12, 13, 14
+        ];
+        let expected_p = [2, 5, 4, 1, 3, 0];
+        let expected_xbest = [0.0, 11.0, 22.0, 30.0, 41.0, 52.0];
+        let expected_fbest = 31.3;
+        let expected_nboxes = 29;
+
+
+        assert_eq!(ipar, expected_ipar);
+        assert_eq!(level, expected_level);
+        assert_eq!(ichild, expected_ichild);
+        assert_eq!(isplit, expected_isplit);
+        assert_eq!(p, expected_p);
+        assert_eq!(xbest, expected_xbest);
+        assert_eq!(fbest, expected_fbest);
+        assert_eq!(f, expected_f);
+        assert_eq!(nboxes, expected_nboxes);
+    }
+
 
     #[test]
     fn subint_test_0() {
@@ -371,12 +427,10 @@ mod tests {
             0.0, 0.5, 1.0,
             0.0, 0.5, 1.0,
         ]);
-        let l = [1, 1, 1, 1, 1, 1];
-        let L = [2, 2, 2, 2, 2, 2];
 
-        let (f0, istar, ncall) = init(&x0, &l, &L);
+        let (f0, istar, ncall) = init(&x0);
 
-        let expected_f0 = [[-0.6232314675898112, -0.8603825505022568, -0.5152637963551447, -0.9883412202327723, -0.3791401895175917, -0.05313547352279423], [-0.5053149917022333, -0.6232314675898112, -0.8603825505022568, -0.8603825505022568, -0.9883412202327723, -0.9883412202327723], [-0.08793206431638863, -0.09355142624190396, -0.3213921800858628, -0.025134295008083094, -0.6527318901582629, -0.37750674173452126]];
+        let expected_f0 = Matrix3xX::<f64>::from_row_slice(&[-0.6232314675898112, -0.8603825505022568, -0.5152637963551447, -0.9883412202327723, -0.3791401895175917, -0.05313547352279423, -0.5053149917022333, -0.6232314675898112, -0.8603825505022568, -0.8603825505022568, -0.9883412202327723, -0.9883412202327723, -0.08793206431638863, -0.09355142624190396, -0.3213921800858628, -0.025134295008083094, -0.6527318901582629, -0.37750674173452126]);
         let expected_istar = [0, 0, 1, 0, 1, 1];
 
         assert_eq!(f0, expected_f0);
@@ -394,63 +448,15 @@ mod tests {
             1.0, 1.0, 1.0,
             1.0, 1.0, 1.0,
         ]);
-        let l = [1, 1, 1, 1, 1, 1];
-        let L = [2, 2, 2, 2, 2, 2];
 
-        let (f0, istar, ncall) = init(&x0, &l, &L);
+        let (f0, istar, ncall) = init(&x0);
 
-        let expected_f0 = [[-3.408539273427753e-05; 6]; 3];
+        let expected_f0 = Matrix3xX::<f64>::from_row_slice(&[-3.408539273427753e-05; 18]);
         let expected_istar = [1, 1, 1, 1, 1, 1];
 
         assert_eq!(f0, expected_f0);
         assert_eq!(istar, expected_istar);
         assert_eq!(ncall, 13);
-    }
-
-    #[test]
-    fn init_test_edge_case_smallest_largest_indices() {
-        let x0 = SMatrix::from_row_slice(&[
-            0.0, 0.5, 1.0,
-            0.0, 0.5, 1.0,
-            0.0, 0.5, 1.0,
-            0.0, 0.5, 1.0,
-            0.0, 0.5, 1.0,
-            0.0, 0.5, 1.0,
-        ]);
-        let l = [0, 0, 0, 0, 0, 0];
-        let L = [2, 2, 2, 2, 2, 2];
-
-        let (f0, istar, ncall) = init(&x0, &l, &L);
-
-        let expected_f0 = [[-0.00508911288366444, -0.00508911288366444, -0.006592384416474927, -0.008816885534788802, -0.16446561922697936, -0.16473052321056048], [-0.004986271984857385, -0.005653858548782868, -0.008816885534788802, -0.16446561922697936, -0.16473052321056048, -0.09355142624190396], [-0.0010186628537568049, -0.006592384416474927, -0.006725151389454303, -0.028179437932502046, -0.15324289513062755, -0.036909774274296356]];
-        let expected_istar = [0, 2, 1, 1, 1, 0];
-
-        assert_eq!(f0, expected_f0);
-        assert_eq!(istar, expected_istar);
-        assert_eq!(ncall, 13);
-    }
-
-    #[test]
-    fn init_test_0() {
-        let x0 = SMatrix::from_row_slice(&[
-            -10.0, 0.5, 1.0,
-            -10.0, 0.5, 1.0,
-            -10.0, 0.5, 1.0,
-            0.0, 0.5, 1.0,
-            0.0, 0.5, 1.0,
-            0.0, 0.5, 1.0,
-        ]);
-        let l = [0, 1, 2, 0, 1, 0];
-        let L = [2, 0, 2, 2, 0, 0];
-
-        let (f0, istar, ncall) = init(&x0, &l, &L);
-
-        let expected_f0 = [[-8.535767023601033e-10, -8.531765565729684e-139, -8.201051614973535e-05, -0.0491552890369112, -0.7882313661790343, 0.0], [-0.035667757842579986, 0.0, -0.0491552890369112, -0.7886441250514713, 0.0, 0.0], [-0.0011675413792504375, 0.0, 0.0, -0.13332552218667648, 0.0, 0.0]];
-        let expected_istar = [1, 1, 1, 1, 1, 0];
-
-        assert_eq!(&f0, &expected_f0);
-        assert_eq!(istar, expected_istar);
-        assert_eq!(ncall, 9);
     }
 }
 

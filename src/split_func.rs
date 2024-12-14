@@ -1,14 +1,17 @@
-use crate::chk_flag::{chrelerr, chvtr};
+use crate::add_basket::add_basket;
+use crate::chk_flag::update_flag;
 use crate::feval::feval;
 use crate::sign::sign;
 use crate::updtrec::updtrec;
 use nalgebra::SMatrix;
 
+
 const SQRT_5: f64 = 2.2360679774997896964091736687312;
+
 
 fn genbox<const SMAX: usize>(
     nboxes: &mut usize,
-    ipar: &mut Vec<usize>,
+    ipar: &mut Vec<Option<usize>>,
     level: &mut Vec<usize>,
     ichild: &mut Vec<isize>,
     f: &mut [Vec<f64>; 2],
@@ -20,7 +23,7 @@ fn genbox<const SMAX: usize>(
 ) {
     *nboxes += 1;
 
-    ipar[*nboxes] = ipar_upd;
+    ipar[*nboxes] = Some(ipar_upd);
     level[*nboxes] = level_upd;
     ichild[*nboxes] = ichild_upd;
     f[0][*nboxes] = f_upd;
@@ -28,33 +31,6 @@ fn genbox<const SMAX: usize>(
     updtrec(*nboxes, level[*nboxes], &f[0], record);
 }
 
-fn update_flag(flag: &mut bool, stop: &[f64], fbest: f64) {
-    if stop[0] > 0.0 && stop[0] < 1.0 {
-        *flag = chrelerr(fbest, stop);
-    } else if stop[0] == 0.0 {
-        *flag = chvtr(fbest, stop[2]);
-    }
-}
-
-fn mut_xmin_fmi<const N: usize>(nbasket_option: &mut Option<usize>, xmin: &mut Vec<[f64; N]>, fmi: &mut Vec<f64>, x: [f64; N], f0_val: f64) {
-    let nbasket = match nbasket_option {
-        Some(val) => {
-            *val += 1;
-            *val
-        }
-        None => {
-            *nbasket_option = Some(0);
-            0
-        }
-    };
-    if xmin.len() == nbasket {
-        xmin.push(x);
-        fmi.push(f0_val);
-    } else {
-        xmin[nbasket] = x;
-        fmi[nbasket] = f0_val;
-    }
-}
 
 pub fn splinit<const N: usize, const SMAX: usize>(
     i: usize,
@@ -65,11 +41,9 @@ pub fn splinit<const N: usize, const SMAX: usize>(
     u: &[f64; N],
     v: &[f64; N],
     x: &mut [f64; N],
-    L: &[usize; N],
-    l: &[usize; N],
     xmin: &mut Vec<[f64; N]>,
     fmi: &mut Vec<f64>,
-    ipar: &mut Vec<usize>,
+    ipar: &mut Vec<Option<usize>>,
     level: &mut Vec<usize>,
     ichild: &mut Vec<isize>,
     f: &mut [Vec<f64>; 2],
@@ -87,11 +61,11 @@ pub fn splinit<const N: usize, const SMAX: usize>(
     usize     // ncall
 ) {
     let mut ncall: usize = 0;
-    let mut f0 = [0.0; 3]; // TODO check that L.iter().max().unwrap() + 1 always 3
+    let mut f0 = [0.0; 3]; // L.iter().max().unwrap() + 1 always 3
     let mut flag = true;
 
-    for j in 0..L[i] + 1 {
-        if j != l[i] {
+    for j in 0..3 {
+        if j != 1 {
             x[i] = x0[(i, j)];
             f0[j] = feval(x);
             ncall += 1;
@@ -99,7 +73,7 @@ pub fn splinit<const N: usize, const SMAX: usize>(
                 *fbest = f0[j];
                 *xbest = x.clone();
                 *nsweepbest = *nsweep;
-                update_flag(&mut flag, stop, *fbest);
+                update_flag(&mut flag, stop, *fbest, 2);
                 if !flag {
                     return (f0, flag, ncall);
                 }
@@ -117,7 +91,7 @@ pub fn splinit<const N: usize, const SMAX: usize>(
                 par, s + 1, -(nchild as isize), f0[0], record,
             );
         };
-        for j in 0..L[i] {
+        for j in 0..2 {
             nchild += 1;
             if (f0[j] <= f0[j + 1]) || (s + 2 < smax) {
                 let level0 = if f0[j] <= f0[j + 1] { s + 1 } else { s + 2 };
@@ -127,7 +101,7 @@ pub fn splinit<const N: usize, const SMAX: usize>(
                 );
             } else {
                 x[i] = x0[(i, j)];
-                mut_xmin_fmi(nbasket_option, xmin, fmi, x.clone(), f0[j]);
+                add_basket(nbasket_option, xmin, fmi, x.clone(), f0[j]);
             }
             nchild += 1;
             if (f0[j + 1] < f0[j]) || (s + 2 < smax) {
@@ -138,21 +112,21 @@ pub fn splinit<const N: usize, const SMAX: usize>(
                 );
             } else {
                 x[i] = x0[(i, j + 1)];
-                mut_xmin_fmi(nbasket_option, xmin, fmi, x.clone(), f0[j + 1]);
+                add_basket(nbasket_option, xmin, fmi, x.clone(), f0[j + 1]);
             }
         }
 
-        if x0[(i, L[i])] < v[i] {
+        if x0[(i, 2)] < v[i] {
             nchild += 1;
             genbox(
                 nboxes, ipar, level, ichild, f,
-                par, s + 1, -(nchild as isize), f0[L[i]], record,
+                par, s + 1, -(nchild as isize), f0[2], record,
             );
         }
     } else {
-        for j in 0..(L[i] + 1) {
+        for j in 0..3 {
             x[i] = x0[(i, j)];
-            mut_xmin_fmi(nbasket_option, xmin, fmi, x.clone(), f0[j]);
+            add_basket(nbasket_option, xmin, fmi, x.clone(), f0[j]);
         }
     }
     (f0, flag, ncall)
@@ -169,7 +143,7 @@ pub fn split<const N: usize, const SMAX: usize>(
     z: &Vec<f64>,
     xmin: &mut Vec<[f64; N]>,
     fmi: &mut Vec<f64>,
-    ipar: &mut Vec<usize>,
+    ipar: &mut Vec<Option<usize>>,
     level: &mut Vec<usize>,
     ichild: &mut Vec<isize>,
     f: &mut [Vec<f64>; 2],
@@ -195,9 +169,7 @@ pub fn split<const N: usize, const SMAX: usize>(
         *fbest = f[1][par];
         *xbest = x.clone();
         *nsweepbest = *nsweep;
-
-        update_flag(&mut flag, stop, *fbest);
-
+        update_flag(&mut flag, stop, *fbest, 2);
         if !flag {
             return (flag, ncall);
         }
@@ -216,7 +188,7 @@ pub fn split<const N: usize, const SMAX: usize>(
                 );
             } else {
                 x[i] = z[1];
-                mut_xmin_fmi(nbasket_option, xmin, fmi, x.clone(), f[1][par]);
+                add_basket(nbasket_option, xmin, fmi, x.clone(), f[1][par]);
             }
         } else {
             if s + 2 < smax {
@@ -226,7 +198,7 @@ pub fn split<const N: usize, const SMAX: usize>(
                 );
             } else {
                 x[i] = z[0];
-                mut_xmin_fmi(nbasket_option, xmin, fmi, x.clone(), f[0][par]);
+                add_basket(nbasket_option, xmin, fmi, x.clone(), f[0][par]);
             }
 
             genbox(
@@ -249,7 +221,7 @@ pub fn split<const N: usize, const SMAX: usize>(
                     );
                 } else {
                     x[i] = z[1];
-                    mut_xmin_fmi(nbasket_option, xmin, fmi, x.clone(), f[1][par]);
+                    add_basket(nbasket_option, xmin, fmi, x.clone(), f[1][par]);
                 }
             }
         }
@@ -258,10 +230,10 @@ pub fn split<const N: usize, const SMAX: usize>(
         let mut xi2 = x.clone();
 
         xi1[i] = z[0];
-        mut_xmin_fmi(nbasket_option, xmin, fmi, xi1, f[0][par]);
+        add_basket(nbasket_option, xmin, fmi, xi1, f[0][par]);
 
         xi2[i] = z[1];
-        mut_xmin_fmi(nbasket_option, xmin, fmi, xi2, f[1][par]);
+        add_basket(nbasket_option, xmin, fmi, xi2, f[1][par]);
     }
     (flag, ncall)
 }
@@ -300,17 +272,15 @@ mod tests {
         let u = [0.0; 6];
         let v = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
         let mut x = [0.0; 6];
-        let l = [1, 2, 3, 4, 5, 6];
-        let l_lower = [0; 6];
         let mut xmin = vec![[0.0; 6]];
         let mut fmi = vec![0.0];
-        let mut ipar = vec![0; 10];
+        let mut ipar = vec![Some(0); 10];
         let mut level = vec![0; 10];
         let mut ichild = vec![0; 10];
         let mut f: [Vec<f64>; 2] = [vec![0.0; 10], vec![0.0; 10]];
         let mut xbest = [0.0; 6];
-        let mut fbest = 0.0;
-        let stop = [1.0, 2.0, f64::NEG_INFINITY];
+        let mut fbest = 10.0;
+        let stop = [20., f64::NEG_INFINITY];
         let mut record = [0; 10];
         let mut nboxes = 1_usize;
         let mut nbasket = Some(0);
@@ -319,7 +289,7 @@ mod tests {
 
         // Call splinit
         let (f0, flag, ncall) =
-            splinit(i, s, smax, par, &x0, &u, &v, &mut x, &l, &l_lower, &mut xmin,
+            splinit(i, s, smax, par, &x0, &u, &v, &mut x, &mut xmin,
                     &mut fmi, &mut ipar, &mut level, &mut ichild, &mut f, &mut xbest,
                     &mut fbest, &stop, &mut record, &mut nboxes, &mut nbasket,
                     &mut nsweepbest, &mut nsweep,
@@ -327,10 +297,10 @@ mod tests {
 
         assert_eq!(xbest, [0.0; 6]);
         assert_eq!(fbest, -0.00508911288366444);
-        assert_eq!(f0, [0.0, -0.00508911288366444, -0.00508911288366444]);
+        assert_eq!(f0, [-0.00508911288366444, 0.0, -0.00508911288366444]);
         assert_eq!(xmin, [[0.0; 6]; 4]);
-        assert_eq!(fmi, [0.0, 0.0, -0.00508911288366444, -0.00508911288366444]);
-        assert_eq!(ipar, [0; 10]);
+        assert_eq!(fmi, [0.0, -0.00508911288366444, 0.0, -0.00508911288366444]);
+        assert_eq!(ipar, [Some(0); 10]);
         assert_eq!(level, [0; 10]);
         assert_eq!(ichild, [0; 10]);
         assert_eq!(f, [[0.0; 10]; 2]);
@@ -353,17 +323,15 @@ mod tests {
         let u = [0.0; 6];
         let v = [1.0; 6];
         let mut x = [0.0; 6];
-        let l = [2, 2, 2, 2, 2, 2];
-        let l_lower = [0; 6];
         let mut xmin = vec![[1.0; 6], [1.0; 6], [1.0; 6]];
         let mut fmi = vec![10.0, 10.0, 10.0];
-        let mut ipar = vec![1; 10];
+        let mut ipar = vec![Some(1); 10];
         let mut level = vec![1; 10];
         let mut ichild = vec![1; 10];
         let mut f: [Vec<f64>; 2] = [vec![1.0; 10], vec![1.0; 10]];
         let mut xbest = [1.0; 6];
         let mut fbest = 0.0;
-        let stop = [1.0, 2.0, f64::NEG_INFINITY];
+        let stop = [10., f64::NEG_INFINITY];
         let mut record = [1; 10];
         let mut nboxes = 2_usize;
         let mut nbasket = Some(2_usize);
@@ -371,7 +339,7 @@ mod tests {
         let mut nsweep = 5_usize;
 
         let (f0, flag, ncall) = splinit(
-            i, s, smax, par, &x0, &u, &v, &mut x, &l, &l_lower, &mut xmin,
+            i, s, smax, par, &x0, &u, &v, &mut x, &mut xmin,
             &mut fmi, &mut ipar, &mut level, &mut ichild, &mut f, &mut xbest,
             &mut fbest, &stop, &mut record, &mut nboxes, &mut nbasket,
             &mut nsweepbest, &mut nsweep,
@@ -379,10 +347,10 @@ mod tests {
 
         assert_eq!(xbest, [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
         assert_eq!(fbest, -0.00508911288366444);
-        assert_eq!(f0, [1.0, -0.00508911288366444, -0.00508911288366444]);
+        assert_eq!(f0, [-0.00508911288366444, 1.0, -0.00508911288366444]);
         assert_eq!(xmin, [[1., 1., 1., 1., 1., 1.], [1., 1., 1., 1., 1., 1.], [1., 1., 1., 1., 1., 1.], [0., 0., 0., 0., 0., 0.], [0., 0., 0., 0., 0., 0.], [0., 0., 0., 0., 0., 0.]]);
-        assert_eq!(fmi, [10.0, 10.0, 10.0, 1.0, -0.00508911288366444, -0.00508911288366444]);
-        assert_eq!(ipar, [1; 10]);
+        assert_eq!(fmi, [10.0, 10., 10., -0.00508911288366444, 1.0, -0.00508911288366444]);
+        assert_eq!(ipar, [Some(1); 10]);
         assert_eq!(level, [1; 10]);
         assert_eq!(ichild, [1; 10]);
         assert_eq!(f, [[1.0; 10]; 2]);
@@ -405,11 +373,9 @@ mod tests {
         let u = [0.0; 6];
         let v = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
         let mut x = [5.0; 6];
-        let l = [2; 6];
-        let l_lower = [1; 6];
         let mut xmin = vec![[1.0; 6]];
         let mut fmi = vec![0.0];
-        let mut ipar = vec![0; 10];
+        let mut ipar = vec![Some(0); 10];
         let mut level = vec![0; 10];
         let mut ichild = vec![1; 10];
         let mut f: [Vec<f64>; 2] = [vec![0.0; 10], vec![0.0; 10]];
@@ -423,7 +389,7 @@ mod tests {
         let mut nsweep = 2_usize;
 
         let (f0, flag, ncall) =
-            splinit(i, s, smax, par, &x0, &u, &v, &mut x, &l, &l_lower, &mut xmin,
+            splinit(i, s, smax, par, &x0, &u, &v, &mut x, &mut xmin,
                     &mut fmi, &mut ipar, &mut level, &mut ichild, &mut f, &mut xbest,
                     &mut fbest, &stop, &mut record, &mut nboxes, &mut nbasket,
                     &mut nsweepbest, &mut nsweep,
@@ -434,7 +400,7 @@ mod tests {
         assert_eq!(f0, [-1.234805298277e-312, 0.0, -1.234805298277e-312]);
         assert_eq!(xmin, [[1., 1., 1., 1., 1., 1.]]);
         assert_eq!(fmi, [0.0]);
-        assert_eq!(ipar, [0, 0, 4, 4, 4, 4, 4, 4, 0, 0]);
+        assert_eq!(ipar, [Some(0), Some(0), Some(4), Some(4), Some(4), Some(4), Some(4), Some(4), Some(0), Some(0)]);
         assert_eq!(level, [0, 0, 3, 3, 4, 4, 3, 3, 0, 0]);
         assert_eq!(ichild, [1, 1, -1, -2, -3, -4, -5, -6, 1, 1]);
         assert_eq!(f, [[0.0, 0.0, -1.234805298277e-312, -1.234805298277e-312, 0.0, 0.0, -1.234805298277e-312, -1.234805298277e-312, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]]);
@@ -457,17 +423,15 @@ mod tests {
         let u = [0.0; 6];
         let v = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
         let mut x = [5.0; 6];
-        let l = [2; 6];
-        let l_lower = [0; 6];
         let mut xmin = vec![[1.0; 6]];
         let mut fmi = vec![0.0];
-        let mut ipar = vec![0; 10];
+        let mut ipar = vec![Some(0); 10];
         let mut level = vec![0; 10];
         let mut ichild = vec![1; 10];
         let mut f: [Vec<f64>; 2] = [vec![0.0; 10], vec![0.0; 10]];
         let mut xbest = [0.0; 6];
         let mut fbest = 10.0;
-        let stop = [1.0, 2.0, f64::NEG_INFINITY];
+        let stop = [30., f64::NEG_INFINITY];
         let mut record = [1; 10];
         let mut nboxes = 1_usize;
         let mut nbasket = Some(0);
@@ -475,7 +439,7 @@ mod tests {
         let mut nsweep = 2_usize;
 
         let (f0, flag, ncall) =
-            splinit(i, s, smax, par, &x0, &u, &v, &mut x, &l, &l_lower, &mut xmin,
+            splinit(i, s, smax, par, &x0, &u, &v, &mut x, &mut xmin,
                     &mut fmi, &mut ipar, &mut level, &mut ichild, &mut f, &mut xbest,
                     &mut fbest, &stop, &mut record, &mut nboxes, &mut nbasket,
                     &mut nsweepbest, &mut nsweep,
@@ -483,16 +447,16 @@ mod tests {
 
         assert_eq!(xbest, [5., 5., 1., 5., 5., 5.]);
         assert_eq!(fbest, -8.440757176906739e-254);
-        assert_eq!(f0, [0., -8.440757176906739e-254, -8.440757176906739e-254]);
+        assert_eq!(f0, [-8.440757176906739e-254, 0.0, -8.440757176906739e-254]);
         assert_eq!(xmin, [[1., 1., 1., 1., 1., 1.], [5., 5., 1.0, 5., 5., 5.], [5., 5., 1.0, 5., 5., 5.]]);
-        assert_eq!(fmi, [0.0, 0.0, -8.440757176906739e-254]);
-        assert_eq!(ipar, [0, 0, 4, 4, 4, 4, 0, 0, 0, 0]);
+        assert_eq!(fmi, [0.0, 0.0, 0.0]);
+        assert_eq!(ipar, [Some(0), Some(0), Some(4), Some(4), Some(4), Some(4), Some(0), Some(0), Some(0), Some(0)]);
         assert_eq!(level, [0, 0, 4, 4, 4, 4, 0, 0, 0, 0]);
-        assert_eq!(ichild, [1, 1, -1, -3, -4, -6, 1, 1, 1, 1]);
-        assert_eq!(f, [[0.0, 0.0, 0.0, -8.440757176906739e-254, -8.440757176906739e-254, -8.440757176906739e-254, 0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]]);
+        assert_eq!(ichild, [1, 1, -1, -2, -5, -6, 1, 1, 1, 1]);
+        assert_eq!(f, [[0.0, 0.0, -8.440757176906739e-254, -8.440757176906739e-254, -8.440757176906739e-254, -8.440757176906739e-254, 0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]]);
         assert_eq!(flag, true);
         assert_eq!(ncall, 2);
-        assert_eq!(record, [1, 1, 1, 1, 3, 1, 1, 1, 1, 1]);
+        assert_eq!(record, [1, 1, 1, 1, 2, 1, 1, 1, 1, 1]);
         assert_eq!(nboxes, 5);
         assert_eq!(nbasket, Some(2));
         assert_eq!(nsweepbest, 2);
@@ -509,17 +473,15 @@ mod tests {
         let u = [0.0; 6];
         let v = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
         let mut x = [5.0; 6];
-        let l = [2; 6];
-        let l_lower = [0; 6];
         let mut xmin = vec![[1.0; 6], [1.0; 6], [1.0; 6]];
         let mut fmi = vec![0.0, 0.0, 0.0];
-        let mut ipar = vec![0; 10];
+        let mut ipar = vec![Some(0); 10];
         let mut level = vec![0; 10];
         let mut ichild = vec![1; 10];
         let mut f: [Vec<f64>; 2] = [vec![0.0; 10], vec![0.0; 10]];
         let mut xbest = [0.0; 6];
         let mut fbest = 10.0;
-        let stop = [1.0, 2.0, f64::NEG_INFINITY];
+        let stop = [18., f64::NEG_INFINITY];
         let mut record = [1; 10];
         let mut nboxes = 1_usize;
         let mut nbasket = None;
@@ -527,7 +489,7 @@ mod tests {
         let mut nsweep = 2_usize;
 
         let (f0, flag, ncall) =
-            splinit(i, s, smax, par, &x0, &u, &v, &mut x, &l, &l_lower, &mut xmin,
+            splinit(i, s, smax, par, &x0, &u, &v, &mut x, &mut xmin,
                     &mut fmi, &mut ipar, &mut level, &mut ichild, &mut f, &mut xbest,
                     &mut fbest, &stop, &mut record, &mut nboxes, &mut nbasket,
                     &mut nsweepbest, &mut nsweep,
@@ -535,16 +497,16 @@ mod tests {
 
         assert_eq!(xbest, [5., 5., 1., 5., 5., 5.]);
         assert_eq!(fbest, -8.440757176906739e-254);
-        assert_eq!(f0, [0., -8.440757176906739e-254, -8.440757176906739e-254]);
+        assert_eq!(f0, [-8.440757176906739e-254, 0.0, -8.440757176906739e-254]);
         assert_eq!(xmin, [[5., 5., 1.0, 5., 5., 5.], [5., 5., 1.0, 5., 5., 5.], [1., 1., 1., 1., 1., 1.]]);
-        assert_eq!(fmi, [0.0, -8.440757176906739e-254, 0.0]);
-        assert_eq!(ipar, [0, 0, 4, 4, 4, 4, 0, 0, 0, 0]);
+        assert_eq!(fmi, [0.0, 0.0, 0.0]);
+        assert_eq!(ipar, [Some(0), Some(0), Some(4), Some(4), Some(4), Some(4), Some(0), Some(0), Some(0), Some(0)]);
         assert_eq!(level, [0, 0, 4, 4, 4, 4, 0, 0, 0, 0]);
-        assert_eq!(ichild, [1, 1, -1, -3, -4, -6, 1, 1, 1, 1]);
-        assert_eq!(f, [[0.0, 0.0, 0.0, -8.440757176906739e-254, -8.440757176906739e-254, -8.440757176906739e-254, 0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]]);
+        assert_eq!(ichild, [1, 1, -1, -2, -5, -6, 1, 1, 1, 1]);
+        assert_eq!(f, [[0.0, 0.0, -8.440757176906739e-254, -8.440757176906739e-254, -8.440757176906739e-254, -8.440757176906739e-254, 0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]]);
         assert_eq!(flag, true);
         assert_eq!(ncall, 2);
-        assert_eq!(record, [1, 1, 1, 1, 3, 1, 1, 1, 1, 1]);
+        assert_eq!(record, [1, 1, 1, 1, 2, 1, 1, 1, 1, 1]);
         assert_eq!(nboxes, 5);
         assert_eq!(nbasket, Some(1));
         assert_eq!(nsweepbest, 2);
@@ -562,7 +524,7 @@ mod tests {
         let z = vec![100., 1., 0., 0., 0., 0.];
         let mut xmin = vec![[-10., -20., -30., -40., -50., -60.], [-11., -21., -31., -41., -51., -61.]];
         let mut fmi = vec![0., 1., 2., 3., 4., 5.];
-        let mut ipar = vec![0; 10];
+        let mut ipar = vec![Some(0); 10];
         let mut level = vec![0; 10];
         let mut ichild = vec![-1; 10];
         let mut f: [Vec<f64>; 2] = [vec![1.0; 10], vec![1.0; 10]];
@@ -584,7 +546,7 @@ mod tests {
         assert_eq!(y, [10., 20., 30., 40., 50., 60.]);
         assert_eq!(xmin, [[-10., -20., -30., -40., -50., -60.], [-11., -21., -31., -41., -51., -61.], [100., 2., 3., 4., 5., 6.], [1., 2., 3., 4., 5., 6.]]);
         assert_eq!(fmi, [0., 1., 2., 3., 4., 5., 1.0, -3.391970967769076e-191]);
-        assert_eq!(ipar, [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(ipar, [Some(0); 10]);
         assert_eq!(level, [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
         assert_eq!(ichild, [-1; 10]);
         assert_eq!(f, [[1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0, -3.391970967769076e-191, 1.0, 1.0, 1.0, 1.0, 1.0]]);
@@ -610,7 +572,7 @@ mod tests {
         let z = vec![100., 1., 0., 0., 0., 0.];
         let mut xmin = vec![[-10., -20., -30., -40., -50., -60.], [-11., -21., -31., -41., -51., -61.]];
         let mut fmi = vec![0., 1., 2., 3., 4., 5.];
-        let mut ipar = vec![0; 10];
+        let mut ipar = vec![Some(0); 10];
         let mut level = vec![0; 10];
         let mut ichild = vec![-1; 10];
         let mut f: [Vec<f64>; 2] = [vec![1.0; 10], vec![1.0; 10]];
@@ -632,7 +594,7 @@ mod tests {
         assert_eq!(y, [10., 20., 30., 40., 50., 60.]);
         assert_eq!(xmin, [[-10., -20., -30., -40., -50., -60.], [-11., -21., -31., -41., -51., -61.]]);
         assert_eq!(fmi, [0., 1., 2., 3., 4., 5.]);
-        assert_eq!(ipar, [0, 4, 4, 4, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(ipar, [Some(0), Some(4), Some(4), Some(4), Some(0), Some(0), Some(0), Some(0), Some(0), Some(0)]);
         assert_eq!(level, [0, 2, 1, 2, 0, 0, 0, 0, 0, 0]);
         assert_eq!(ichild, [-1, 1, 2, 3, -1, -1, -1, -1, -1, -1]);
         assert_eq!(f, [[1.0, 1.0, -1.4064265983273568e-148, -1.4064265983273568e-148, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0, -1.4064265983273568e-148, 1.0, 1.0, 1.0, 1.0, 1.0]]);
@@ -658,7 +620,7 @@ mod tests {
         let z = vec![5.1, -5.2, 5.3, -5.4, 5.5, -5.6];
         let mut xmin = vec![[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]];
         let mut fmi = vec![-1.0, -2.0, -3.0, -4.0, -5.0, -6.0];
-        let mut ipar = vec![1; 6];
+        let mut ipar = vec![Some(1); 6];
         let mut level = vec![1; 6];
         let mut ichild = vec![1; 6];
         let mut f: [Vec<f64>; 2] = [vec![1.0; 10], vec![1.0; 10]];
@@ -680,7 +642,7 @@ mod tests {
         assert_eq!(y, [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
         assert_eq!(xmin, [[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]]);
         assert_eq!(fmi, [-1.0, -2.0, -3.0, -4.0, -5.0, -6.0]);
-        assert_eq!(ipar, [1, 1, 3, 3, 3, 1]);
+        assert_eq!(ipar, [Some(1), Some(1), Some(3), Some(3), Some(3), Some(1)]);
         assert_eq!(level, [1, 1, 5, 4, 4, 1]);
         assert_eq!(ichild, [1, 1, 1, 2, 3, 1]);
         assert_eq!(f, [[1.0, 1.0, 1.0, -0.0, -0.0, 1.0, 1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, -0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]]);

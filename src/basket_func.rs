@@ -1,5 +1,13 @@
-use crate::chk_flag::{chrelerr, chvtr};
+use crate::chk_flag::update_flag;
 use crate::feval::feval;
+
+fn update_fbest_xbest_nsweepbest<const N: usize>(fbest: &mut f64, xbest: &mut [f64; N], nsweepbest: &mut usize,
+                                                 fbest_new: f64, xbest_new: [f64; N], nsweepbest_new: usize)
+{
+    *fbest = fbest_new;
+    *xbest = xbest_new;
+    *nsweepbest = nsweepbest_new;
+}
 
 fn euclidean_distance<const N: usize>(a: &[f64; N], b: &[f64; N]) -> f64 {
     a.iter()
@@ -53,18 +61,16 @@ pub fn basket<const N: usize>(
     // Get sorted indices based on distances
     let ind = argsort(&dist);
 
-    for &k in ind.iter().take(nbasket_plus_1) {
-        if fmi[k] <= *f {
-            let p: Vec<f64> = xmin[k]
+    for &i in ind.iter().take(nbasket_plus_1) {
+        if fmi[i] <= *f {
+            let p: Vec<f64> = xmin[i]
                 .iter()
                 .zip(&mut *x)
                 .map(|(&xmin_k, &mut x_val)| xmin_k - x_val)
                 .collect();
 
-            let mut y1: [f64; N] = [0.0; N];
-            for i in 0..N {
-                y1[i] = x[i] + p[i] / 3.0;
-            };
+            // y1 = x + p/3
+            let y1: [f64; N] = std::array::from_fn(|ind| x[ind] + p[ind] / 3.0);
 
             // Evaluate f1
             let f1 = feval(&y1);
@@ -72,58 +78,36 @@ pub fn basket<const N: usize>(
 
             if f1 <= *f {
                 // Compute y2 = x + 2/3 * p
-                let mut y2: [f64; N] = [0.0; N];
-                for i in 0..N {
-                    y2[i] = x[i] + 2.0 * p[i] / 3.0;
-                }
+                let y2: [f64; N] = std::array::from_fn(|ind| x[ind] + 2.0 * p[ind] / 3.0);
+
                 // Evaluate f2
                 let f2 = feval(&y2);
                 ncall += 1;
 
-                if f2 > f1.max(fmi[k]) {
+                if f2 > f1.max(fmi[i]) {
                     if f1 < *f {
                         *x = y1;
                         *f = f1;
                         if *f < *fbest {
-                            *fbest = *f;
-                            *xbest = x.clone();
-                            *nsweepbest = nsweep;
-                            if stop.len() > 0 && stop[0] > 0.0 && stop[0] < 1.0 {
-                                flag = chrelerr(*fbest, stop);
-                            } else if stop.len() > 1 && stop[0] == 0.0 {
-                                flag = chvtr(*fbest, stop[1]);
-                            }
-                            if !flag {
-                                return (loc, flag, ncall);
-                            }
+                            update_fbest_xbest_nsweepbest(fbest, xbest, nsweepbest, *f, x.clone(), nsweep);
+                            update_flag(&mut flag, stop, *fbest, 1);
+                            if !flag { return (loc, flag, ncall); }
                         }
                     }
                 } else {
-                    if f1 < f2.min(fmi[k]) {
+                    if f1 < f2.min(fmi[i]) {
                         *f = f1;
                         *x = y1;
                         if *f < *fbest {
-                            *fbest = *f;
-                            *xbest = x.clone();
-                            *nsweepbest = nsweep;
-                            if stop.len() > 0 && stop[0] > 0.0 && stop[0] < 1.0 {
-                                flag = chrelerr(*fbest, stop);
-                            } else if stop.len() > 1 && stop[0] == 0.0 {
-                                flag = chvtr(*fbest, stop[1]);
-                            }
+                            update_fbest_xbest_nsweepbest(fbest, xbest, nsweepbest, *f, x.clone(), nsweep);
+                            update_flag(&mut flag, stop, *fbest, 1);
                             if !flag { return (loc, flag, ncall); }
-                        } else if f2 < f1.min(fmi[k]) {
+                        } else if f2 < f1.min(fmi[i]) {
                             *f = f2;
                             *x = y2.clone();
                             if *f < *fbest {
-                                *fbest = *f;
-                                *xbest = x.clone();
-                                *nsweepbest = nsweep;
-                                if stop.len() > 0 && stop[0] > 0.0 && stop[0] < 1.0 {
-                                    flag = chrelerr(*fbest, stop);
-                                } else if stop.len() > 1 && stop[0] == 0.0 {
-                                    flag = chvtr(*fbest, stop[1]);
-                                }
+                                update_fbest_xbest_nsweepbest(fbest, xbest, nsweepbest, *f, x.clone(), nsweep);
+                                update_flag(&mut flag, stop, *fbest, 1);
                                 if !flag { return (loc, flag, ncall); }
                             }
                         } else {
@@ -175,90 +159,53 @@ pub fn basket1<const N: usize>(
     }
     let ind = argsort(&dist);
 
-    for &k in ind.iter().take(nbasket_plus_1) {
-        // if k >= fmi.len() {
-        //     continue;
-        // }
-
-        // Compute p = xmin[k] - x
-        let mut p = [0.0; N];
-        for i in 0..N {
-            p[i] = xmin[k][i] - x[i]
-        }
+    for &i in ind.iter().take(nbasket_plus_1) {
+        // Compute p = xmin[i] - x
+        let p: [f64; N] = std::array::from_fn(|ind| xmin[i][ind] - x[ind]);
 
         // Compute y1 = x + p / 3
-        let mut y1: [f64; N] = [0.0; N];
-        for i in 0..N {
-            y1[i] = x[i] + p[i] / 3.0;
-        }
+        let y1: [f64; N] = std::array::from_fn(|ind| x[ind] + p[ind] / 3.0);
 
         // Evaluate f1
         let f1 = feval(&y1);
         ncall += 1;
 
-        if f1 <= fmi[k].max(f) {
-            // Compute y2 = x + 2/3 * p
-            let mut y2: [f64; N] = [0.0; N];
-            for i in 0..N {
-                y2[i] = x[i] + 2.0 * p[i] / 3.0;
-            }
+        if f1 <= fmi[i].max(f) {
+            // Compute y2 = x + 2/3*p
+            let y2: [f64; N] = std::array::from_fn(|ind| x[ind] + 2.0 * p[ind] / 3.0);
 
             // Evaluate f2
             let f2 = feval(&y2);
             ncall += 1;
 
-            if f2 <= f1.max(fmi[k]) {
-                if f < f1.min(f2).min(fmi[k]) {
-                    fmi[k] = f;
-                    xmin[k] = x.clone();
-                    if fmi[k] < *fbest {
-                        *fbest = fmi[k];
-                        *xbest = xmin[k].clone();
-                        *nsweepbest = nsweep;
-                        if stop.len() > 0 && stop[0] > 0.0 && stop[0] < 1.0 {
-                            flag = chrelerr(*fbest, stop);
-                        } else if stop.len() > 1 && stop[0] == 0.0 {
-                            flag = chvtr(*fbest, stop[1]);
-                        }
-                        if !flag {
-                            return (loc, flag, ncall);
-                        }
+            if f2 <= f1.max(fmi[i]) {
+                if f < f1.min(f2).min(fmi[i]) {
+                    fmi[i] = f;
+                    xmin[i] = x.clone();
+                    if fmi[i] < *fbest {
+                        update_fbest_xbest_nsweepbest(fbest, xbest, nsweepbest, fmi[i], xmin[i].clone(), nsweep);
+                        update_flag(&mut flag, stop, *fbest, 1);
+                        if !flag { return (loc, flag, ncall); }
                     }
                     loc = false;
                     break;
-                } else if f1 < f.min(f2).min(fmi[k]) {
-                    fmi[k] = f1;
-                    xmin[k] = y1;
-                    if fmi[k] < *fbest {
-                        *fbest = fmi[k];
-                        *xbest = xmin[k].clone();
-                        *nsweepbest = nsweep;
-                        if stop.len() > 0 && stop[0] > 0.0 && stop[0] < 1.0 {
-                            flag = chrelerr(*fbest, stop);
-                        } else if stop.len() > 1 && stop[0] == 0.0 {
-                            flag = chvtr(*fbest, stop[1]);
-                        }
-                        if !flag {
-                            return (loc, flag, ncall);
-                        }
+                } else if f1 < f.min(f2).min(fmi[i]) {
+                    fmi[i] = f1;
+                    xmin[i] = y1;
+                    if fmi[i] < *fbest {
+                        update_fbest_xbest_nsweepbest(fbest, xbest, nsweepbest, fmi[i], xmin[i].clone(), nsweep);
+                        update_flag(&mut flag, stop, *fbest, 1);
+                        if !flag { return (loc, flag, ncall); }
                     }
                     loc = false;
                     break;
-                } else if f2 < f.min(f1).min(fmi[k]) {
-                    fmi[k] = f2;
-                    xmin[k] = y2;
-                    if fmi[k] < *fbest {
-                        *fbest = fmi[k];
-                        *xbest = xmin[k].clone();
-                        *nsweepbest = nsweep;
-                        if stop.len() > 0 && stop[0] > 0.0 && stop[0] < 1.0 {
-                            flag = chrelerr(*fbest, stop);
-                        } else if stop.len() > 1 && stop[0] == 0.0 {
-                            flag = chvtr(*fbest, stop[1]);
-                        }
-                        if !flag {
-                            return (loc, flag, ncall);
-                        }
+                } else if f2 < f.min(f1).min(fmi[i]) {
+                    fmi[i] = f2;
+                    xmin[i] = y2;
+                    if fmi[i] < *fbest {
+                        update_fbest_xbest_nsweepbest(fbest, xbest, nsweepbest, fmi[i], xmin[i].clone(), nsweep);
+                        update_flag(&mut flag, stop, *fbest, 1);
+                        if !flag { return (loc, flag, ncall); }
                     }
                     loc = false;
                     break;
@@ -276,6 +223,9 @@ pub fn basket1<const N: usize>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use approx::assert_relative_eq;
+
+    static TOLERANCE: f64 = 1e-16;
 
     #[test]
     fn test_cover_1() {
@@ -435,6 +385,67 @@ mod tests {
         assert_eq!((loc, flag, ncall, nsweepbest), (true, true, 6, 20));
     }
 
+    #[test]
+    fn test_4() {
+        let mut x = [-0.2, 0., -0.1, -10.15, -0.29, -0.62];
+        let mut f = 0.01;
+        let mut xmin = vec![
+            [0.2, 0.0, 0.47, 0.27, 0.31, 0.65],
+            [0.2, 0.2, 0.44, 0.15, 0.29, 0.62],
+            [0.2, 0.2, 0.4, 0.15, 0.37887001, 0.62]
+        ];
+        let mut fmi = vec![100.; 3];
+        let mut xbest = [-1.0, 0.15, 0.47, -0.27, 0.31, 0.65];
+        let mut fbest = 100.;
+        let stop = vec![18.0, f64::NEG_INFINITY];
+        let nbasket = Some(2);
+        let nsweep = 20;
+        let mut nsweepbest = 20;
+
+        let (loc, flag, ncall) =
+            basket(&mut x, &mut f, &mut xmin, &mut fmi, &mut xbest, &mut fbest, &stop, &nbasket, nsweep, &mut nsweepbest);
+
+        assert_eq!(f, 0.01);
+        assert_eq!(x, [-0.2, 0.0, -0.1, -10.15, -0.29, -0.62]);
+        assert_eq!(xbest, [-1.0, 0.15, 0.47, -0.27, 0.31, 0.65]);
+        assert_eq!(fbest, 100.);
+        assert_eq!(xmin, vec![
+            [0.2, 0.0, 0.47, 0.27, 0.31, 0.65], [0.2, 0.2, 0.44, 0.15, 0.29, 0.62], [0.2, 0.2, 0.4, 0.15, 0.37887001, 0.62]
+        ]);
+        assert_eq!(fmi, vec![100.0, 100.0, 100.0]);
+        assert_eq!((loc, flag, ncall, nsweepbest), (true, true, 0, 20));
+    }
+
+    #[test]
+    fn test_5() {
+        let mut x = [-0.2, 0., -0.1, -10.15, -0.29, -0.62];
+        let mut f = 100.;
+        let mut xmin = vec![
+            [-10., 1.0, -0.13, 10.2, -0.31, -0.65],
+            [0.2, 0.2, 0.44, 0.15, 0.29, 0.62],
+            [0.2, 0.2, 0.4, 0.15, 0.37887001, 0.62]
+        ];
+        let mut fmi = vec![100.; 3];
+        let mut xbest = [-1.0, 0.15, 0.47, -0.27, 0.31, 0.65];
+        let mut fbest = 100.;
+        let stop = vec![18.0, f64::NEG_INFINITY];
+        let nbasket = Some(2);
+        let nsweep = 20;
+        let mut nsweepbest = 20;
+
+        let (loc, flag, ncall) =
+            basket(&mut x, &mut f, &mut xmin, &mut fmi, &mut xbest, &mut fbest, &stop, &nbasket, nsweep, &mut nsweepbest);
+
+        assert_eq!(f, -8.490701428811232e-25);
+        assert_eq!(x, [-3.4666666666666672, 0.3333333333333333, -0.11, -3.3666666666666663, -0.29666666666666663, -0.63]);
+        assert_eq!(xbest, [-3.4666666666666672, 0.3333333333333333, -0.11, -3.3666666666666663, -0.29666666666666663, -0.63]);
+        assert_eq!(fbest, -8.490701428811232e-25);
+        assert_eq!(xmin, vec![
+            [-10.0, 1.0, -0.13, 10.2, -0.31, -0.65], [0.2, 0.2, 0.44, 0.15, 0.29, 0.62], [0.2, 0.2, 0.4, 0.15, 0.37887001, 0.62]
+        ]);
+        assert_eq!(fmi, vec![100.0, 100.0, 100.0]);
+        assert_eq!((loc, flag, ncall, nsweepbest), (true, true, 6, 20));
+    }
 
     #[test]
     fn test_0_bask1() {
@@ -535,7 +546,6 @@ mod tests {
         let (loc, flag, ncall) =
             basket1(&x, f, &mut xmin, &mut fmi, &mut xbest, &mut fbest, &stop, &nbasket, nsweep, &mut nsweepbest);
 
-        assert_eq!(x, [-0.2, 0., -0.1, -10.15, -0.29, -0.62]);
         assert_eq!(xbest, [-1., 0.15, 0.47, -0.27, 0.31, 0.65]);
         assert_eq!(fbest, -2.3);
         assert_eq!(xmin, vec![
@@ -546,6 +556,38 @@ mod tests {
         assert_eq!(fmi, vec![-1., -2., -35.5]);
         assert_eq!((loc, flag, ncall, nsweepbest), (false, true, 2, 20));
     }
+
+    #[test]
+    fn test_4_basket1() {
+        let x = [-0.2, 0., -0.1, -10.15, -0.29, -0.62];
+        let f = 0.01;
+        let mut xmin = vec![
+            [0.2, 0.0, 0.47, 0.27, 0.31, 0.65],
+            [0.2, 0.2, 0.44, 0.15, 0.29, 0.62],
+            [0.2, 0.2, 0.4, 0.15, 0.37887001, 0.62]
+        ];
+        let mut fmi = vec![100.; 3];
+        let mut xbest = [-1.0, 0.15, 0.47, -0.27, 0.31, 0.65];
+        let mut fbest = -2.3;
+        let stop = vec![18.0, f64::NEG_INFINITY];
+        let nbasket = Some(2);
+        let nsweep = 20;
+        let mut nsweepbest = 20;
+
+        let (loc, flag, ncall) =
+            basket1(&x, f, &mut xmin, &mut fmi, &mut xbest, &mut fbest, &stop, &nbasket, nsweep, &mut nsweepbest);
+
+        assert_eq!(xbest, [-1.0, 0.15, 0.47, -0.27, 0.31, 0.65]);
+        assert_eq!(fbest, -2.3);
+        assert_relative_eq!(xmin.concat().as_slice(), &[
+            [0.2, 0.0, 0.47, 0.27, 0.31, 0.65],
+            [0.06666666666666665, 0.13333333333333333, 0.26, -3.283333333333333, 0.09666666666666662, 0.20666666666666667],
+            [0.2, 0.2, 0.4, 0.15, 0.37887001, 0.62]
+        ].concat().as_slice() , epsilon = TOLERANCE);
+        assert_eq!(fmi, vec![100.0, -8.594107654969967e-08, 100.0]);
+        assert_eq!((loc, flag, ncall, nsweepbest), (false, true, 2, 20));
+    }
+
 
     #[test]
     fn better_cover_2() {

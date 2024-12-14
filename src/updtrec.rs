@@ -1,12 +1,8 @@
 pub fn updtrec<const SMAX: usize>(j: usize, s: usize, f: &[f64], record: &mut [usize; SMAX]) {
-    // if record.len() < s { // TODO: strange stuff
-    //     for _ in record.len()..s {
-    //         record.push(0);
-    //     }
-    //     record.push(j);
-    // } else
-    if record.len() < s || record[s] == 0 || f[j] < f[record[s]] {
-        record[s] = j
+    if record.len() < s {
+        println!("updtrec: VERY CAREFUL record.len() < s");
+    } else if record.len() < s || record[s] == 0 || f[j] < f[record[s]] {
+        record[s] = j;
     }
 }
 

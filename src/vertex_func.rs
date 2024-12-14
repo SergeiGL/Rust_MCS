@@ -82,7 +82,8 @@ fn vert3<const N: usize>(
     *f2 += f0[k2];
 }
 
-
+// l is always full of 1;
+// L is always full of 2
 pub fn vertex<const N: usize>(
     j: usize,
     u: &[f64; N],
@@ -90,13 +91,11 @@ pub fn vertex<const N: usize>(
     v1: &[f64; N],
     x0: &SMatrix<f64, N, 3>,
     f0: &Matrix3xX<f64>,
-    ipar: &Vec<usize>,
+    ipar: &Vec<Option<usize>>,
     isplit: &Vec<isize>,
     ichild: &Vec<isize>,
     z: &Matrix2xX<f64>,
     f: &Matrix2xX<f64>,
-    l: &[usize; N],
-    L: &[usize; N],
 ) -> (
     [usize; N],  // n0
     [f64; N],    // x
@@ -118,8 +117,13 @@ pub fn vertex<const N: usize>(
     let mut m = j;
 
     while m > 0 {
-        let split_val = isplit[ipar[m]];
-        let i = if split_val < 0 {  // TODO: why here int()?
+        let ipar_m = ipar[m].unwrap_or_else(|| {
+            println!("vertex_func: Very careful ipar[m] is None");
+            f.ncols() - 1
+        });
+
+        let split_val = isplit[ipar_m];
+        let i = if split_val < 0 {
             match split_val.abs() as usize {
                 0 => N - 1,
                 val => val - 1,
@@ -131,27 +135,27 @@ pub fn vertex<const N: usize>(
         n0[i] += 1;
 
         if ichild[m] == 1 {
-            if x[i] == f64::INFINITY || x[i] == z[(0, ipar[m])] {
-                x[i] = vert1(1, z.column(ipar[m]), f.column(ipar[m]), &mut x1[i], &mut x2[i], &mut f1[i], &mut f2[i]);
+            if x[i] == f64::INFINITY || x[i] == z[(0, ipar_m)] {
+                x[i] = vert1(1, z.column(ipar_m), f.column(ipar_m), &mut x1[i], &mut x2[i], &mut f1[i], &mut f2[i]);
             } else {
-                fold = updtf(i, &x1, &x2, &mut f1, &mut f2, fold, f[(0, ipar[m])]);
-                vert2(0, x[i], z.column(ipar[m]), f.column(ipar[m]), &mut x1[i], &mut x2[i], &mut f1[i], &mut f2[i]);
+                fold = updtf(i, &x1, &x2, &mut f1, &mut f2, fold, f[(0, ipar_m)]);
+                vert2(0, x[i], z.column(ipar_m), f.column(ipar_m), &mut x1[i], &mut x2[i], &mut f1[i], &mut f2[i]);
             }
         } else if ichild[m] >= 2 {
-            fold = updtf(i, &x1, &x2, &mut f1, &mut f2, fold, f[(0, ipar[m])]);
-            if x[i] == f64::INFINITY || x[i] == z[(1, ipar[m])] {
-                x[i] = vert1(0, z.column(ipar[m]), f.column(ipar[m]), &mut x1[i], &mut x2[i], &mut f1[i], &mut f2[i]);
+            fold = updtf(i, &x1, &x2, &mut f1, &mut f2, fold, f[(0, ipar_m)]);
+            if x[i] == f64::INFINITY || x[i] == z[(1, ipar_m)] {
+                x[i] = vert1(0, z.column(ipar_m), f.column(ipar_m), &mut x1[i], &mut x2[i], &mut f1[i], &mut f2[i]);
             } else {
-                vert2(1, x[i], z.column(ipar[m]), f.column(ipar[m]), &mut x1[i], &mut x2[i], &mut f1[i], &mut f2[i]);
+                vert2(1, x[i], z.column(ipar_m), f.column(ipar_m), &mut x1[i], &mut x2[i], &mut f1[i], &mut f2[i]);
             }
         };
 
         if ichild[m] >= 1 && ichild[m] <= 2 && y[i] == f64::INFINITY {
             y[i] = split1(
-                z[(0, ipar[m])],
-                z[(1, ipar[m])],
-                f[(0, ipar[m])],
-                f[(1, ipar[m])],
+                z[(0, ipar_m)],
+                z[(1, ipar_m)],
+                f[(0, ipar_m)],
+                f[(1, ipar_m)],
             );
         };
 
@@ -159,7 +163,7 @@ pub fn vertex<const N: usize>(
             let (mut j1, mut j2, j3) = if u[i] < x0[(i, 0)] {
                 let j1 = (ichild[m].abs() as f64 / 2.0).ceil() as usize;
                 let j2 = (ichild[m].abs() as f64 / 2.0).floor() as usize;
-                let j3 = if ((ichild[m].abs() as f64 / 2.0) < (j1 as f64) && j1 > 0) || (j1 == L[i] + 1) {
+                let j3 = if ((ichild[m].abs() as f64 / 2.0) < (j1 as f64) && j1 > 0) || (j1 == 3) {
                     J3::MinusOne
                 } else {
                     J3::One
@@ -168,7 +172,7 @@ pub fn vertex<const N: usize>(
             } else {
                 let j1 = (ichild[m].abs() as f64 / 2.0).floor() as usize + 1;
                 let j2 = (ichild[m].abs() as f64 / 2.0).ceil() as usize;
-                let j3 = if (ichild[m].abs() as f64 / 2.0 + 1.0 > j1 as f64) || (j1 < (L[i] + 1)) {
+                let j3 = if (ichild[m].abs() as f64 / 2.0 + 1.0 > j1 as f64) || (j1 < 3) {
                     J3::One
                 } else {
                     J3::MinusOne
@@ -204,22 +208,14 @@ pub fn vertex<const N: usize>(
             };
 
 
-            let k = if isplit[ipar[m]] < 0 {
+            let k = if isplit[ipar_m] < 0 {
                 i
             } else {
-                z[(0, ipar[m])] as usize
+                z[(0, ipar_m)] as usize
             };
 
-            if j1 != l[i] || (x[i] != f64::INFINITY && x[i] != x0[(i, l[i])]) {
-                fold = updtf(
-                    i,
-                    &x1,
-                    &x2,
-                    &mut f1,
-                    &mut f2,
-                    fold,
-                    f0[(l[i], k)],
-                );
+            if j1 != 1 || (x[i] != f64::INFINITY && x[i] != x0[(i, 1)]) {
+                fold = updtf(i, &x1, &x2, &mut f1, &mut f2, fold, f0[(1, k)]);
             }
 
             if x[i] == f64::INFINITY || x[i] == x0[(i, j1)] {
@@ -229,7 +225,7 @@ pub fn vertex<const N: usize>(
                         j1,
                         x0.row(i),
                         f0.column(k),
-                        L[i],
+                        2,
                         &mut x1[i],
                         &mut x2[i],
                         &mut f1[i],
@@ -239,7 +235,7 @@ pub fn vertex<const N: usize>(
                     x2[i] = x0[(i, j1_plus_j3)];
                     f2[i] += f0[(j1_plus_j3, k)];
                 } else if x2[i] == f64::INFINITY {
-                    if j1 != 1 && j1 != L[i] {
+                    if j1 != 1 && j1 != 2 {
                         x2[i] = x0[(i, j1_minus_j3)];
                         f2[i] += f0[(j1_minus_j3, k)];
                     } else {
@@ -263,7 +259,7 @@ pub fn vertex<const N: usize>(
                         x2[i] = x0[(i, j1_plus_j3)];
                         f2[i] += f0[(j1_plus_j3, k)];
                     } else {
-                        if j1 != 1 && j1 != L[i] {
+                        if j1 != 1 && j1 != 2 {
                             x2[i] = x0[(i, j1_plus_j3)];
                             f2[i] += f0[(j1_plus_j3, k)];
                         } else {
@@ -277,7 +273,7 @@ pub fn vertex<const N: usize>(
             if y[i] == f64::INFINITY {
                 if j2 == 2 {
                     y[i] = u[i];
-                } else if j2 == L[i] {
+                } else if j2 == 2 {
                     y[i] = v[i];
                 } else {
                     y[i] = split1(
@@ -289,13 +285,13 @@ pub fn vertex<const N: usize>(
                 }
             }
         }
-        m = ipar[m];
+        m = ipar[m].unwrap_or_else(|| 0); //should be -1 but the loop will stop anyway but i need m to remain usize
     }
 
     for i in 0..N {
         if x[i] == f64::INFINITY {
-            x[i] = x0[(i, l[i])];
-            vert3(l[i], x0.row(i), f0.column(i), L[i], &mut x1[i], &mut x2[i], &mut f1[i], &mut f2[i]);
+            x[i] = x0[(i, 1)];
+            vert3(1, x0.row(i), f0.column(i), 2, &mut x1[i], &mut x2[i], &mut f1[i], &mut f2[i]);
         }
 
         if y[i] == f64::INFINITY {
@@ -323,15 +319,13 @@ mod tests {
             -0.6, -0.9, -0.4,
             -0.7, -1.0, -0.5,
         ]);
-        let ipar = vec![0];
+        let ipar = vec![Some(0)];
         let isplit = vec![-1];
         let ichild = vec![1];
         let z = Matrix2xX::<f64>::from_row_slice(&[0.0, f64::INFINITY]);
         let f = Matrix2xX::<f64>::from_row_slice(&[-0.5, 0.0]);
-        let l = [1];
-        let L = [2];
 
-        let (n0, x, y, x1, x2, f1, f2) = vertex(j, &u, &v, &v1, &x0, &f0, &ipar, &isplit, &ichild, &z, &f, &l, &L);
+        let (n0, x, y, x1, x2, f1, f2) = vertex(j, &u, &v, &v1, &x0, &f0, &ipar, &isplit, &ichild, &z, &f);
 
         assert_eq!(n0, [0]);
         assert_eq!(x, [0.5]);
@@ -354,15 +348,13 @@ mod tests {
             0.0, 0.5, 1.0,
         ]);
         let f0 = Matrix3xX::<f64>::zeros(3);
-        let ipar = vec![1, 2, 3];
+        let ipar = vec![Some(1), Some(2), Some(3)];
         let isplit = vec![3, 2, 1];
         let ichild = vec![1, 2, 1];
         let z = Matrix2xX::<f64>::from_row_slice(&[f64::INFINITY; 6]);
         let f = Matrix2xX::<f64>::from_row_slice(&[0.0; 6]);
-        let l = [1, 1, 1];
-        let L = [2, 2, 2];
 
-        let (n0, x, y, x1, x2, f1, f2) = vertex(j, &u, &v, &v1, &x0, &f0, &ipar, &isplit, &ichild, &z, &f, &l, &L);
+        let (n0, x, y, x1, x2, f1, f2) = vertex(j, &u, &v, &v1, &x0, &f0, &ipar, &isplit, &ichild, &z, &f);
 
         assert_eq!(n0, [0, 0, 0]);
         assert_eq!(x, [0.5, 0.5, 0.5]);
@@ -385,15 +377,13 @@ mod tests {
             -0.0, -0.5, -1.0,
         ]);
         let f0 = Matrix3xX::<f64>::from_row_slice(&[1.; 9]); // 3x3 matrix of ones
-        let ipar = vec![3, 2, 3];
+        let ipar = vec![Some(3), Some(2), Some(3)];
         let isplit = vec![1, 1, 1];
         let ichild = vec![1, 2, 1];
         let z = Matrix2xX::<f64>::from_row_slice(&[f64::INFINITY; 6]);
         let f = Matrix2xX::<f64>::from_row_slice(&[1.0; 6]);
-        let l = [1, 1, 1];
-        let L = [2, 2, 2];
 
-        let (n0, x, y, x1, x2, f1, f2) = vertex(j, &u, &v, &v1, &x0, &f0, &ipar, &isplit, &ichild, &z, &f, &l, &L);
+        let (n0, x, y, x1, x2, f1, f2) = vertex(j, &u, &v, &v1, &x0, &f0, &ipar, &isplit, &ichild, &z, &f);
 
         assert_eq!(n0, [0, 0, 0]);
         assert_eq!(x, [-0.5, -0.5, -0.5]);
@@ -407,33 +397,31 @@ mod tests {
 
     #[test]
     fn test_3() {
-        let j: usize = 2;
+        let j: usize = 1;
         let u = [0.0, 0.0, 0.0];
         let v = [1.0, 1.0, 1.0];
         let v1 = [-1.0, -2.0, -3.0];
         let x0 = SMatrix::<f64, 3, 3>::from_row_slice(&[
             -0.0, -0.5, -1.0,
-            -0.0, -0.5, -1.0,
-            -0.0, -0.5, -1.0,
+            -0.1, -0.52, -1.2,
+            0.2, 0.5, 2.0,
         ]);
         let f0 = Matrix3xX::<f64>::from_row_slice(&[1.; 9]); // 3x3 matrix of ones
-        let ipar = vec![2, 1, 0];
+        let ipar = vec![None, Some(2), Some(0)];
         let isplit = vec![-1, -2, -3];
         let ichild = vec![-3, -1, -1];
-        let z = Matrix2xX::<f64>::from_row_slice(&[1.0; 6]);
-        let f = Matrix2xX::<f64>::from_row_slice(&[1.0; 6]);
-        let l = [2, 0, 1];
-        let L = [1, 1, 2];
+        let z = Matrix2xX::<f64>::from_row_slice(&[1.1, 1.3, 1.0, 2.2, 1.22, 2.23]);
+        let f = Matrix2xX::<f64>::from_row_slice(&[1.11, 1.31, 1.01, 2.22, 1.222, 2.232]);
 
-        let (n0, x, y, x1, x2, f1, f2) = vertex(j, &u, &v, &v1, &x0, &f0, &ipar, &isplit, &ichild, &z, &f, &l, &L);
+        let (n0, x, y, x1, x2, f1, f2) = vertex(j, &u, &v, &v1, &x0, &f0, &ipar, &isplit, &ichild, &z, &f);
 
-        assert_eq!(n0, [1, 0, 0]);
-        assert_eq!(x, [-0., -0., -0.5]);
-        assert_eq!(y, [-0.30901699437494745, -2., -3.]);
-        assert_eq!(x1, [-0.5, -0.5, -0.]);
-        assert_eq!(x2, [-1., -1., -1.]);
-        assert_eq!(f1, [1., 1., 1.]);
-        assert_eq!(f2, [1., 1., 1.]);
+        assert_eq!(n0, [1, 0, 1]);
+        assert_eq!(x, [-0., -0.52, 0.2]);
+        assert_eq!(y, [-0.30901699437494745, -2.0, 0.0]);
+        assert_eq!(x1, [-0.5, -0.1, 0.5]);
+        assert_eq!(x2, [-1.0, -1.2, 2.0]);
+        assert_eq!(f1, [1.31, 1.31, 1.0]);
+        assert_eq!(f2, [1.31, 1.31, 1.0]);
     }
 
     #[test]
@@ -448,15 +436,13 @@ mod tests {
             -1.0, -1.5, 2.0
         ]);
         let f0 = Matrix3xX::<f64>::from_row_slice(&[1.; 9]); // 3x3 matrix of ones
-        let ipar = vec![2, 2, 0];
+        let ipar = vec![Some(2), Some(2), Some(0)];
         let isplit = vec![-1, -2, -3];
         let ichild = vec![-3, 1, -1];
         let z = Matrix2xX::<f64>::from_row_slice(&[1.0; 6]);
         let f = Matrix2xX::<f64>::from_row_slice(&[1.0; 6]);
-        let l = [0, 1, 1];
-        let L = [2, 2, 3];
 
-        let (n0, x, y, x1, x2, f1, f2) = vertex(j, &u, &v, &v1, &x0, &f0, &ipar, &isplit, &ichild, &z, &f, &l, &L);
+        let (n0, x, y, x1, x2, f1, f2) = vertex(j, &u, &v, &v1, &x0, &f0, &ipar, &isplit, &ichild, &z, &f);
 
         assert_eq!(n0, [1, 0, 1]);
         assert_eq!(x, [3., 0.5, 1.]);
@@ -480,15 +466,13 @@ mod tests {
             -1.0, -1.5, 2.0
         ]);
         let f0 = Matrix3xX::<f64>::from_row_slice(&[1.; 9]); // 3x3 matrix of ones
-        let ipar = vec![2, 2, 0];
+        let ipar = vec![Some(2), Some(2), Some(0)];
         let isplit = vec![0, 0, 0];
         let ichild = vec![1, 1, 1];
         let z = Matrix2xX::<f64>::from_row_slice(&[1., 2., 3., 5., 6., 7.]);
         let f = Matrix2xX::<f64>::from_row_slice(&[1.0; 6]);
-        let l = [0, 1, 1];
-        let L = [2, 2, 3];
 
-        let (n0, x, y, x1, x2, f1, f2) = vertex(j, &u, &v, &v1, &x0, &f0, &ipar, &isplit, &ichild, &z, &f, &l, &L);
+        let (n0, x, y, x1, x2, f1, f2) = vertex(j, &u, &v, &v1, &x0, &f0, &ipar, &isplit, &ichild, &z, &f);
 
         assert_eq!(n0, [2, 0, 0]);
         assert_eq!(x, [3., 0.5, -1.5]);

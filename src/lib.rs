@@ -22,33 +22,32 @@ mod neighbor;
 mod hessian;
 mod triple;
 mod csearch;
+mod add_basket;
 
 use crate::basket_func::basket;
 use crate::basket_func::basket1;
-use crate::chk_flag::chrelerr;
-use crate::chk_flag::chvtr;
+use crate::chk_flag::update_flag;
 use crate::chk_locks::chkloc;
 use crate::chk_locks::fbestloc;
 use crate::exgain::exgain;
 use crate::init_func::init;
 use crate::init_func::initbox;
-use crate::init_func::subint;
 use crate::lsearch::lsearch;
+use crate::add_basket::add_basket;
 use crate::split_func::splinit;
 use crate::split_func::split;
 use crate::splrnk::splrnk;
 use crate::strtsw::strtsw;
 use crate::updtrec::updtrec;
 use crate::vertex_func::vertex;
-
-use nalgebra::{Const, DimMin, Matrix2xX, Matrix3xX, SMatrix};
+use nalgebra::{Const, DimMin, Matrix2xX, Matrix3x1, SMatrix};
 
 #[derive(PartialEq)]
 pub enum IinitEnum {
     Zero, // Simple initialization list
     One,
     Two,
-    Three, // TODO: add support of this variant (WTF it is doing?)
+    Three, // (WTF it is doing?)
 }
 
 
@@ -80,13 +79,10 @@ pub fn mcs<const SMAX: usize, const N: usize>(
         panic!("Error MCS main: v should be > u.\nu = {u:?}\nv = {v:?}");
     }
 
+    // l is always 1; L is always 2
 
-    let l = [1_usize; N]; // l indicates the mid-point
-    let L = [2_usize; N]; // L indicates the end point
 
-    // Definition of the initialization list
     let mut x0 = SMatrix::<f64, N, 3>::zeros();
-
     match iinit {
         IinitEnum::Zero => {
             for i in 0..N {
@@ -95,31 +91,7 @@ pub fn mcs<const SMAX: usize, const N: usize>(
                 x0[(i, 2)] = v[i];
             }
         }
-        IinitEnum::One => {
-            for i in 0..N {
-                if u[i] >= 0.0 {
-                    x0[(i, 0)] = u[i];
-                    (x0[(i, 1)], x0[(i, 2)]) = subint(u[i], v[i]);
-                    x0[(i, 1)] = 0.5 * (x0[(i, 0)] + x0[(i, 2)]);
-                } else if v[i] <= 0.0 {
-                    x0[(i, 2)] = v[i];
-                    (x0[(i, 1)], x0[(i, 0)]) = subint(v[i], u[i]);
-                    x0[(i, 1)] = 0.5 * (x0[(i, 0)] + x0[(i, 2)]);
-                } else {
-                    x0[(i, 1)] = 0.0;
-                    (_, x0[(i, 0)]) = subint(0.0, u[i]);
-                    (_, x0[(i, 2)]) = subint(0.0, v[i]);
-                }
-            }
-        }
-        IinitEnum::Two => {
-            for i in 0..N {
-                x0[(i, 0)] = (u[i] * 5.0 + v[i]) / 6.0;
-                x0[(i, 1)] = 0.5 * (u[i] + v[i]);
-                x0[(i, 2)] = (u[i] + v[i] * 5.0) / 6.0;
-            }
-        }
-        _ => {}
+        _ => { panic!("iinit != 0 is not implemented"); }
     }
 
 
@@ -128,119 +100,64 @@ pub fn mcs<const SMAX: usize, const N: usize>(
         panic!("Error- MCS main: infinities in initialization list");
     }
 
-    let mut ncloc = 0_usize;
-    let (f0, istar, mut ncall) =
-        init(&x0, &l, &L);
+    let (mut f0, istar, mut ncall) = init(&x0);
 
     // Computing B[x,y] in this case y = v
-    let mut x = [0.0; N];
-    for i in 0..N {
-        x[i] = x0[(i, l[i])];
-    }
+    let mut x: [f64; N] = std::array::from_fn(|ind| x0[(ind, 1)]);
+
     // 2 opposite vertex
-    let mut v1 = [0.0; N];
-    for i in 0..N {
-        if (x[i] - u[i]).abs() > (x[i] - v[i]).abs() {
+    let v1: [f64; N] = std::array::from_fn(|ind| {
+        if (x[ind] - u[ind]).abs() > (x[ind] - v[ind]).abs() {
             // corener at the lower bound side (left of mid point)
-            v1[i] = u[i]; // go left
+            u[ind] // go left
         } else {
             // corener of the upper bound side
-            v1[i] = v[i]; // go right of mid point
+            v[ind] // go right of mid point
         }
-    }
+    });
 
-    // Some parameters needed for initializing large arrays
+
+    let mut ncloc = 0_usize;
     let mut dim = STEP1;
-
-    // Initialization of some large arrays
     let mut isplit = vec![0_isize; STEP1]; // can be negative
     let mut level = vec![0_usize; STEP1];
-    let mut ipar = vec![0_usize; STEP1];
+    let mut ipar = vec![Some(0_usize); STEP1]; //can be >=0 or -1 (None)
     let mut ichild = vec![0_isize; STEP1]; // can be negative
     let mut nogain = vec![0_usize; STEP1];
 
     let mut f: [Vec<f64>; 2] = std::array::from_fn(|_| vec![0.0; STEP1]);
     let mut z: [Vec<f64>; 2] = std::array::from_fn(|_| vec![0.0; STEP1]);
 
-    // Initialization of the record list, the counters nboxes, nbasket, m
-    // and nloc, xloc and the output flag
     let mut nboxes = 0_usize;
     let mut nbasket_option: Option<usize> = None; // -1
     let mut nbasket0_option: Option<usize> = None; // -1
     let mut nsweepbest = 0_usize;
-    let mut nsweep = 0_usize;
     let mut m = N;
     let mut nloc = 0_usize;
     let mut xloc: Vec<[f64; N]> = Vec::with_capacity(200);
     let mut flag = true;
 
     // Initialize the boxes
-    let (p, mut xbest, mut fbest) =
-        initbox(
-            &x0,
-            &f0,
-            &l,
-            &L,
-            &istar,
-            &u,
-            &v,
-            &mut isplit,
-            &mut level,
-            &mut ipar,
-            &mut ichild,
-            &mut f,
-            &mut nboxes,
-        );
-
+    let (p, mut xbest, mut fbest) = initbox(&x0, &f0, &istar, &u, &v, &mut isplit, &mut level, &mut ipar, &mut ichild, &mut f, &mut nboxes);
     let f0min = fbest;
+
+    update_flag(&mut flag, &stop, fbest, 1);
+
+    let (mut s, mut record) = strtsw::<SMAX>(&level, &f[0], nboxes);
+    let mut nsweep = 1_usize;
+
+    let mut loc: bool;
     let mut xmin: Vec<[f64; N]> = Vec::with_capacity(STEP1);
     let mut fmi: Vec<f64> = Vec::with_capacity(STEP1);
 
-    // Check for convergence
-    if stop[0] > 0.0 && stop[0] < 1.0 {
-        flag = chrelerr(fbest, &stop);
-    } else if stop[0] == 0.0 {
-        flag = chvtr(fbest, stop[1]);
-    }
-    if !flag {
-        return (xbest, fbest, xmin, fmi, ncall, ncloc, flag);
-    }
-
-    // The vector record is updated, and the minimal level s containing non-split boxes is computed
-    let (mut s, mut record) = strtsw::<SMAX>(&level, &f[0], nboxes);
-    nsweep += 1;
-
-    let mut loc: bool;
-    let mut f0: [Vec<f64>; 3] = [
-        f0[0].to_vec(),
-        f0[1].to_vec(),
-        f0[2].to_vec(),
-    ];
-
     while s < SMAX && ncall + 1 <= nf {
         let par = record[s];
-        // Compute the base vertex x, the opposite vertex y, the 'neighboring'
-        // vertices and their function values needed for quadratic
-        // interpolation and the vector n0 indicating that the ith coordinate
-        // has been split n0(i) times in the history of the box
-        let (n0, mut x, mut y, x1, x2, f1, f2) =
-            vertex(
-                par,
-                &u,
-                &v,
-                &v1,
-                &x0,
-                &Matrix3xX::<f64>::from_row_iterator(f0[0].len(), f0.iter().flatten().cloned()),
-                &ipar,
-                &isplit,
-                &ichild,
-                &Matrix2xX::<f64>::from_row_iterator(z[0].len(), z.iter().flatten().cloned()),
-                &Matrix2xX::<f64>::from_row_iterator(f[0].len(), f.iter().flatten().cloned()),
-                &l,
-                &L,
-            );
+        let (n0, mut x, mut y,
+            x1, x2, f1, f2) = vertex(par, &u, &v, &v1, &x0,
+                                     &f0,
+                                     &ipar, &isplit, &ichild,
+                                     &Matrix2xX::<f64>::from_row_iterator(z[0].len(), z.iter().flatten().cloned()), &Matrix2xX::<f64>::from_row_iterator(f[0].len(), f.iter().flatten().cloned()));
 
-        // s 'large'
         let splt = if s > 2 * N * (n0.iter().min().unwrap() + 1) {
             // Splitting index and splitting value z[1][par] for splitting by rank
             (isplit[par], z[1][par]) = splrnk(&n0, &p, &x, &y);
@@ -252,20 +169,7 @@ pub fn mcs<const SMAX: usize, const N: usize>(
             } else {
                 // Splitting by expected gain
                 let e;
-                (e, isplit[par], z[1][par]) =
-                    exgain(
-                        &n0,
-                        &l,
-                        &L,
-                        &x,
-                        &y,
-                        &x1,
-                        &x2,
-                        f[0][par],
-                        &f0,
-                        &f1,
-                        &f2,
-                    );
+                (e, isplit[par], z[1][par]) = exgain(&n0, &x, &y, &x1, &x2, f[0][par], &f0, &f1, &f2);
                 let fexp = f[0][par] + e.iter().min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap();
                 if fexp < fbest {
                     true
@@ -277,79 +181,35 @@ pub fn mcs<const SMAX: usize, const N: usize>(
         };
 
         if splt {
-            let i = isplit[par];
-            if i < 0 { panic!() }
-            let i = i as usize;
+            let i = match isplit[par] {
+                n if n >= 0 => n as usize,
+                _ => panic!("lib.rs: isplit[par] <0"),
+            };
 
             level[par] = 0;
             if z[1][par] == f64::INFINITY {
                 m += 1;
                 z[1][par] = m as f64;
                 let (f01, ncall_add);
-                (f01, flag, ncall_add) =
-                    splinit(
-                        i,
-                        s,
-                        SMAX,
-                        par,
-                        &x0,
-                        &u,
-                        &v,
-                        &mut x,
-                        &L,
-                        &l,
-                        &mut xmin,
-                        &mut fmi,
-                        &mut ipar,
-                        &mut level,
-                        &mut ichild,
-                        &mut f,
-                        &mut xbest,
-                        &mut fbest,
-                        &stop,
-                        &mut record,
-                        &mut nboxes,
-                        &mut nbasket_option,
-                        &mut nsweepbest,
-                        &mut nsweep,
-                    );
+                (f01, flag, ncall_add) = splinit(i, s, SMAX, par, &x0, &u, &v, &mut x, &mut xmin, &mut fmi, &mut ipar, &mut level, &mut ichild, &mut f,
+                                                 &mut xbest, &mut fbest, &stop, &mut record, &mut nboxes, &mut nbasket_option, &mut nsweepbest, &mut nsweep);
+
                 // f01 = f01.reshape(len(f01),1)
                 // f0 = np.concatenate((f0,f01),axis=1)
-                for (i, &el_to_push) in f01.iter().enumerate() {
-                    f0[i].push(el_to_push);
-                }
+                f0.resize_horizontally_mut(f0.ncols() + 1, 0.0);
+                f0.set_column(f0.ncols() - 1, &Matrix3x1::from(f01));
                 ncall += ncall_add;
             } else {
                 z[0][par] = x[i];
                 let ncall1;
-                (flag, ncall1) = split(
-                    i,
-                    s,
-                    SMAX,
-                    par,
-                    &mut x,
-                    &mut y,
-                    &z.iter().map(|row| row[par]).collect::<Vec<f64>>(),
-                    &mut xmin,
-                    &mut fmi,
-                    &mut ipar,
-                    &mut level,
-                    &mut ichild,
-                    &mut f,
-                    &mut xbest,
-                    &mut fbest,
-                    &stop,
-                    &mut record,
-                    &mut nboxes,
-                    &mut nbasket_option,
-                    &mut nsweepbest,
-                    &mut nsweep,
-                );
+                (flag, ncall1) = split(i, s, SMAX, par, &mut x, &mut y, &z.iter().map(|row| row[par]).collect::<Vec<f64>>(),
+                                       &mut xmin, &mut fmi, &mut ipar, &mut level, &mut ichild, &mut f, &mut xbest, &mut fbest, &stop,
+                                       &mut record, &mut nboxes, &mut nbasket_option, &mut nsweepbest, &mut nsweep);
                 ncall += ncall1;
             }
             if nboxes > dim {
                 level.resize(level.len() + STEP, 0_usize);
-                ipar.resize(ipar.len() + STEP, 0_usize);
+                ipar.resize(ipar.len() + STEP, Some(0_usize));
                 isplit.resize(isplit.len() + STEP, 0isize);
                 ichild.resize(ichild.len() + STEP, 0_isize);
                 nogain.resize(nogain.len() + STEP, 0_usize);
@@ -372,23 +232,7 @@ pub fn mcs<const SMAX: usize, const N: usize>(
                 updtrec(par, s + 1, &f[0], &mut record);
             } else {
                 level[par] = 0;
-                let nbasket = match nbasket_option {
-                    Some(n) => {
-                        nbasket_option = Some(n + 1);
-                        n + 1
-                    }
-                    None => {
-                        nbasket_option = Some(0);
-                        0
-                    }
-                };
-                if xmin.len() == nbasket {
-                    xmin.push(x.clone());
-                    fmi.push(f[0][par]);
-                } else {
-                    xmin[nbasket] = x.clone();
-                    fmi[nbasket] = f[0][par];
-                }
+                add_basket(&mut nbasket_option, &mut xmin, &mut fmi, x.clone(), f[0][par]);
             }
         }
 
@@ -425,8 +269,8 @@ pub fn mcs<const SMAX: usize, const N: usize>(
                 fmi[nbasket0_plus_1..(nbasket + 1)].copy_from_slice(&fmi_temp);
                 xmin[nbasket0_plus_1..(nbasket + 1)].copy_from_slice(&xmin_temp);
 
-                for j in (nbasket0_plus_1)..(nbasket + 1) {
-                    let mut x = xmin[j].clone();
+                for j in nbasket0_plus_1..(nbasket + 1) {
+                    x = xmin[j].clone();
                     let mut f1 = fmi[j];
                     if chkloc(nloc, &xloc, &x) {
                         nloc += 1;
@@ -450,32 +294,10 @@ pub fn mcs<const SMAX: usize, const N: usize>(
                                 fbest = fmi1;
                                 nsweepbest = nsweep;
                                 if !flag {
-                                    let nbasket = match nbasket0_option {
-                                        Some(n) => {
-                                            nbasket0_option = Some(n + 1);
-                                            n + 1
-                                        }
-                                        None => {
-                                            nbasket0_option = Some(0);
-                                            0
-                                        }
-                                    };
-                                    nbasket_option = nbasket0_option;
-                                    if xmin.len() == nbasket {
-                                        xmin.push(xmin1.clone());
-                                        fmi.push(fmi1);
-                                    } else {
-                                        xmin[nbasket] = xmin1.clone();
-                                        fmi[nbasket] = fmi1;
-                                    }
+                                    add_basket(&mut nbasket0_option, &mut xmin, &mut fmi, xmin1.clone(), fmi1);
                                     break;
                                 }
-
-                                if stop[0] > 0. && stop[0] < 1. {
-                                    flag = chrelerr(fbest, &stop);
-                                } else {
-                                    flag = chvtr(fbest, stop[1]);
-                                }
+                                update_flag(&mut flag, &stop, fbest, 1);
                                 if !flag {
                                     return (xbest, fbest, xmin, fmi, ncall, ncloc, flag);
                                 }
@@ -490,25 +312,8 @@ pub fn mcs<const SMAX: usize, const N: usize>(
                                 break;
                             }
                             if loc {
-                                let nbasket0 = match nbasket0_option {
-                                    Some(n) => {
-                                        nbasket0_option = Some(n + 1);
-                                        n + 1
-                                    }
-                                    None => {
-                                        nbasket0_option = Some(0);
-                                        0
-                                    }
-                                };
-
-                                if xmin.len() == nbasket0 {
-                                    xmin.push(xmin1.clone());
-                                    fmi.push(fmi1);
-                                } else {
-                                    xmin[nbasket0] = xmin1.clone();
-                                    fmi[nbasket0] = fmi1;
-                                }
-                                fbestloc(&fmi, &mut fbest, &xmin, &mut xbest, nbasket0);
+                                add_basket(&mut nbasket0_option, &mut xmin, &mut fmi, xmin1.clone(), fmi1);
+                                fbestloc(&fmi, &mut fbest, &xmin, &mut xbest, nbasket0_option.unwrap());
 
                                 if !flag {
                                     nbasket_option = nbasket0_option;
@@ -547,6 +352,10 @@ pub fn mcs<const SMAX: usize, const N: usize>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use approx::assert_relative_eq;
+
+
+    static TOLERANCE: f64 = 1e-14;
 
     #[test]
     fn test_0() {
@@ -594,5 +403,65 @@ mod tests {
         assert_eq!(flag, true);
         assert_eq!(xbest, [0.2510430974668892, 0.0, 0.0, 0.24721359549995797, 0.0, 0.0]);
         assert_eq!(fbest, -0.014725947982821272);
+    }
+
+
+    #[test]
+    fn test_2() {
+        const SMAX: usize = 50;
+        let nf = 100;
+        let stop = vec![11., f64::NEG_INFINITY];
+        let iinit = IinitEnum::Zero;
+        let local = 0;
+        let gamma = 2e-10;
+        let u = [-3.; 6];
+        let v = [3.; 6];
+        let hess = SMatrix::<f64, 6, 6>::repeat(1.);
+
+        let (xbest, fbest, xmin, fmi, ncall, ncloc, flag) = mcs::<SMAX, 6>(u, v, nf, stop, iinit, local, gamma, hess);
+
+        assert_eq!(ncall, 100);
+        assert_eq!(ncloc, 0);
+        assert_eq!(flag, true);
+        assert_relative_eq!(xbest.as_slice(), [0.5092880150001403, 0.5092880150001403, 0.5599033356467378, 0.5092880150001403, 0.5092880150001403, 0.].as_slice(), epsilon = TOLERANCE);
+        assert_eq!(fbest, -0.8165894352179089);
+        assert_eq!(xmin, vec![
+            [0.5092880150001403, 0.5092880150001403, 0.5092880150001403, 0.5092880150001403, 0.5092880150001403, 0.],
+            [0.5092880150001403, 0.299449812778105, 0.5092880150001403, 0.5092880150001403, 0.5092880150001403, 0.],
+            [0.5092880150001403, 0.5092880150001403, 0.5092880150001403, 0.5092880150001403, 0.5092880150001403, 0.],
+            [0.5092880150001403, 0.299449812778105, 0.5092880150001403, 0.5092880150001403, 0.5092880150001403, 0.],
+            [0.5092880150001403, 0.5092880150001403, 0.5092880150001403, 0.5092880150001403, 0.5092880150001403, 0.],
+            [0.5092880150001403, 0.299449812778105, 0.5092880150001403, 0.5092880150001403, 0.5092880150001403, 0.],
+            [0.5092880150001403, 0.5092880150001403, 0.5092880150001403, 0.5092880150001403, 0.5092880150001403, 0.],
+            [0.5092880150001403, 0.299449812778105, 0.5092880150001403, 0.5092880150001403, 0.5092880150001403, 0.]]
+        );
+        assert_eq!(fmi, vec![-0.8154675055618968, -0.18369566296880474, -0.8154675055618968, -0.18369566296880474, -0.8154675055618968, -0.18369566296880474, -0.8154675055618968, -0.18369566296880474]);
+    }
+
+    #[test]
+    fn test_3() {
+        const SMAX: usize = 100;
+        let nf = 100;
+        let stop = vec![11., f64::NEG_INFINITY];
+        let iinit = IinitEnum::Zero;
+        let local = 50;
+        let gamma = 2e-10;
+        let u = [-3.; 6];
+        let v = [3.; 6];
+        let hess = SMatrix::<f64, 6, 6>::repeat(1.);
+
+        let (xbest, fbest, xmin, fmi, ncall, ncloc, flag) = mcs::<SMAX, 6>(u, v, nf, stop, iinit, local, gamma, hess);
+
+        assert_eq!(ncall, 246);
+        assert_eq!(ncloc, 188);
+        assert_eq!(flag, true);
+        assert_relative_eq!(xbest.as_slice(), [0.3840375197582117  , 1.0086370591370057  , 0.83694910437547    ,       0.5292791936678723  , 0.10626783160256341 , 0.013378574118123088].as_slice(), epsilon = TOLERANCE);
+        assert_eq!(fbest, -2.720677123715828);
+        assert_eq!(xmin, vec![
+            [0.3840375197582117, 1.0086370591370057, 0.83694910437547, 0.5292791936678723, 0.10626783160256341, 0.013378574118123088],
+            [0.40280505110773396, 1.0185760300002806, 0.8542187590882532, 0.5092880150001403, 0.12196569488839512, 0.03842934900132638],
+            [0.40280505110773396, 0.5032406113241115, 0.5092880150001403, 0.5092880150001403, 0.299449812778105, 0.]
+        ]);
+        assert_eq!(fmi, vec![-2.720677123715828, -2.648749360565575, -0.975122854985175]);
     }
 }

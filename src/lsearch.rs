@@ -1,4 +1,4 @@
-use crate::chk_flag::*;
+use crate::chk_flag::update_flag;
 use crate::csearch::csearch;
 use crate::feval::feval;
 use crate::gls::gls;
@@ -55,13 +55,8 @@ pub fn lsearch<const N: usize>(
     let mut fold = fmi.clone();
     let eps: f64 = 2.220446049250313e-16;
 
-    let mut flag = if stop[0] > 0.0 && stop[0] < 1.0 {
-        chrelerr(fmi, stop)
-    } else if stop[0] == 0.0 {
-        chvtr(fmi, stop[1])
-    } else {
-        true // Default to true
-    };
+    let mut flag = true;
+    update_flag(&mut flag, &stop, fmi, 1);
 
     if !flag {
         return (xmin, fmi, ncall, flag);
@@ -122,12 +117,7 @@ pub fn lsearch<const N: usize>(
 
         clamp_xmin(&mut xmin, u, v);
 
-        // Update flag
-        if stop[0] > 0.0 && stop[0] < 1.0 {
-            flag = chrelerr(fmi, stop)
-        } else if stop[0] == 0.0 {
-            flag = chvtr(fmi, stop[1])
-        }
+        update_flag(&mut flag, &stop, fmi, 1);
 
         if !flag {
             return (xmin, fmi, ncall, flag);
@@ -257,12 +247,7 @@ pub fn lsearch<const N: usize>(
         xold = xmin.clone();
         fold = fmi;
 
-        // Update flag again
-        if stop[0] > 0.0 && stop[0] < 1.0 {
-            flag = chrelerr(fmi, stop)
-        } else if stop[0] == 0.0 {
-            flag = chvtr(fmi, stop[1])
-        };
+        update_flag(&mut flag, &stop, fmi, 1);
 
         if !flag {
             return (xmin, fmi, ncall, flag);
@@ -315,11 +300,7 @@ pub fn lsearch<const N: usize>(
                 new_xmin_i.clamp(u[i], v[i])
             });
 
-            if stop[0] > 0.0 && stop[0] < 1.0 {
-                flag = chrelerr(fmi, stop)
-            } else if stop[0] == 0.0 {
-                flag = chvtr(fmi, stop[1])
-            };
+            update_flag(&mut flag, &stop, fmi, 1);
 
             if !flag {
                 return (xmin, fmi, ncall, flag);
