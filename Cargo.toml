@@ -6,3 +6,11 @@ edition = "2021"
 [dependencies]
 nalgebra = "*"
 approx = "*"
+itertools = "*"
+
+[dev-dependencies]
+criterion = { version = "*", features = ["html_reports"] }
+
+[[bench]]
+name = "benchmarks"
+harness = false

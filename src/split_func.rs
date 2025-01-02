@@ -3,7 +3,7 @@ use crate::chk_flag::update_flag;
 use crate::feval::feval;
 use crate::sign::sign;
 use crate::updtrec::updtrec;
-use nalgebra::SMatrix;
+use nalgebra::{Matrix2xX, SMatrix};
 
 
 const SQRT_5: f64 = 2.2360679774997896964091736687312;
@@ -14,7 +14,7 @@ fn genbox<const SMAX: usize>(
     ipar: &mut Vec<Option<usize>>,
     level: &mut Vec<usize>,
     ichild: &mut Vec<isize>,
-    f: &mut [Vec<f64>; 2],
+    f: &mut Matrix2xX<f64>,
     ipar_upd: usize,
     level_upd: usize,
     ichild_upd: isize,
@@ -26,9 +26,9 @@ fn genbox<const SMAX: usize>(
     ipar[*nboxes] = Some(ipar_upd);
     level[*nboxes] = level_upd;
     ichild[*nboxes] = ichild_upd;
-    f[0][*nboxes] = f_upd;
+    f[(0, *nboxes)] = f_upd;
 
-    updtrec(*nboxes, level[*nboxes], &f[0], record);
+    updtrec(*nboxes, level[*nboxes], f.row(0), record);
 }
 
 
@@ -46,7 +46,7 @@ pub fn splinit<const N: usize, const SMAX: usize>(
     ipar: &mut Vec<Option<usize>>,
     level: &mut Vec<usize>,
     ichild: &mut Vec<isize>,
-    f: &mut [Vec<f64>; 2],
+    f: &mut Matrix2xX<f64>,
     xbest: &mut [f64; N],
     fbest: &mut f64,
     stop: &[f64],
@@ -71,14 +71,14 @@ pub fn splinit<const N: usize, const SMAX: usize>(
             ncall += 1;
             if f0[j] < *fbest {
                 *fbest = f0[j];
-                *xbest = x.clone();
+                *xbest = *x;
                 *nsweepbest = *nsweep;
                 update_flag(&mut flag, stop, *fbest, 2);
                 if !flag {
                     return (f0, flag, ncall);
                 }
             }
-        } else { f0[j] = f[0][par] }
+        } else { f0[j] = f[(0, par)] }
     }
 
     if s + 1 < smax {
@@ -101,7 +101,7 @@ pub fn splinit<const N: usize, const SMAX: usize>(
                 );
             } else {
                 x[i] = x0[(i, j)];
-                add_basket(nbasket_option, xmin, fmi, x.clone(), f0[j]);
+                add_basket(nbasket_option, xmin, fmi, x, f0[j]);
             }
             nchild += 1;
             if (f0[j + 1] < f0[j]) || (s + 2 < smax) {
@@ -112,7 +112,7 @@ pub fn splinit<const N: usize, const SMAX: usize>(
                 );
             } else {
                 x[i] = x0[(i, j + 1)];
-                add_basket(nbasket_option, xmin, fmi, x.clone(), f0[j + 1]);
+                add_basket(nbasket_option, xmin, fmi, x, f0[j + 1]);
             }
         }
 
@@ -126,7 +126,7 @@ pub fn splinit<const N: usize, const SMAX: usize>(
     } else {
         for j in 0..3 {
             x[i] = x0[(i, j)];
-            add_basket(nbasket_option, xmin, fmi, x.clone(), f0[j]);
+            add_basket(nbasket_option, xmin, fmi, x, f0[j]);
         }
     }
     (f0, flag, ncall)
@@ -140,13 +140,14 @@ pub fn split<const N: usize, const SMAX: usize>(
     par: usize,
     x: &mut [f64; N],
     y: &mut [f64; N],
-    z: &Vec<f64>,
+    z0: f64,
+    z1: f64,
     xmin: &mut Vec<[f64; N]>,
     fmi: &mut Vec<f64>,
     ipar: &mut Vec<Option<usize>>,
     level: &mut Vec<usize>,
     ichild: &mut Vec<isize>,
-    f: &mut [Vec<f64>; 2],
+    f: &mut Matrix2xX<f64>,
     xbest: &mut [f64; N],
     fbest: &mut f64,
     stop: &[f64],
@@ -161,13 +162,13 @@ pub fn split<const N: usize, const SMAX: usize>(
 ) {
     let mut ncall: usize = 0;
     let mut flag = true;
-    x[i] = z[1];
-    f[1][par] = feval(x);
+    x[i] = z1;
+    f[(1, par)] = feval(x);
     ncall += 1;
 
-    if f[1][par] < *fbest {
-        *fbest = f[1][par];
-        *xbest = x.clone();
+    if f[(1, par)] < *fbest {
+        *fbest = f[(1, par)];
+        *xbest = *x;
         *nsweepbest = *nsweep;
         update_flag(&mut flag, stop, *fbest, 2);
         if !flag {
@@ -176,52 +177,52 @@ pub fn split<const N: usize, const SMAX: usize>(
     }
 
     if s + 1 < smax {
-        if f[0][par] <= f[1][par] {
+        if f[(0, par)] <= f[(1, par)] {
             genbox(
                 nboxes, ipar, level, ichild, f,
-                par, s + 1, 1, f[0][par], record,
+                par, s + 1, 1, f[(0, par)], record,
             );
             if s + 2 < smax {
                 genbox(
                     nboxes, ipar, level, ichild, f,
-                    par, s + 2, 2, f[1][par], record,
+                    par, s + 2, 2, f[(1, par)], record,
                 );
             } else {
-                x[i] = z[1];
-                add_basket(nbasket_option, xmin, fmi, x.clone(), f[1][par]);
+                x[i] = z1;
+                add_basket(nbasket_option, xmin, fmi, x, f[(1, par)]);
             }
         } else {
             if s + 2 < smax {
                 genbox(
                     nboxes, ipar, level, ichild, f,
-                    par, s + 2, 1, f[0][par], record,
+                    par, s + 2, 1, f[(0, par)], record,
                 );
             } else {
-                x[i] = z[0];
-                add_basket(nbasket_option, xmin, fmi, x.clone(), f[0][par]);
+                x[i] = z0;
+                add_basket(nbasket_option, xmin, fmi, x, f[(0, par)]);
             }
 
             genbox(
                 nboxes, ipar, level, ichild, f,
-                par, s + 1, 2, f[1][par], record,
+                par, s + 1, 2, f[(1, par)], record,
             );
         }
 
-        if z[1] != y[i] {
-            if (z[1] - y[i]).abs() > (z[1] - z[0]).abs() * (3.0 - SQRT_5) * 0.5 {
+        if z1 != y[i] {
+            if (z1 - y[i]).abs() > (z1 - z0).abs() * (3.0 - SQRT_5) * 0.5 {
                 genbox(
                     nboxes, ipar, level, ichild, f,
-                    par, s + 1, 3, f[1][par], record,
+                    par, s + 1, 3, f[(1, par)], record,
                 );
             } else {
                 if s + 2 < smax {
                     genbox(
                         nboxes, ipar, level, ichild, f,
-                        par, s + 2, 3, f[1][par], record,
+                        par, s + 2, 3, f[(1, par)], record,
                     );
                 } else {
-                    x[i] = z[1];
-                    add_basket(nbasket_option, xmin, fmi, x.clone(), f[1][par]);
+                    x[i] = z1;
+                    add_basket(nbasket_option, xmin, fmi, x, f[(1, par)]);
                 }
             }
         }
@@ -229,11 +230,11 @@ pub fn split<const N: usize, const SMAX: usize>(
         let mut xi1 = x.clone();
         let mut xi2 = x.clone();
 
-        xi1[i] = z[0];
-        add_basket(nbasket_option, xmin, fmi, xi1, f[0][par]);
+        xi1[i] = z0;
+        add_basket(nbasket_option, xmin, fmi, &mut xi1, f[(0, par)]);
 
-        xi2[i] = z[1];
-        add_basket(nbasket_option, xmin, fmi, xi2, f[1][par]);
+        xi2[i] = z1;
+        add_basket(nbasket_option, xmin, fmi, &mut xi2, f[(1, par)]);
     }
     (flag, ncall)
 }
@@ -277,7 +278,7 @@ mod tests {
         let mut ipar = vec![Some(0); 10];
         let mut level = vec![0; 10];
         let mut ichild = vec![0; 10];
-        let mut f: [Vec<f64>; 2] = [vec![0.0; 10], vec![0.0; 10]];
+        let mut f = Matrix2xX::<f64>::zeros(10);
         let mut xbest = [0.0; 6];
         let mut fbest = 10.0;
         let stop = [20., f64::NEG_INFINITY];
@@ -303,7 +304,7 @@ mod tests {
         assert_eq!(ipar, [Some(0); 10]);
         assert_eq!(level, [0; 10]);
         assert_eq!(ichild, [0; 10]);
-        assert_eq!(f, [[0.0; 10]; 2]);
+        assert_eq!(f, Matrix2xX::<f64>::zeros(10));
         assert_eq!(flag, true);
         assert_eq!(ncall, 2);
         assert_eq!(record, [0; 10]);
@@ -328,7 +329,7 @@ mod tests {
         let mut ipar = vec![Some(1); 10];
         let mut level = vec![1; 10];
         let mut ichild = vec![1; 10];
-        let mut f: [Vec<f64>; 2] = [vec![1.0; 10], vec![1.0; 10]];
+        let mut f = Matrix2xX::<f64>::repeat(10, 1.0);
         let mut xbest = [1.0; 6];
         let mut fbest = 0.0;
         let stop = [10., f64::NEG_INFINITY];
@@ -353,7 +354,7 @@ mod tests {
         assert_eq!(ipar, [Some(1); 10]);
         assert_eq!(level, [1; 10]);
         assert_eq!(ichild, [1; 10]);
-        assert_eq!(f, [[1.0; 10]; 2]);
+        assert_eq!(f, Matrix2xX::<f64>::repeat(10, 1.0));
         assert_eq!(flag, true);
         assert_eq!(ncall, 2);
         assert_eq!(record, [1; 10]);
@@ -378,7 +379,7 @@ mod tests {
         let mut ipar = vec![Some(0); 10];
         let mut level = vec![0; 10];
         let mut ichild = vec![1; 10];
-        let mut f: [Vec<f64>; 2] = [vec![0.0; 10], vec![0.0; 10]];
+        let mut f = Matrix2xX::<f64>::zeros(10);
         let mut xbest = [0.0; 6];
         let mut fbest = 0.0;
         let stop = [1.0, 2.0, f64::NEG_INFINITY];
@@ -394,6 +395,10 @@ mod tests {
                     &mut fbest, &stop, &mut record, &mut nboxes, &mut nbasket,
                     &mut nsweepbest, &mut nsweep,
             );
+        let expected_f = Matrix2xX::<f64>::from_row_slice(&[
+            0.0, 0.0, -1.234805298277e-312, -1.234805298277e-312, 0.0, 0.0, -1.234805298277e-312, -1.234805298277e-312, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+        ]);
 
         assert_eq!(xbest, [5., 1.0, 5., 5., 5., 5.]);
         assert_eq!(fbest, -1.234805298277e-312);
@@ -403,7 +408,7 @@ mod tests {
         assert_eq!(ipar, [Some(0), Some(0), Some(4), Some(4), Some(4), Some(4), Some(4), Some(4), Some(0), Some(0)]);
         assert_eq!(level, [0, 0, 3, 3, 4, 4, 3, 3, 0, 0]);
         assert_eq!(ichild, [1, 1, -1, -2, -3, -4, -5, -6, 1, 1]);
-        assert_eq!(f, [[0.0, 0.0, -1.234805298277e-312, -1.234805298277e-312, 0.0, 0.0, -1.234805298277e-312, -1.234805298277e-312, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]]);
+        assert_eq!(f, expected_f);
         assert_eq!(flag, true);
         assert_eq!(ncall, 2);
         assert_eq!(record, [1, 1, 1, 2, 1, 1, 1, 1, 1, 1]);
@@ -428,7 +433,7 @@ mod tests {
         let mut ipar = vec![Some(0); 10];
         let mut level = vec![0; 10];
         let mut ichild = vec![1; 10];
-        let mut f: [Vec<f64>; 2] = [vec![0.0; 10], vec![0.0; 10]];
+        let mut f = Matrix2xX::<f64>::zeros(10);
         let mut xbest = [0.0; 6];
         let mut fbest = 10.0;
         let stop = [30., f64::NEG_INFINITY];
@@ -444,6 +449,10 @@ mod tests {
                     &mut fbest, &stop, &mut record, &mut nboxes, &mut nbasket,
                     &mut nsweepbest, &mut nsweep,
             );
+        let expected_f = Matrix2xX::<f64>::from_row_slice(&[
+            0.0, 0.0, -8.440757176906739e-254, -8.440757176906739e-254, -8.440757176906739e-254, -8.440757176906739e-254, 0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+        ]);
 
         assert_eq!(xbest, [5., 5., 1., 5., 5., 5.]);
         assert_eq!(fbest, -8.440757176906739e-254);
@@ -453,7 +462,7 @@ mod tests {
         assert_eq!(ipar, [Some(0), Some(0), Some(4), Some(4), Some(4), Some(4), Some(0), Some(0), Some(0), Some(0)]);
         assert_eq!(level, [0, 0, 4, 4, 4, 4, 0, 0, 0, 0]);
         assert_eq!(ichild, [1, 1, -1, -2, -5, -6, 1, 1, 1, 1]);
-        assert_eq!(f, [[0.0, 0.0, -8.440757176906739e-254, -8.440757176906739e-254, -8.440757176906739e-254, -8.440757176906739e-254, 0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]]);
+        assert_eq!(f, expected_f);
         assert_eq!(flag, true);
         assert_eq!(ncall, 2);
         assert_eq!(record, [1, 1, 1, 1, 2, 1, 1, 1, 1, 1]);
@@ -478,7 +487,7 @@ mod tests {
         let mut ipar = vec![Some(0); 10];
         let mut level = vec![0; 10];
         let mut ichild = vec![1; 10];
-        let mut f: [Vec<f64>; 2] = [vec![0.0; 10], vec![0.0; 10]];
+        let mut f = Matrix2xX::<f64>::zeros(10);
         let mut xbest = [0.0; 6];
         let mut fbest = 10.0;
         let stop = [18., f64::NEG_INFINITY];
@@ -494,6 +503,10 @@ mod tests {
                     &mut fbest, &stop, &mut record, &mut nboxes, &mut nbasket,
                     &mut nsweepbest, &mut nsweep,
             );
+        let expected_f = Matrix2xX::<f64>::from_row_slice(&[
+            0.0, 0.0, -8.440757176906739e-254, -8.440757176906739e-254, -8.440757176906739e-254, -8.440757176906739e-254, 0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+        ]);
 
         assert_eq!(xbest, [5., 5., 1., 5., 5., 5.]);
         assert_eq!(fbest, -8.440757176906739e-254);
@@ -503,7 +516,7 @@ mod tests {
         assert_eq!(ipar, [Some(0), Some(0), Some(4), Some(4), Some(4), Some(4), Some(0), Some(0), Some(0), Some(0)]);
         assert_eq!(level, [0, 0, 4, 4, 4, 4, 0, 0, 0, 0]);
         assert_eq!(ichild, [1, 1, -1, -2, -5, -6, 1, 1, 1, 1]);
-        assert_eq!(f, [[0.0, 0.0, -8.440757176906739e-254, -8.440757176906739e-254, -8.440757176906739e-254, -8.440757176906739e-254, 0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]]);
+        assert_eq!(f, expected_f);
         assert_eq!(flag, true);
         assert_eq!(ncall, 2);
         assert_eq!(record, [1, 1, 1, 1, 2, 1, 1, 1, 1, 1]);
@@ -521,13 +534,13 @@ mod tests {
         let par = 4_usize;
         let mut x = [1., 2., 3., 4., 5., 6.];
         let mut y = [10., 20., 30., 40., 50., 60.];
-        let z = vec![100., 1., 0., 0., 0., 0.];
+        let (z0, z1) = (100., 1.);
         let mut xmin = vec![[-10., -20., -30., -40., -50., -60.], [-11., -21., -31., -41., -51., -61.]];
         let mut fmi = vec![0., 1., 2., 3., 4., 5.];
         let mut ipar = vec![Some(0); 10];
         let mut level = vec![0; 10];
         let mut ichild = vec![-1; 10];
-        let mut f: [Vec<f64>; 2] = [vec![1.0; 10], vec![1.0; 10]];
+        let mut f = Matrix2xX::<f64>::repeat(10, 1.0);
         let mut xbest = [0.0; 6];
         let mut fbest = 10.0;
         let stop = [0.0, 0.0, f64::NEG_INFINITY];
@@ -538,9 +551,13 @@ mod tests {
         let mut nsweep = 1_usize;
 
         let (flag, ncall) = split(
-            i, s, smax, par, &mut x, &mut y, &z, &mut xmin, &mut fmi, &mut ipar, &mut level,
+            i, s, smax, par, &mut x, &mut y, z0, z1, &mut xmin, &mut fmi, &mut ipar, &mut level,
             &mut ichild, &mut f, &mut xbest, &mut fbest, &stop, &mut record, &mut nboxes,
             &mut nbasket, &mut nsweepbest, &mut nsweep);
+        let expected_f = Matrix2xX::<f64>::from_row_slice(&[
+            1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+            1.0, 1.0, 1.0, 1.0, -3.391970967769076e-191, 1.0, 1.0, 1.0, 1.0, 1.0
+        ]);
 
         assert_eq!(x, [1., 2., 3., 4., 5., 6.]);
         assert_eq!(y, [10., 20., 30., 40., 50., 60.]);
@@ -549,7 +566,7 @@ mod tests {
         assert_eq!(ipar, [Some(0); 10]);
         assert_eq!(level, [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
         assert_eq!(ichild, [-1; 10]);
-        assert_eq!(f, [[1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0, -3.391970967769076e-191, 1.0, 1.0, 1.0, 1.0, 1.0]]);
+        assert_eq!(f, expected_f);
         assert_eq!(xbest, [1., 2., 3., 4., 5., 6.]);
         assert_eq!(fbest, -3.391970967769076e-191);
         assert_eq!(record, [1, 2, 3, 4, 5, 6, 7]);
@@ -569,13 +586,13 @@ mod tests {
         let par = 4_usize;
         let mut x = [1., 2., 3., 4., 5., 6.];
         let mut y = [10., 20., 30., 40., 50., 60.];
-        let z = vec![100., 1., 0., 0., 0., 0.];
+        let (z0, z1) = (100., 1.);
         let mut xmin = vec![[-10., -20., -30., -40., -50., -60.], [-11., -21., -31., -41., -51., -61.]];
         let mut fmi = vec![0., 1., 2., 3., 4., 5.];
         let mut ipar = vec![Some(0); 10];
         let mut level = vec![0; 10];
         let mut ichild = vec![-1; 10];
-        let mut f: [Vec<f64>; 2] = [vec![1.0; 10], vec![1.0; 10]];
+        let mut f = Matrix2xX::<f64>::repeat(10, 1.0);
         let mut xbest = [0.0; 6];
         let mut fbest = 10.0;
         let stop = [0.0, 0.0, f64::NEG_INFINITY];
@@ -586,9 +603,13 @@ mod tests {
         let mut nsweep = 1_usize;
 
         let (flag, ncall) = split(
-            i, s, smax, par, &mut x, &mut y, &z, &mut xmin, &mut fmi, &mut ipar, &mut level,
+            i, s, smax, par, &mut x, &mut y, z0, z1, &mut xmin, &mut fmi, &mut ipar, &mut level,
             &mut ichild, &mut f, &mut xbest, &mut fbest, &stop, &mut record, &mut nboxes,
             &mut nbasket, &mut nsweepbest, &mut nsweep);
+        let expected_f = Matrix2xX::<f64>::from_row_slice(&[
+            1.0, 1.0, -1.4064265983273568e-148, -1.4064265983273568e-148, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+            1.0, 1.0, 1.0, 1.0, -1.4064265983273568e-148, 1.0, 1.0, 1.0, 1.0, 1.0
+        ]);
 
         assert_eq!(x, [1., 2., 1., 4., 5., 6.]);
         assert_eq!(y, [10., 20., 30., 40., 50., 60.]);
@@ -597,7 +618,7 @@ mod tests {
         assert_eq!(ipar, [Some(0), Some(4), Some(4), Some(4), Some(0), Some(0), Some(0), Some(0), Some(0), Some(0)]);
         assert_eq!(level, [0, 2, 1, 2, 0, 0, 0, 0, 0, 0]);
         assert_eq!(ichild, [-1, 1, 2, 3, -1, -1, -1, -1, -1, -1]);
-        assert_eq!(f, [[1.0, 1.0, -1.4064265983273568e-148, -1.4064265983273568e-148, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0, -1.4064265983273568e-148, 1.0, 1.0, 1.0, 1.0, 1.0]]);
+        assert_eq!(f, expected_f);
         assert_eq!(xbest, [1., 2., 1., 4., 5., 6.]);
         assert_eq!(fbest, -1.4064265983273568e-148);
         assert_eq!(record, [1, 2, 3, 4, 5, 6, 7]);
@@ -617,13 +638,13 @@ mod tests {
         let par = 3_usize;
         let mut x = [10.0, 9.0, 8.0, 7.0, 6.0, 5.0];
         let mut y = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
-        let z = vec![5.1, -5.2, 5.3, -5.4, 5.5, -5.6];
+        let (z0, z1) = (5.1, -5.2);
         let mut xmin = vec![[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]];
         let mut fmi = vec![-1.0, -2.0, -3.0, -4.0, -5.0, -6.0];
         let mut ipar = vec![Some(1); 6];
         let mut level = vec![1; 6];
         let mut ichild = vec![1; 6];
-        let mut f: [Vec<f64>; 2] = [vec![1.0; 10], vec![1.0; 10]];
+        let mut f = Matrix2xX::<f64>::repeat(10, 1.0);
         let mut xbest = [1.0; 6];
         let mut fbest = 0.0;
         let stop = [0.0, 0.0, f64::NEG_INFINITY];
@@ -634,9 +655,13 @@ mod tests {
         let mut nsweep = 1_usize;
 
         let (flag, ncall) = split(
-            i, s, smax, par, &mut x, &mut y, &z, &mut xmin, &mut fmi, &mut ipar, &mut level,
+            i, s, smax, par, &mut x, &mut y, z0, z1, &mut xmin, &mut fmi, &mut ipar, &mut level,
             &mut ichild, &mut f, &mut xbest, &mut fbest, &stop, &mut record, &mut nboxes,
             &mut nbasket, &mut nsweepbest, &mut nsweep);
+        let expected_f = Matrix2xX::<f64>::from_row_slice(&[
+            1.0, 1.0, 1.0, -0.0, -0.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+            1.0, 1.0, 1.0, -0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0
+        ]);
 
         assert_eq!(x, [10.0, 9.0, -5.2, 7.0, 6.0, 5.0]);
         assert_eq!(y, [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
@@ -645,7 +670,7 @@ mod tests {
         assert_eq!(ipar, [Some(1), Some(1), Some(3), Some(3), Some(3), Some(1)]);
         assert_eq!(level, [1, 1, 5, 4, 4, 1]);
         assert_eq!(ichild, [1, 1, 1, 2, 3, 1]);
-        assert_eq!(f, [[1.0, 1.0, 1.0, -0.0, -0.0, 1.0, 1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, -0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]]);
+        assert_eq!(f, expected_f);
         assert_eq!(xbest, [1.; 6]);
         assert_eq!(fbest, 0.0);
         assert_eq!(record, [1, 2, 3, 4, 3, 6, 7]);

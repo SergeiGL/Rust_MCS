@@ -19,7 +19,7 @@ pub enum IerEnum {
 pub fn minq<const N: usize>(
     gam: f64,
     c: &SVector<f64, N>,
-    G: &SMatrix<f64, N, N>,
+    G: &mut SMatrix<f64, N, N>,
     xu: &[f64; N],
     xo: &[f64; N],
 ) -> (
@@ -43,7 +43,6 @@ pub fn minq<const N: usize>(
 
     let hpeps = 2.2204e-14;
 
-    let mut G = G.clone();
     for i in 0..N {
         G[(i, i)] += hpeps * G[(i, i)];
     }
@@ -70,7 +69,7 @@ pub fn minq<const N: usize>(
             panic!("infinite x in minq {x:?}");
         }
 
-        g = G * x + c;
+        g = *G * x + c;
 
         let fctnew = gam + (x.transpose().scale(0.5) * (c + g))[0];
 
@@ -154,7 +153,7 @@ pub fn minq<const N: usize>(
         nfree = free.iter().filter(|&&b| b).count();
 
         if unfix && nfree_old_option.map_or(false, |nfree_old| nfree_old == nfree) {
-            g = G * x + c;
+            g = *G * x + c;
             nitref += 1;
         } else {
             nitref = 0;
@@ -196,7 +195,7 @@ mod tests {
     fn test_real_mistake() {
         let gam = -2.908187629699183;
         let c = SVector::<f64, 6>::from_row_slice(&[2.8705323582816686, -1.845648568065381, -0.02892553811394936, -4.756026093917556, 0.006436196481451522, -0.8361689370862301]);
-        let G = SMatrix::<f64, 6, 6>::from_row_slice(&[
+        let mut G = SMatrix::<f64, 6, 6>::from_row_slice(&[
             95.77846342296617, 1.7848504468928648, -0.006459576572370291, 4.655453534841051, 0.014037902478796585, 0.894694212391099,
             1.7848504468928648, 45.01426462103387, -0.10270189816114665, -3.2914523096054302, 0.19693639958736797, -0.0582154345898392,
             -0.006459576572370291, -0.10270189816114665, 0.30851282407215563, -0.13564150643144463, 0.05546105384553863, 0.14420187864794054,
@@ -207,7 +206,7 @@ mod tests {
         let xu = [-0.125, -0.06239714070289448, -0.11155191538152609, -0.1875, -0.07153472077076538, -0.019673386763705048];
         let xo = [0.125, 0.06239714070289448, 0.11155191538152609, 0.1875, 0.07153472077076538, 0.019673386763705048];
 
-        let (x, fct, ier) = minq(gam, &c, &G, &xu, &xo);
+        let (x, fct, ier) = minq(gam, &c, &mut G, &xu, &xo);
 
         let expected_x = [-0.03597742419646178, 0.05042765528716418, 0.11155191538152609, 0.10235490442521464, -0.056242394626247735, 0.011541181030516816];
 
@@ -219,7 +218,7 @@ mod tests {
     fn test_coverage_0() {
         let gam = -5.0;
         let c = SVector::<f64, 6>::from_row_slice(&[0.01, 0.1, -0.7, -0.8, 1.0, -0.5]);
-        let G = SMatrix::<f64, 6, 6>::from_row_slice(&[
+        let mut G = SMatrix::<f64, 6, 6>::from_row_slice(&[
             23., 0.08, 0.105, -0.9, 0.7, -0.4,
             1., 0.08, 0.105, -0.9, 0.7, -0.4,
             0.1, 0.08, 0.105, -0.9, 0.7, -0.4,
@@ -230,7 +229,7 @@ mod tests {
         let xu = [-1.; 6];
         let xo = [1.; 6];
 
-        let (x, fct, ier) = minq(gam, &c, &G, &xu, &xo);
+        let (x, fct, ier) = minq(gam, &c, &mut G, &xu, &xo);
 
         let expected_x = [0.042489270386265286, 1.0, 1.0, 1.0, 0.18249540159410974, 1.0];
 
@@ -243,7 +242,7 @@ mod tests {
     fn test_coverage_1() {
         let gam = -5.0;
         let c = SVector::<f64, 6>::from_row_slice(&[0.01, 0.1, -0.7, -0.8, 1.8, -1.5]);
-        let G = SMatrix::<f64, 6, 6>::from_row_slice(&[
+        let mut G = SMatrix::<f64, 6, 6>::from_row_slice(&[
             22., 0.08, 0.105, -0.9, 0.7, -0.4,
             0.4, 0.083, 0.307, -0.9, 0.7, -0.4,
             -0.7, 0.08, 0.107, 0.9, 0.17, 0.74,
@@ -254,7 +253,7 @@ mod tests {
         let xu = [-1.; 6];
         let xo = [1.; 6];
 
-        let (x, fct, ier) = minq(gam, &c, &G, &xu, &xo);
+        let (x, fct, ier) = minq(gam, &c, &mut G, &xu, &xo);
 
         let expected_x = SVector::<f64, 6>::from_row_slice(&[0.0913551401869131, 1., -1., 1., -0.9925901201601895, 1.]);
 
@@ -267,7 +266,7 @@ mod tests {
     fn test_coverage_2() {
         let gam = -5.0;
         let c = SVector::<f64, 6>::from_row_slice(&[0.01, 0.1, 0.7, 0.3, 1.9, -0.5]);
-        let G = SMatrix::<f64, 6, 6>::from_row_slice(&[
+        let mut G = SMatrix::<f64, 6, 6>::from_row_slice(&[
             13., 0.08, 0.105, -0.9, 0.7, -0.4,
             1., 0.08, 0.105, 0.9, 0.7, -0.4,
             0.1, 0.08, 0.105, -0.9, 0.7, -0.4,
@@ -278,7 +277,7 @@ mod tests {
         let xu = [-2.; 6];
         let xo = [2.; 6];
 
-        let (x, fct, ier) = minq(gam, &c, &G, &xu, &xo);
+        let (x, fct, ier) = minq(gam, &c, &mut G, &xu, &xo);
 
         let expected_x = SVector::<f64, 6>::from_row_slice(&[0.302259618771836, -2.0, 2.0, 1.9883867513839923, -2.0, 2.0]);
 
@@ -291,7 +290,7 @@ mod tests {
     fn test_coverage_3() {
         let gam = -5.0;
         let c = SVector::<f64, 6>::from_row_slice(&[0.01, 0.1, 0.7, 0.3, 0.9, -0.5]);
-        let G = SMatrix::<f64, 6, 6>::from_row_slice(&[
+        let mut G = SMatrix::<f64, 6, 6>::from_row_slice(&[
             13., 0.08, 0.105, -0.9, 0.7, -0.4,
             1., 0.08, 0.105, 0.9, 0.7, -0.4,
             0.1, 0.08, 0.105, -0.9, 0.7, -0.4,
@@ -302,7 +301,7 @@ mod tests {
         let xu = [-3.; 6];
         let xo = [3.; 6];
 
-        let (x, fct, ier) = minq(gam, &c, &G, &xu, &xo);
+        let (x, fct, ier) = minq(gam, &c, &mut G, &xu, &xo);
 
         let expected_x = SVector::<f64, 6>::from_row_slice(&[0.4549999999999899, -3., 3., 3., -3., 3., ]);
 
@@ -315,7 +314,7 @@ mod tests {
     fn test_coverage_4() {
         let gam = 1.0;
         let c = SVector::<f64, 6>::from_row_slice(&[-0.01, -0.1, -0.8, -0.6, -0.9, -0.5]);
-        let G = SMatrix::<f64, 6, 6>::from_row_slice(&[
+        let mut G = SMatrix::<f64, 6, 6>::from_row_slice(&[
             13., 0.08, 0.105, -0.9, 0.7, -0.4,
             1., 0.08, 0.105, 0.9, 0.7, -0.4,
             0.1, 0.08, 0.105, -0.9, 0.7, -0.4,
@@ -326,7 +325,7 @@ mod tests {
         let xu = [-3.; 6];
         let xo = [3.; 6];
 
-        let (x, fct, ier) = minq(gam, &c, &G, &xu, &xo);
+        let (x, fct, ier) = minq(gam, &c, &mut G, &xu, &xo);
 
         let expected_x = SVector::<f64, 6>::from_row_slice(&[-0.36999271657216287, -3., -3., -2.30111272965058, 3., -3.]);
 
@@ -339,11 +338,11 @@ mod tests {
     fn test_coverage_5() {
         let gam = -5.0;
         let c = SVector::<f64, 3>::from_row_slice(&[0.2, 0.0, 0.02]);
-        let G = SMatrix::<f64, 3, 3>::from_row_slice(&[1.0, 2.0, 4.0, 2.0, 5.0, 0.0, -0.1, -0.5, -0.005]);
+        let mut G = SMatrix::<f64, 3, 3>::from_row_slice(&[1.0, 2.0, 4.0, 2.0, 5.0, 0.0, -0.1, -0.5, -0.005]);
         let xu = [0.0, -2.0, 1.0];
         let xo = [1.0, 2.0, 5.0];
 
-        let (x, fct, ier) = minq(gam, &c, &G, &xu, &xo);
+        let (x, fct, ier) = minq(gam, &c, &mut G, &xu, &xo);
 
         let expected_x = SVector::<f64, 3>::from_row_slice(&[0.0, 0.0, 1.0]);
 
@@ -360,7 +359,7 @@ mod tests {
         let c = SVector::<f64, 6>::from_row_slice(&[
             0.26027596522878105, 0.012123239938926389, 0.976390077851892, 0.1291111085459904, 0.4733627957116796, 0.5163968201397172
         ]);
-        let G = SMatrix::<f64, 6, 6>::from_row_slice(&[
+        let mut G = SMatrix::<f64, 6, 6>::from_row_slice(&[
             0.5364339063687579, 0.2297669716502435, 0.5038995286989546, 0.7277274960472341, 0.8545905110558993, 0.7777655686147649,
             0.9160796444159384, 0.3641837883133806, 0.18272914225872838, 0.1519322751704012, 0.1124045992097733, 0.6635303861287662,
             0.9354540217237614, 0.8175396106964223, 0.3188913100047359, 0.9915655818487893, 0.13427947848573107, 0.37342282365153623,
@@ -371,7 +370,7 @@ mod tests {
         let xu = [0.9558285681648798, 0.5194757464362438, 0.3015417041472618, 0.8101331118648574, 0.061618326392057776, 0.5421792878798574];
         let xo = [2.172274965654365, 2.8179460480833494, 2.1123039892888325, 2.4283704885558492, 2.500248662862857, 2.874993639004977];
 
-        let (x, fct, ier) = minq(gam, &c, &G, &xu, &xo);
+        let (x, fct, ier) = minq(gam, &c, &mut G, &xu, &xo);
 
         let expected_x = SVector::<f64, 6>::from_row_slice(&[0.9558285681648798, 0.5194757464362438, 0.3015417041472618, 0.8101331118648574, 0.061618326392057776, 0.5421792878798574]);
 
@@ -386,7 +385,7 @@ mod tests {
         let c = SVector::<f64, 6>::from_row_slice(&[
             6.462580762560808, 5.626749806173567, 4.005918748483873, 6.238520572936755, 1.8034289585073848, 4.131859269316073
         ]);
-        let G = SMatrix::<f64, 6, 6>::from_row_slice(&[
+        let mut G = SMatrix::<f64, 6, 6>::from_row_slice(&[
             3.3511760107572677, 8.079843032573027, 7.991191997916239, 1.5340713993172395, 9.282859758186207, 2.562733496882168,
             7.561980917613901, 3.0929688161231885, 8.70847857211592, 5.3019490271867955, 1.5887051838984823, 1.9689449654877478,
             1.769548530579672, 5.397793381627557, 2.606872766367867, 4.138553177184834, 3.015594458862539, 5.913321245206986,
@@ -397,7 +396,7 @@ mod tests {
         let xu = [-4.769677847426308, -3.5969155931370618, -1.9037195727875393, -1.9430412656953555, -3.076515775656527, -3.3371066538862233];
         let xo = [-3.7696778474263084, -2.5969155931370618, -0.9037195727875393, -0.9430412656953555, -2.076515775656527, -2.3371066538862233];
 
-        let (x, fct, ier) = minq(gam, &c, &G, &xu, &xo);
+        let (x, fct, ier) = minq(gam, &c, &mut G, &xu, &xo);
 
         let expected_x = SVector::<f64, 6>::from_row_slice(&[-3.7696778474263084, -2.5969155931370618, -0.9037195727875393, -0.9430412656953555, -2.076515775656527, -2.3371066538862233]);
 
@@ -410,7 +409,7 @@ mod tests {
     fn test_real_mistake_1() {
         let gam = -3.2661659570240418;
         let c = SVector::<f64, 6>::from_row_slice(&[0.011491952485028996, 0.10990155244417238, -0.5975771816968101, -0.8069326056544889, 1.8713998467574868, -1.4958051414638351]);
-        let G = SMatrix::<f64, 6, 6>::from_row_slice(&[
+        let mut G = SMatrix::<f64, 6, 6>::from_row_slice(&[
             23.12798652584253, 0.08086473977917293, 1.7538162952525622, -1.9012829332291588, 1.7864612279290097, -0.7406818881433185,
             0.08086473977917293, 18.576721298566618, -0.5909985456367551, 0.8013573491818613, -0.9992079198191761, 0.1810561706642408,
             1.7538162952525622, -0.5909985456367551, 24.556579083791647, 3.371614208515673, -3.5009378170622605, 0.09958957165430643,
@@ -421,7 +420,7 @@ mod tests {
         let xo = [0.20094711239564478, 0.1495167421889697, 0.3647846775, 0.2559626362565812, 0.331602309105488, 0.3724789161602837];
         let xu = [-0.20094711239564478, -0.1495167421889697, -0.3647846775, -0.2559626362565812, -0.331602309105488, -0.3724789161602837];
 
-        let (x, fct, ier) = minq(gam, &c, &G, &xu, &xo);
+        let (x, fct, ier) = minq(gam, &c, &mut G, &xu, &xo);
 
         let expected_x = SVector::<f64, 6>::from_row_slice(&[0.0019995286865852144, -0.007427824716643584, 0.018821593308224843, 0.01439613293535691, -0.021623304847149496, 0.03259925177469269]);
 
@@ -435,11 +434,11 @@ mod tests {
     fn test_unbound() {
         let gam = 1.0;
         let c = SVector::<f64, 1>::from_row_slice(&[-1.0]);
-        let G = SMatrix::<f64, 1, 1>::from_row_slice(&[0.0]);
+        let mut G = SMatrix::<f64, 1, 1>::from_row_slice(&[0.0]);
         let xu = [f64::NEG_INFINITY];
         let xo = [f64::INFINITY];
 
-        let (x, fct, ier) = minq(gam, &c, &G, &xu, &xo);
+        let (x, fct, ier) = minq(gam, &c, &mut G, &xu, &xo);
 
         assert_eq!(x, SVector::<f64, 1>::from_row_slice(&[1.0]));
         assert_eq!(fct, 1.0);
@@ -450,11 +449,11 @@ mod tests {
     fn test_global_return_0() {
         let gam = 0.0;
         let c = SVector::<f64, 2>::from_row_slice(&[-1.0, 20.0]);
-        let G = SMatrix::<f64, 2, 2>::from_row_slice(&[123.0, 26.0, -0.3, -9.5]);
+        let mut G = SMatrix::<f64, 2, 2>::from_row_slice(&[123.0, 26.0, -0.3, -9.5]);
         let xu = [0.0, 0.0];
         let xo = [11.0, 22.0];
 
-        let (x, fct, ier) = minq(gam, &c, &G, &xu, &xo);
+        let (x, fct, ier) = minq(gam, &c, &mut G, &xu, &xo);
 
         assert_eq!(x, SVector::<f64, 2>::from_row_slice(&[0.0, 22.0]));
         assert_eq!(fct, -1859.0000000000514);
@@ -464,11 +463,11 @@ mod tests {
     fn test_munqsub_return() {
         let gam = 1.0;
         let c = SVector::<f64, 2>::from_row_slice(&[1.0, 2.0]);
-        let G = SMatrix::<f64, 2, 2>::from_row_slice(&[1.0, 2.0, 3.0, 5.0]);
+        let mut G = SMatrix::<f64, 2, 2>::from_row_slice(&[1.0, 2.0, 3.0, 5.0]);
         let xu = [0.0, 0.0];
         let xo = [1.0, 2.0];
 
-        let (x, fct, ier) = minq(gam, &c, &G, &xu, &xo);
+        let (x, fct, ier) = minq(gam, &c, &mut G, &xu, &xo);
 
         assert_eq!(x, SVector::<f64, 2>::from_row_slice(&[0.0, 0.0]));
         assert_eq!(fct, 1.0);
@@ -479,11 +478,11 @@ mod tests {
     fn test_difficult_cond() {
         let gam = 2.0;
         let c = SVector::<f64, 3>::from_row_slice(&[1.0, 2.0, 3.0]);
-        let G = SMatrix::<f64, 3, 3>::from_row_slice(&[1.0, 2.0, -4.0, 3.0, 5.0, -1.0, 0.0, -3.0, -10.0]);
+        let mut G = SMatrix::<f64, 3, 3>::from_row_slice(&[1.0, 2.0, -4.0, 3.0, 5.0, -1.0, 0.0, -3.0, -10.0]);
         let xu = [-10.0, -10.0, -3.0];
         let xo = [1.0, 2.0, 4.0];
 
-        let (x, fct, ier) = minq(gam, &c, &G, &xu, &xo);
+        let (x, fct, ier) = minq(gam, &c, &mut G, &xu, &xo);
 
         let expected_x = SVector::<f64, 3>::from_row_slice(&[1.0, -0.19999999999999557, 4.0]);
 
@@ -496,11 +495,11 @@ mod tests {
     fn test_difficult_cond_2() {
         let gam = 200.0;
         let c = SVector::<f64, 3>::from_row_slice(&[1.0, 2.0, 3.0]);
-        let G = SMatrix::<f64, 3, 3>::from_row_slice(&[1.0, 2.0, 4.0, 3.0, 5.0, -1.0, 0.0, -3.0, -10.0]);
+        let mut G = SMatrix::<f64, 3, 3>::from_row_slice(&[1.0, 2.0, 4.0, 3.0, 5.0, -1.0, 0.0, -3.0, -10.0]);
         let xu = [0.0, 0.0, -3.0];
         let xo = [1.0, 2.0, 4.0];
 
-        let (x, fct, ier) = minq(gam, &c, &G, &xu, &xo);
+        let (x, fct, ier) = minq(gam, &c, &mut G, &xu, &xo);
         let expected_x = SVector::<f64, 3>::from_row_slice(&[0.0, 0.39999999999999114, 4.0]);
 
 
@@ -513,11 +512,11 @@ mod tests {
     fn test_global_return_4() {
         let gam = -200.0;
         let c = SVector::<f64, 2>::from_row_slice(&[-1.0, -2.0]);
-        let G = SMatrix::<f64, 2, 2>::from_row_slice(&[-1.0, -2.0, 5.0, -1.0]);
+        let mut G = SMatrix::<f64, 2, 2>::from_row_slice(&[-1.0, -2.0, 5.0, -1.0]);
         let xu = [0.0, 0.0];
         let xo = [10.0, 20.0];
 
-        let (x, fct, ier) = minq(gam, &c, &G, &xu, &xo);
+        let (x, fct, ier) = minq(gam, &c, &mut G, &xu, &xo);
         let expected_x = SVector::<f64, 2>::from_row_slice(&[10.0, 0.0]);
 
         assert_eq!(x, expected_x);

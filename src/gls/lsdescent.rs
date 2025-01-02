@@ -29,8 +29,14 @@ pub fn lsdescent<const N: usize>(
     usize  // s
 ) {
     if alist.iter().any(|&i| i == 0.0) {
-        fbest = flist.iter().cloned().fold(flist[0], f64::min);
-        let i = flist.iter().position(|&f| f == fbest).unwrap();
+        let i;
+
+        (i, fbest) = flist.iter()
+            .enumerate()
+            .min_by(|(_, &a), (_, &b)| a.partial_cmp(&b).unwrap())
+            .map(|(i, &val)| (i, val))
+            .unwrap();
+
         if alist[i] < 0.0 {
             if alist[i] >= 4.0 * alist[i + 1] {
                 return (alp, abest, fbest, fmed, monotone, nmin, unitlen, s);

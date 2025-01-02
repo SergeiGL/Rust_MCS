@@ -2,10 +2,10 @@ use crate::chk_flag::update_flag;
 use crate::feval::feval;
 
 fn update_fbest_xbest_nsweepbest<const N: usize>(fbest: &mut f64, xbest: &mut [f64; N], nsweepbest: &mut usize,
-                                                 fbest_new: f64, xbest_new: [f64; N], nsweepbest_new: usize)
+                                                 fbest_new: f64, xbest_new: &mut [f64; N], nsweepbest_new: usize)
 {
     *fbest = fbest_new;
-    *xbest = xbest_new;
+    *xbest = *xbest_new;
     *nsweepbest = nsweepbest_new;
 }
 
@@ -89,7 +89,7 @@ pub fn basket<const N: usize>(
                         *x = y1;
                         *f = f1;
                         if *f < *fbest {
-                            update_fbest_xbest_nsweepbest(fbest, xbest, nsweepbest, *f, x.clone(), nsweep);
+                            update_fbest_xbest_nsweepbest(fbest, xbest, nsweepbest, *f, x, nsweep);
                             update_flag(&mut flag, stop, *fbest, 1);
                             if !flag { return (loc, flag, ncall); }
                         }
@@ -99,14 +99,14 @@ pub fn basket<const N: usize>(
                         *f = f1;
                         *x = y1;
                         if *f < *fbest {
-                            update_fbest_xbest_nsweepbest(fbest, xbest, nsweepbest, *f, x.clone(), nsweep);
+                            update_fbest_xbest_nsweepbest(fbest, xbest, nsweepbest, *f, x, nsweep);
                             update_flag(&mut flag, stop, *fbest, 1);
                             if !flag { return (loc, flag, ncall); }
                         } else if f2 < f1.min(fmi[i]) {
                             *f = f2;
                             *x = y2.clone();
                             if *f < *fbest {
-                                update_fbest_xbest_nsweepbest(fbest, xbest, nsweepbest, *f, x.clone(), nsweep);
+                                update_fbest_xbest_nsweepbest(fbest, xbest, nsweepbest, *f, x, nsweep);
                                 update_flag(&mut flag, stop, *fbest, 1);
                                 if !flag { return (loc, flag, ncall); }
                             }
@@ -183,7 +183,7 @@ pub fn basket1<const N: usize>(
                     fmi[i] = f;
                     xmin[i] = x.clone();
                     if fmi[i] < *fbest {
-                        update_fbest_xbest_nsweepbest(fbest, xbest, nsweepbest, fmi[i], xmin[i].clone(), nsweep);
+                        update_fbest_xbest_nsweepbest(fbest, xbest, nsweepbest, fmi[i], &mut xmin[i], nsweep);
                         update_flag(&mut flag, stop, *fbest, 1);
                         if !flag { return (loc, flag, ncall); }
                     }
@@ -193,7 +193,7 @@ pub fn basket1<const N: usize>(
                     fmi[i] = f1;
                     xmin[i] = y1;
                     if fmi[i] < *fbest {
-                        update_fbest_xbest_nsweepbest(fbest, xbest, nsweepbest, fmi[i], xmin[i].clone(), nsweep);
+                        update_fbest_xbest_nsweepbest(fbest, xbest, nsweepbest, fmi[i], &mut xmin[i], nsweep);
                         update_flag(&mut flag, stop, *fbest, 1);
                         if !flag { return (loc, flag, ncall); }
                     }
@@ -203,7 +203,7 @@ pub fn basket1<const N: usize>(
                     fmi[i] = f2;
                     xmin[i] = y2;
                     if fmi[i] < *fbest {
-                        update_fbest_xbest_nsweepbest(fbest, xbest, nsweepbest, fmi[i], xmin[i].clone(), nsweep);
+                        update_fbest_xbest_nsweepbest(fbest, xbest, nsweepbest, fmi[i], &mut xmin[i], nsweep);
                         update_flag(&mut flag, stop, *fbest, 1);
                         if !flag { return (loc, flag, ncall); }
                     }

@@ -106,7 +106,7 @@ pub fn csearch<const N: usize>(
                 .iter()
                 .enumerate()
                 .min_by(|(_, val_1), (_, val_2)| val_1.partial_cmp(val_2).unwrap())
-                .unwrap().clone();
+                .unwrap();
             fminew = *min_f;
 
             if fminew == fmi {

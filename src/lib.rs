@@ -23,6 +23,7 @@ mod hessian;
 mod triple;
 mod csearch;
 mod add_basket;
+mod split_box;
 
 use crate::add_basket::add_basket;
 use crate::basket_func::basket;
@@ -50,20 +51,25 @@ pub enum IinitEnum {
     Three, // (WTF it is doing?)
 }
 
+pub enum ExitFlagEnum {
+    NormalShutdown,   // flag 1: True
+    NfExceeded,     // flag 2: ncall >= nf
+    Stop0Exceeded,  // flag 3: (nsweep - nsweepbest) as f64 >= stop[0]
+}
 
 const STEP1: usize = 10_000_usize;
 const STEP: usize = 40_000_usize;
 
 
 pub fn mcs<const SMAX: usize, const N: usize>(
-    u: [f64; N],
-    v: [f64; N],
+    u: &[f64; N],
+    v: &[f64; N],
     nf: usize,
-    stop: Vec<f64>,
+    stop: &Vec<f64>,
     iinit: IinitEnum,
     local: usize,
     gamma: f64,
-    hess: SMatrix<f64, N, N>,
+    hess: &SMatrix<f64, N, N>,
 ) -> (
     [f64; N],       // xbest
     f64,            // fbest
@@ -71,7 +77,7 @@ pub fn mcs<const SMAX: usize, const N: usize>(
     Vec<f64>,       // fmi
     usize,          // ncall
     usize,          // ncloc
-    bool,           // flag
+    ExitFlagEnum,   // flag
 ) where
     Const<N>: DimMin<Const<N>, Output=Const<N>>,
 {
@@ -97,13 +103,13 @@ pub fn mcs<const SMAX: usize, const N: usize>(
 
     // Check whether there are infinities in the initialization list
     if x0.iter().any(|&value| value.is_infinite()) {
-        panic!("Error- MCS main: infinities in initialization list");
+        panic!("Error MCS main: infinities in initialization list");
     }
 
     let (mut f0, istar, mut ncall) = init(&x0);
 
     // Computing B[x,y] in this case y = v
-    let mut x: [f64; N] = std::array::from_fn(|ind| x0[(ind, 1)]);
+    let x: [f64; N] = std::array::from_fn(|ind| x0[(ind, 1)]);
 
     // 2 opposite vertex
     let v1: [f64; N] = std::array::from_fn(|ind| {
@@ -125,8 +131,8 @@ pub fn mcs<const SMAX: usize, const N: usize>(
     let mut ichild = vec![0_isize; STEP1]; // can be negative
     let mut nogain = vec![0_usize; STEP1];
 
-    let mut f: [Vec<f64>; 2] = std::array::from_fn(|_| vec![0.0; STEP1]);
-    let mut z: [Vec<f64>; 2] = std::array::from_fn(|_| vec![0.0; STEP1]);
+    let mut f = Matrix2xX::<f64>::zeros(STEP1);
+    let mut z = Matrix2xX::<f64>::zeros(STEP1);
 
     let mut nboxes = 0_usize;
     let mut nbasket_option: Option<usize> = None; // -1
@@ -138,12 +144,12 @@ pub fn mcs<const SMAX: usize, const N: usize>(
     let mut flag = true;
 
     // Initialize the boxes
-    let (p, mut xbest, mut fbest) = initbox(&x0, &f0, &istar, &u, &v, &mut isplit, &mut level, &mut ipar, &mut ichild, &mut f, &mut nboxes);
+    let (p, mut xbest, mut fbest) = initbox(&x0, &f0, &istar, u, v, &mut isplit, &mut level, &mut ipar, &mut ichild, &mut f, &mut nboxes);
     let f0min = fbest;
 
-    update_flag(&mut flag, &stop, fbest, 1);
+    update_flag(&mut flag, stop, fbest, 1);
 
-    let (mut s, mut record) = strtsw::<SMAX>(&level, &f[0], nboxes);
+    let (mut s, mut record) = strtsw::<SMAX>(&level, f.row(0), nboxes);
     let mut nsweep = 1_usize;
 
     let mut loc: bool;
@@ -153,14 +159,11 @@ pub fn mcs<const SMAX: usize, const N: usize>(
     while s < SMAX && ncall + 1 <= nf {
         let par = record[s];
         let (n0, mut x, mut y,
-            x1, x2, f1, f2) = vertex(par, &u, &v, &v1, &x0,
-                                     &f0,
-                                     &ipar, &isplit, &ichild,
-                                     &Matrix2xX::<f64>::from_row_iterator(z[0].len(), z.iter().flatten().cloned()), &Matrix2xX::<f64>::from_row_iterator(f[0].len(), f.iter().flatten().cloned()));
+            x1, x2, f1, f2) = vertex(par, u, v, &v1, &x0, &f0, &ipar, &isplit, &ichild, &z, &f);
 
         let splt = if s > 2 * N * (n0.iter().min().unwrap() + 1) {
             // Splitting index and splitting value z[1][par] for splitting by rank
-            (isplit[par], z[1][par]) = splrnk(&n0, &p, &x, &y);
+            (isplit[par], z[(1, par)]) = splrnk(&n0, &p, &x, &y);
             true
         } else {
             // Box has already been marked as not eligible for splitting by expected gain
@@ -169,8 +172,8 @@ pub fn mcs<const SMAX: usize, const N: usize>(
             } else {
                 // Splitting by expected gain
                 let e;
-                (e, isplit[par], z[1][par]) = exgain(&n0, &x, &y, &x1, &x2, f[0][par], &f0, &f1, &f2);
-                let fexp = f[0][par] + e.iter().min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap();
+                (e, isplit[par], z[(1, par)]) = exgain(&n0, &x, &y, &x1, &x2, f[(0, par)], &f0, &f1, &f2);
+                let fexp = f[(0, par)] + e.iter().min_by(|a, b| a.total_cmp(b)).unwrap();
                 if fexp < fbest {
                     true
                 } else {
@@ -187,12 +190,12 @@ pub fn mcs<const SMAX: usize, const N: usize>(
             };
 
             level[par] = 0;
-            if z[1][par] == f64::INFINITY {
+            if z[(1, par)] == f64::INFINITY {
                 m += 1;
-                z[1][par] = m as f64;
+                z[(1, par)] = m as f64;
                 let (f01, ncall_add);
-                (f01, flag, ncall_add) = splinit(i, s, SMAX, par, &x0, &u, &v, &mut x, &mut xmin, &mut fmi, &mut ipar, &mut level, &mut ichild, &mut f,
-                                                 &mut xbest, &mut fbest, &stop, &mut record, &mut nboxes, &mut nbasket_option, &mut nsweepbest, &mut nsweep);
+                (f01, flag, ncall_add) = splinit(i, s, SMAX, par, &x0, u, v, &mut x, &mut xmin, &mut fmi, &mut ipar, &mut level, &mut ichild, &mut f,
+                                                 &mut xbest, &mut fbest, stop, &mut record, &mut nboxes, &mut nbasket_option, &mut nsweepbest, &mut nsweep);
 
                 // f01 = f01.reshape(len(f01),1)
                 // f0 = np.concatenate((f0,f01),axis=1)
@@ -200,27 +203,23 @@ pub fn mcs<const SMAX: usize, const N: usize>(
                 f0.set_column(f0.ncols() - 1, &Matrix3x1::from(f01));
                 ncall += ncall_add;
             } else {
-                z[0][par] = x[i];
+                z[(0, par)] = x[i];
                 let ncall1;
-                (flag, ncall1) = split(i, s, SMAX, par, &mut x, &mut y, &z.iter().map(|row| row[par]).collect::<Vec<f64>>(),
-                                       &mut xmin, &mut fmi, &mut ipar, &mut level, &mut ichild, &mut f, &mut xbest, &mut fbest, &stop,
+                (flag, ncall1) = split(i, s, SMAX, par, &mut x, &mut y, z[(0, par)], z[(1, par)],
+                                       &mut xmin, &mut fmi, &mut ipar, &mut level, &mut ichild, &mut f, &mut xbest, &mut fbest, stop,
                                        &mut record, &mut nboxes, &mut nbasket_option, &mut nsweepbest, &mut nsweep);
                 ncall += ncall1;
             }
-            if nboxes > dim {
+            if nboxes > dim - 250 {
                 level.resize(level.len() + STEP, 0_usize);
                 ipar.resize(ipar.len() + STEP, Some(0_usize));
                 isplit.resize(isplit.len() + STEP, 0isize);
                 ichild.resize(ichild.len() + STEP, 0_isize);
                 nogain.resize(nogain.len() + STEP, 0_usize);
-                let old_len = f[0].len();
-                f[0].resize(old_len + STEP, 1.0);
-                let old_len = f[1].len();
-                f[1].resize(old_len + STEP, 1.0);
-                let old_len = z[0].len();
-                z[0].resize(old_len + STEP, 1.0);
-                let old_len = z[1].len();
-                z[1].resize(old_len + STEP, 1.0);
+
+                f.resize_horizontally_mut(f.ncols() + STEP, 1.0);
+                z.resize_horizontally_mut(z.ncols() + STEP, 1.0);  // Double the columns
+
                 dim = nboxes + STEP;
             }
             if !flag {
@@ -229,10 +228,10 @@ pub fn mcs<const SMAX: usize, const N: usize>(
         } else {
             if s + 1 < SMAX {
                 level[par] = s + 1;
-                updtrec(par, s + 1, &f[0], &mut record);
+                updtrec(par, s + 1, f.row(0), &mut record);
             } else {
                 level[par] = 0;
-                add_basket(&mut nbasket_option, &mut xmin, &mut fmi, x.clone(), f[0][par]);
+                add_basket(&mut nbasket_option, &mut xmin, &mut fmi, &mut x, f[(0, par)]);
             }
         }
 
@@ -277,15 +276,14 @@ pub fn mcs<const SMAX: usize, const N: usize>(
                         xloc.push(x.clone());
                         let ncall_add;
                         (loc, flag, ncall_add) =
-                            basket(&mut x, &mut f1, &mut xmin, &mut fmi, &mut xbest, &mut fbest, &stop, &nbasket0_option, nsweep, &mut nsweepbest);
+                            basket(&mut x, &mut f1, &mut xmin, &mut fmi, &mut xbest, &mut fbest, stop, &nbasket0_option, nsweep, &mut nsweepbest);
                         ncall += ncall_add;
                         if !flag {
                             break;
                         }
                         if loc {
                             let (mut xmin1, fmi1, nc, flag_new) =
-                                lsearch(&x, f1, f0min, &u, &v, nf as isize - ncall as isize, &stop, local, gamma,
-                                        &hess);
+                                lsearch(&x, f1, f0min, u, v, nf as isize - ncall as isize, stop, local, gamma, hess);
                             ncall = ncall + nc;
                             ncloc = ncloc + nc;
                             flag = flag_new;
@@ -294,17 +292,17 @@ pub fn mcs<const SMAX: usize, const N: usize>(
                                 fbest = fmi1;
                                 nsweepbest = nsweep;
                                 if !flag {
-                                    add_basket(&mut nbasket0_option, &mut xmin, &mut fmi, xmin1.clone(), fmi1);
+                                    add_basket(&mut nbasket0_option, &mut xmin, &mut fmi, &mut xmin1, fmi1);
                                     break;
                                 }
-                                update_flag(&mut flag, &stop, fbest, 1);
+                                update_flag(&mut flag, stop, fbest, 1);
                                 if !flag {
-                                    return (xbest, fbest, xmin, fmi, ncall, ncloc, flag);
+                                    return (xbest, fbest, xmin, fmi, ncall, ncloc, ExitFlagEnum::NormalShutdown);
                                 }
                             }
                             let ncall_add;
                             (loc, flag, ncall_add) =
-                                basket1(&mut xmin1, fmi1, &mut xmin, &mut fmi, &mut xbest, &mut fbest, &stop,
+                                basket1(&mut xmin1, fmi1, &mut xmin, &mut fmi, &mut xbest, &mut fbest, stop,
                                         &nbasket0_option, nsweep, &mut nsweepbest);
                             ncall += ncall_add;
 
@@ -312,7 +310,7 @@ pub fn mcs<const SMAX: usize, const N: usize>(
                                 break;
                             }
                             if loc {
-                                add_basket(&mut nbasket0_option, &mut xmin, &mut fmi, xmin1.clone(), fmi1);
+                                add_basket(&mut nbasket0_option, &mut xmin, &mut fmi, &mut xmin1, fmi1);
                                 fbestloc(&fmi, &mut fbest, &xmin, &mut xbest, nbasket0_option.unwrap());
 
                                 if !flag {
@@ -328,24 +326,18 @@ pub fn mcs<const SMAX: usize, const N: usize>(
                     break;
                 }
             }
-            (s, record) = strtsw::<SMAX>(&level, &f[0], nboxes);
+            (s, record) = strtsw::<SMAX>(&level, f.row(0), nboxes);
             if stop[0] > 1.0 {
                 if (nsweep - nsweepbest) as f64 >= stop[0] {
-                    flag = true;
-                    println!("flag 3: (nsweep - nsweepbest) as f64 >= stop[0]");
-                    return (xbest, fbest, xmin, fmi, ncall, ncloc, flag);
+                    return (xbest, fbest, xmin, fmi, ncall, ncloc, ExitFlagEnum::Stop0Exceeded);
                 }
             }
             nsweep += 1;
         }
     }
 
-    if ncall >= nf {
-        flag = true;
-        println!("flag 2: ncall >= nf");
-    }
-
-    (xbest, fbest, xmin, fmi, ncall, ncloc, flag)
+    let exit_flag = if ncall >= nf { ExitFlagEnum::NfExceeded } else { ExitFlagEnum::NormalShutdown };
+    (xbest, fbest, xmin, fmi, ncall, ncloc, exit_flag)
 }
 
 
@@ -355,6 +347,23 @@ mod tests {
     use approx::assert_relative_eq;
 
     static TOLERANCE: f64 = 1e-14;
+
+
+    // cargo flamegraph --unit-test -- tests::test_for_flamegraph_0
+    #[test]
+    fn test_for_flamegraph_0() {
+        const SMAX: usize = 20;
+        let nf = 1000;
+        let stop = vec![18., f64::NEG_INFINITY];
+        let iinit = IinitEnum::Zero;
+        let local = 50;
+        let gamma = 2e-6;
+        let u = [0.; 6];
+        let v = [1.0; 6];
+        let hess = SMatrix::<f64, 6, 6>::repeat(1.);
+
+        let (xbest, fbest, xmin, fmi, ncall, ncloc, flag) = mcs::<SMAX, 6>(&u, &v, nf, &stop, iinit, local, gamma, &hess);
+    }
 
     #[test]
     fn test_0() {
@@ -368,12 +377,10 @@ mod tests {
         let v = [1.0; 6];
         let hess = SMatrix::<f64, 6, 6>::repeat(1.);
 
-
-        let (xbest, fbest, xmin, fmi, ncall, ncloc, flag) = mcs::<SMAX, 6>(u, v, nf, stop, iinit, local, gamma, hess);
+        let (xbest, fbest, xmin, fmi, ncall, ncloc, flag) = mcs::<SMAX, 6>(&u, &v, nf, &stop, iinit, local, gamma, &hess);
 
         assert_eq!(ncall, 1031);
         assert_eq!(ncloc, 968);
-        assert_eq!(flag, true);
         assert_eq!(xbest, [0.20168951100810487, 0.15001069181869445, 0.47687397421890854, 0.27533243049404754, 0.3116516166017299, 0.6573005340667769]);
         assert_eq!(fbest, -3.3223680114155156);
         assert_eq!(xmin, vec!(
@@ -395,11 +402,10 @@ mod tests {
         let v = [1., 2., 3., 4., 5., 6.];
         let hess = SMatrix::<f64, 6, 6>::repeat(1.);
 
-        let (xbest, fbest, xmin, fmi, ncall, ncloc, flag) = mcs::<SMAX, 6>(u, v, nf, stop, iinit, local, gamma, hess);
+        let (xbest, fbest, xmin, fmi, ncall, ncloc, flag) = mcs::<SMAX, 6>(&u, &v, nf, &stop, iinit, local, gamma, &hess);
 
         assert_eq!(ncall, 1001);
         assert_eq!(ncloc, 0);
-        assert_eq!(flag, true);
         assert_eq!(xbest, [0.2510430974668892, 0.0, 0.0, 0.24721359549995797, 0.0, 0.0]);
         assert_eq!(fbest, -0.014725947982821272);
     }
@@ -417,11 +423,10 @@ mod tests {
         let v = [3.; 6];
         let hess = SMatrix::<f64, 6, 6>::repeat(1.);
 
-        let (xbest, fbest, xmin, fmi, ncall, ncloc, flag) = mcs::<SMAX, 6>(u, v, nf, stop, iinit, local, gamma, hess);
+        let (xbest, fbest, xmin, fmi, ncall, ncloc, flag) = mcs::<SMAX, 6>(&u, &v, nf, &stop, iinit, local, gamma, &hess);
 
         assert_eq!(ncall, 100);
         assert_eq!(ncloc, 0);
-        assert_eq!(flag, true);
         assert_relative_eq!(xbest.as_slice(), [0.5092880150001403, 0.5092880150001403, 0.5599033356467378, 0.5092880150001403, 0.5092880150001403, 0.].as_slice(), epsilon = TOLERANCE);
         assert_eq!(fbest, -0.8165894352179089);
         assert_eq!(xmin, vec![
@@ -449,11 +454,10 @@ mod tests {
         let v = [3.; 6];
         let hess = SMatrix::<f64, 6, 6>::repeat(1.);
 
-        let (xbest, fbest, xmin, fmi, ncall, ncloc, flag) = mcs::<SMAX, 6>(u, v, nf, stop, iinit, local, gamma, hess);
+        let (xbest, fbest, xmin, fmi, ncall, ncloc, flag) = mcs::<SMAX, 6>(&u, &v, nf, &stop, iinit, local, gamma, &hess);
 
         assert_eq!(ncall, 246);
         assert_eq!(ncloc, 188);
-        assert_eq!(flag, true);
         assert_relative_eq!(xbest.as_slice(), [0.3840375197582117  , 1.0086370591370057  , 0.83694910437547    ,       0.5292791936678723  , 0.10626783160256341 , 0.013378574118123088].as_slice(), epsilon = TOLERANCE);
         assert_eq!(fbest, -2.720677123715828);
         assert_eq!(xmin, vec![
@@ -477,11 +481,10 @@ mod tests {
         let v = [0.16902959229508063, -1.4272947296816656, 0.512585018526067, 0.9944515936550209, 0.9059333917881283, -1.6969517198501585];
         let hess = SMatrix::<f64, 6, 6>::repeat(1.);
 
-        let (xbest, fbest, xmin, fmi, ncall, ncloc, flag) = mcs::<SMAX, 6>(u, v, nf, stop, iinit, local, gamma, hess);
+        let (xbest, fbest, xmin, fmi, ncall, ncloc, flag) = mcs::<SMAX, 6>(&u, &v, nf, &stop, iinit, local, gamma, &hess);
 
         assert_eq!(ncall, 207);
         assert_eq!(ncloc, 149);
-        assert_eq!(flag, true);
         assert_relative_eq!(xbest.as_slice(), [ 0.13121886125314583 , -1.4272947296816656  ,        0.512585018526067   ,  0.012536302119667286,        0.8263007034754487  , -1.6969517198501585  ].as_slice(), epsilon = TOLERANCE);
         assert_eq!(fbest, -3.266015278673272e-22);
         assert_relative_eq!(xmin.concat().as_slice(), vec![
@@ -511,11 +514,10 @@ mod tests {
             0.8954440435903359, 0.15526584218928685, 0.9137102875926272, 0.7949626220636087, 0.2212099433145306, 0.2424741572631993
         ]);
 
-        let (xbest, fbest, xmin, fmi, ncall, ncloc, flag) = mcs::<SMAX, 6>(u, v, nf, stop, iinit, local, gamma, hess);
+        let (xbest, fbest, xmin, fmi, ncall, ncloc, flag) = mcs::<SMAX, 6>(&u, &v, nf, &stop, iinit, local, gamma, &hess);
 
         assert_eq!(ncall, 205);
         assert_eq!(ncloc, 146);
-        assert_eq!(flag, true);
         assert_relative_eq!(xbest.as_slice(), [4.727314049468511 , 0.6729453410064368, 0.8307181913359948,       0.3738546506877803, 3.5672862570948705, 4.051833711629832 ].as_slice(), epsilon = TOLERANCE);
         assert_eq!(fbest, -8.454999787537318e-100);
         assert_relative_eq!(xmin.concat().as_slice(), vec![
@@ -545,11 +547,10 @@ mod tests {
             0.8954440435903359, 0.15526584218928685, 0.9137102875926272, 0.7949626220636087, 0.2212099433145306, 0.2424741572631993
         ]);
 
-        let (xbest, fbest, xmin, fmi, ncall, ncloc, flag) = mcs::<SMAX, 6>(u, v, nf, stop, iinit, local, gamma, hess);
+        let (xbest, fbest, xmin, fmi, ncall, ncloc, flag) = mcs::<SMAX, 6>(&u, &v, nf, &stop, iinit, local, gamma, &hess);
 
         assert_eq!(ncall, 206);
         assert_eq!(ncloc, 147);
-        assert_eq!(flag, true);
         assert_relative_eq!(xbest.as_slice(), [-3.727314049468511   ,  0.1706764288762547  ,        0.5569723444858972  ,  0.012261741062775881,       -2.5672862570948705  , -3.0518337116298317  ].as_slice(), epsilon = TOLERANCE);
         assert_eq!(fbest, -6.085020790782224e-120);
         assert_relative_eq!(xmin.concat().as_slice(), vec![
@@ -580,11 +581,10 @@ mod tests {
             0.07396847834524134, 0.9249142825555874, 0.39542437348302395, 0.7255942609674336, 0.3014258849016729, 0.5500039335110584
         ]);
 
-        let (xbest, fbest, xmin, fmi, ncall, ncloc, flag) = mcs::<SMAX, 6>(u, v, nf, stop, iinit, local, gamma, hess);
+        let (xbest, fbest, xmin, fmi, ncall, ncloc, flag) = mcs::<SMAX, 6>(&u, &v, nf, &stop, iinit, local, gamma, &hess);
 
         assert_eq!(ncall, 186);
         assert_eq!(ncloc, 127);
-        assert_eq!(flag, true);
         assert_relative_eq!(xbest.as_slice(), [-0.5963680834773746 , -0.7020962533543591 ,  0.5396573533314668 ,        0.21225449313799843, -0.2353044063604557 , -0.3252710096724756 ].as_slice(), epsilon = TOLERANCE);
         assert_eq!(fbest, -1.5651035236609192e-07);
         assert_relative_eq!(xmin.concat().as_slice(), vec![
@@ -615,11 +615,10 @@ mod tests {
             0.6187202250393025, 0.1377423026724791, 0.8070825819627165, 0.2817037864244687, 0.5842187774516107, 0.09751501025007547
         ]);
 
-        let (xbest, fbest, xmin, fmi, ncall, ncloc, flag) = mcs::<SMAX, 6>(u, v, nf, stop, iinit, local, gamma, hess);
+        let (xbest, fbest, xmin, fmi, ncall, ncloc, flag) = mcs::<SMAX, 6>(&u, &v, nf, &stop, iinit, local, gamma, &hess);
 
         assert_eq!(ncall, 222);
         assert_eq!(ncloc, 162);
-        assert_eq!(flag, true);
         assert_relative_eq!(xbest.as_slice(), [0.17893289851322705, 0.15050297148806233, 0.5093505507161508 ,       0.06874148889830267, 0.3277860135659822 , 0.6461894522528354 ].as_slice(), epsilon = TOLERANCE);
         assert_eq!(fbest, -2.3417974980696994);
         assert_relative_eq!(xmin.concat().as_slice(), vec![

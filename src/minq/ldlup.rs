@@ -53,14 +53,13 @@ pub fn ldlup<const N: usize>(
                 .iter()
                 .cloned()
                 .collect::<Vec<f64>>();
-        for (i, &val) in p1.iter().enumerate() {
-            if let Some(ref mut p_vect) = p_option {
+        if let Some(ref mut p_vect) = p_option {
+            for (i, &val) in p1.iter().enumerate() {
                 p_vect[i] = val;
             }
-        }
-        if let Some(ref mut p_vect) = p_option {
             p_vect[j] = -1.0;
         }
+
         return p_option;
     }
 
@@ -110,11 +109,12 @@ pub fn ldlup<const N: usize>(
         let piv_lki_q = piv - lki_q;
         let pi_solve = LII.transpose().lu().solve(&piv_lki_q).unwrap();
 
-        // Chain all iterators together
-        let combined_iter = pi_solve.iter().cloned().chain(std::iter::once(-pi)).chain(q.iter().cloned());
-
         // Construct the SVector from the combined iterator
-        p_option = Some(SVector::from_iterator(combined_iter));
+        p_option = Some(SVector::from_iterator(
+            pi_solve.iter().copied()
+                .chain(std::iter::once(-pi))
+                .chain(q.iter().copied())
+        ));
     } else {
         for (idx, &i) in I.iter().enumerate() {
             L[(j, i)] = v[idx];

@@ -70,7 +70,7 @@ pub fn lsearch<const N: usize>(
     let (mut p, _, _) = minq(
         fmi,
         &g,
-        &G,
+        &mut G,
         &std::array::from_fn(|i| -d[i]),
         &std::array::from_fn(|i| d[i]),
     );
@@ -270,7 +270,7 @@ pub fn lsearch<const N: usize>(
 
         // Recompute p using minq
         // println!("MINQ:\nfmi={fmi}\ng={g:?}\nG={G:?}\nminusd={minusd:?}\nmind={mind:?}");
-        p = minq(fmi, &g, &G, &minusd, &mind).0;
+        p = minq(fmi, &g, &mut G, &minusd, &mind).0;
         let norm = p.norm();
         // println!("{p}");
 

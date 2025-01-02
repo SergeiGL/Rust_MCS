@@ -10,14 +10,20 @@ pub fn lssort(alist: &mut Vec<f64>, flist: &mut Vec<f64>) -> (
     f64,         // unitlen
     usize        // s
 ) {
-    // Create permutation indices for sorting
-    let mut indices: Vec<usize> = (0..alist.len()).collect();
-    indices.sort_by(|&a, &b| alist[a].partial_cmp(&alist[b]).unwrap());
+    // Create a vector of tuples containing (value, index, flist_value)
+    let mut paired: Vec<(f64, usize, f64)> = alist.iter()
+        .zip(0..alist.len())
+        .map(|(a, i)| (*a, i, flist[i]))
+        .collect();
 
-    // Sort alist and apply permutation to flist
-    alist.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    // Sort the paired vector based on the first element (alist values)
+    paired.sort_unstable_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
 
-    *flist = indices.iter().map(|&i| flist[i]).collect();
+    // Update alist and flist in a single pass
+    for (i, (a, _, f)) in paired.iter().enumerate() {
+        alist[i] = *a;
+        flist[i] = *f;
+    }
 
     let s = alist.len();
 
@@ -41,46 +47,63 @@ pub fn lssort(alist: &mut Vec<f64>, flist: &mut Vec<f64>) -> (
 
     // Calculate minima
     let mut minima = Vec::with_capacity(s);
-    let mut extended_up = up.clone();
-    extended_up.push(true);
-    let mut extended_down = vec![true];
-    extended_down.extend(down.iter());
-
-    for i in 0..s {
-        minima.push(extended_up[i] && extended_down[i]);
-    }
+    minima.extend(
+        up.iter()
+            .chain(std::iter::once(&true))  // Add final true value
+            .zip(std::iter::once(&true).chain(down.iter()))  // Create paired iterator
+            .take(s)
+            .map(|(&up, &down)| up && down)
+    );
 
     let nmin = minima.iter().filter(|&&x| x).count();
 
     // Find best value and its index
-    let fbest = *flist.iter().min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap();
-    let i = flist.iter().position(|&x| x == fbest).unwrap();
-    let abest = alist[i];
+    let (abest, fbest) = flist
+        .iter()
+        .enumerate()
+        .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
+        .map(|(i, &value)| (alist[i], value)) // Unpack reference to owned values
+        .unwrap();
 
-    // Calculate median - corrected version
-    let mut sorted_flist = flist.clone();
-    sorted_flist.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    // Calculate median
     let fmed = if s % 2 == 0 {
-        (sorted_flist[s / 2 - 1] + sorted_flist[s / 2]) / 2.0
+        let mid1 = s / 2 - 1;
+        let mid2 = s / 2;
+
+        let (m1, m2) = {
+            let mut to_sort = flist.clone();
+
+            let m1 = *to_sort.select_nth_unstable_by(mid1, |a, b| a.partial_cmp(b).unwrap()).1;
+            let m2 = *to_sort.select_nth_unstable_by(mid2, |a, b| a.partial_cmp(b).unwrap()).1;
+
+            (m1, m2)
+        };
+        (m1 + m2) / 2.0
     } else {
-        sorted_flist[s / 2]
+        // Find the single middle element for an odd-length vector:
+        let mid = s / 2;
+        let mut to_sort = flist.clone();
+        let m = *to_sort.select_nth_unstable_by(mid, |a, b| a.partial_cmp(b).unwrap()).1;
+        m
     };
 
-    // Calculate unitlen - corrected version
     let unitlen = if nmin > 1 {
-        let mut al: Vec<f64> = (0..minima.len())
-            .filter(|&i| minima[i])
-            .map(|i| alist[i])
-            .collect();
+        let mut al = Vec::with_capacity(minima.len());
+
+        for (i, &is_minimum) in minima.iter().enumerate() {
+            if is_minimum {
+                al.push(alist[i]);
+            }
+        }
 
         if let Some(pos) = al.iter().position(|&x| (x - abest).abs() < f64::EPSILON) {
-            al.remove(pos);
+            // swap_remove is O(1) instead of O(n) for remove
+            al.swap_remove(pos);
         }
 
         al.iter()
             .map(|&x| (x - abest).abs())
-            .min_by(|a, b| a.partial_cmp(b).unwrap())
-            .unwrap_or(0.0)
+            .min_by(|a, b| a.partial_cmp(&b).unwrap()).unwrap()
     } else {
         (alist[s - 1] - abest).max(abest - alist[0])
     };

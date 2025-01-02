@@ -3,6 +3,7 @@ use crate::gls::lsguard::lsguard;
 use crate::gls::lslocal::lslocal;
 use crate::gls::lssort::lssort;
 use crate::gls::quartic::quartic;
+use itertools::Itertools;
 use nalgebra::{Matrix3, SVector};
 
 pub fn lsquart<const N: usize>(
@@ -76,7 +77,7 @@ pub fn lsquart<const N: usize>(
         c[1] += c[0] * (alist[2] - alist[1]);
         c[4] = flist[2];
 
-        let cmax = c.iter().copied().fold(c[0], f64::max); // TODO: if len(alist > 5) => .flold(0.0)
+        let cmax = c.iter().fold(c[0], |acc, &x| x.max(acc)); // TODO: if len(alist > 5) => .flold(0.0)
         c.iter_mut().for_each(|ci| *ci /= cmax);
         let hk = 4.0 * c[0];
         let compmat = Matrix3::new(
@@ -87,19 +88,20 @@ pub fn lsquart<const N: usize>(
 
         // Calculate eigenvalues (complex)
         // println!("{}, {}, {}", compmat.row(0), compmat.row(1), compmat.row(2));
-        let mut real_ev = compmat.eigenvalues().unwrap(); // TODO: complex field?
+        let mut ev = compmat.complex_eigenvalues();
         // println!("{real_ev:?}");
-        real_ev.scale_mut(1. / hk);
+        ev.scale_mut(1. / hk);
         // println!("{real_ev:?}");
-        let mut ev = real_ev.iter().cloned().collect::<Vec<f64>>();
 
-        if ev.len() == 1 {
-            alp = alist[2] + real_ev[0];
+        let real_roots = ev.iter().filter(|ev_i| ev_i.im == 0.0).collect::<Vec<_>>();
+
+        if real_roots.len() == 1 {
+            alp = alist[2] + real_roots[0].re; // Img part is 0
         } else {
-            ev.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            let mut ev_vec = ev.iter().sorted_unstable_by(|a, b| a.re.partial_cmp(&b.re).unwrap()).collect::<Vec<_>>(); // TODO: simply ignoring the complex part, not good
 
-            let alp1 = lsguard(alist[2] + ev[0], alist, amax, amin, small);
-            let alp2 = lsguard(alist[2] + ev[2], alist, amax, amin, small);
+            let alp1 = lsguard(alist[2] + ev_vec[0].re, alist, amax, amin, small);
+            let alp2 = lsguard(alist[2] + ev_vec[2].re, alist, amax, amin, small);
 
             let f1 = cmax * quartic(&c, alp1 - alist[2]);
             let f2 = cmax * quartic(&c, alp2 - alist[2]);

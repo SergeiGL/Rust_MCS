@@ -1,6 +1,7 @@
 use crate::feval::feval;
 use crate::gls::lsnew::lsnew;
 use crate::gls::lssort::lssort;
+use itertools::Itertools;
 use nalgebra::SVector;
 
 
@@ -40,58 +41,105 @@ pub fn lssep<const N: usize>(
 ) {
     let mut nsep = 0;  // the original separation counter
 
+    // Pre-allocate reusable vectors to minimize allocations within the loop
+    let cap = down.len().max(up.len()).max(nloc) + 10; // +2 needed, +10 just in case
+    let mut ind = Vec::with_capacity(cap);
+    let mut aa = Vec::with_capacity(cap);
+    let mut ff = Vec::with_capacity(cap);
+
+    let mut x_alp_p = [0.0; N];
+
     // Loop for separation points based on the differences in behavior
     while nsep < nmin {
         // Find intervals where the behavior of adjacent intervals is opposite (monotonicity behavior switches)
-        *down = flist[1..s]
+        *down = flist
             .iter()
-            .zip(&flist[0..s - 1])
-            .map(|(&i, &j)| i < j)
+            .take(s)
+            .tuple_windows()  // Directly iterate over pairs
+            .map(|(a, b)| b < a)
             .collect();
 
-        let mut sep: Vec<bool> = [vec![true, true], down.clone(), vec![true, true]].concat()
-            .iter()
-            .zip([vec![false], up.clone(), vec![false]].concat())
-            .zip([down.clone(), vec![true, true]].concat())
-            .map(|((i, j), k)| *i && j && k)
-            .collect();
+        let down_len = down.len();
+        let up_len = up.len();
 
-        let temp_sep: Vec<bool> = [vec![true, true], up.clone(), vec![true, true]].concat()
-            .iter()
-            .zip([vec![false], down.clone(), vec![false]].concat())
-            .zip([up.clone(), vec![true, true]].concat())
-            .map(|((i, j), k)| *i && j && k)
-            .collect();
+        let sep_len = 2 + std::cmp::min(down_len, up_len);
 
-        // Combine temp_sep and sep
-        sep = sep.iter().zip(&temp_sep).map(|(i, j)| *i || *j).collect();
+        ind.clear();
+        for n in 0..sep_len {
+            // Compute `sep[n]` equivalent:
+            let i_sep = if n < 2 {
+                true
+            } else {
+                down[n - 2]
+            };
 
-        // Indices where separation occurs
-        let ind: Vec<usize> = sep.iter().enumerate().filter_map(|(i, &val)| if val { Some(i) } else { None }).collect();
-        if ind.len() == 0 {
+            let j_sep = if n == 0 {
+                false
+            } else {
+                up.get(n - 1).copied().unwrap_or(false)
+            };
+
+            let k_sep = if n < down_len {
+                down[n]
+            } else {
+                true
+            };
+
+            let sep_val = i_sep && j_sep && k_sep;
+
+            // Compute `temp_sep[n]` equivalent:
+            let i_temp_sep = if n < 2 {
+                true
+            } else {
+                up[n - 2]
+            };
+
+            let j_temp_sep = if n == 0 {
+                false
+            } else {
+                down.get(n - 1).copied().unwrap_or(false)
+            };
+
+            // k_temp_sep = up[n] if within bounds, else true
+            let k_temp_sep = if n < up_len {
+                up[n]
+            } else {
+                true
+            };
+
+            let temp_sep_val = i_temp_sep && j_temp_sep && k_temp_sep;
+
+            // If either `sep_val` or `temp_sep_val` is true, record the index.
+            if sep_val || temp_sep_val {
+                ind.push(n);
+            }
+        }
+
+        if ind.is_empty() {
             break;
         }
 
         // Calculating midpoints for the intervals to be checked
-        let mut aa: Vec<f64> = ind.iter().map(|&i| 0.5 * (alist[i] + alist[i - 1])).collect();
+        aa.clear();
+        ff.clear();
+        for &i in ind.iter() {
+            aa.push(0.5 * (alist[i] + alist[i - 1]));
+            ff.push(flist[i].min(flist[i - 1]));
+        };
 
-        // If there are more midpoints than `nloc`, select the best `nloc`
-        if aa.len() > nloc as usize {
-            let ff: Vec<f64> = ind
-                .iter()
-                .map(|&i| flist[i].min(flist[i - 1])) // select minimum flist for those pairs
-                .collect();
-
+        if aa.len() > nloc {
             let mut indices: Vec<usize> = (0..ff.len()).collect();
-            indices.sort_by(|&i, &j| ff[i].partial_cmp(&ff[j]).unwrap()); // sort by f values
-            aa = indices.iter().take(nloc as usize).map(|&i| aa[i]).collect(); // pick the top nloc values
+            indices.sort_unstable_by(|&i, &j| ff[i].partial_cmp(&ff[j]).unwrap()); // sort by f values
+            aa = indices.iter().take(nloc).map(|&i| aa[i]).collect(); // pick the top nloc values
         }
 
         // For each midpoint alp, evaluate the function and update lists
         for &alp_elem in &aa {
             alp = alp_elem;
 
-            let falp = feval(&std::array::from_fn::<f64, N, _>(|i| x[i] + alp * p[i]));
+            for i in 0..N { x_alp_p[i] = x[i] + alp_elem * p[i]; }
+
+            let falp = feval(&x_alp_p);
             alist.push(alp_elem);
             flist.push(falp);
             nsep += 1;
@@ -106,16 +154,13 @@ pub fn lssep<const N: usize>(
 
     // To account for missing separations, add points globally using lsnew
     for _ in 0..(nmin - nsep) {
-        let res = lsnew(
-            nloc, small, sinit, short, x, p, s, alist, flist, amin, amax, abest, fmed, unitlen,
-        );
-        alp = res.0;
-
+        (alp, _) = lsnew(nloc, small, sinit, short, x, p, s, alist, flist, amin, amax, abest, fmed, unitlen);
         (abest, fbest, fmed, *up, *down, monotone, *minima, nmin, unitlen, s) = lssort(alist, flist);
     }
 
     (amin, amax, alp, abest, fbest, fmed, monotone, nmin, unitlen, s)
 }
+
 
 #[cfg(test)]
 mod tests {

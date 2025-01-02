@@ -1,7 +1,7 @@
 use crate::feval::feval;
 use crate::sign::sign;
 use crate::{polint::polint, quadratic_func::quadmin, quadratic_func::quadpol};
-use nalgebra::{Matrix3xX, SMatrix};
+use nalgebra::{Matrix2xX, Matrix3xX, SMatrix};
 
 pub fn subint(mut x1: f64, mut x2: f64) ->
 (
@@ -76,7 +76,7 @@ pub fn initbox<const N: usize>(
     level: &mut Vec<usize>,
     ipar: &mut Vec<Option<usize>>,
     ichild: &mut Vec<isize>,
-    f: &mut [Vec<f64>; 2],
+    f: &mut Matrix2xX<f64>,
     nboxes: &mut usize,
 ) -> (
     [usize; N],   // p
@@ -86,7 +86,7 @@ pub fn initbox<const N: usize>(
     ipar[0] = None; // parent of root box is -1
     level[0] = 1;  // root box level is 1
     ichild[0] = 1; // root has one child initially
-    f[0][0] = f0[(1, 0)];
+    f[(0, 0)] = f0[(1, 0)];
 
     let mut par = 0_usize; // parent index is 0
     let mut var = [0.0_f64; N]; // variability for dimensions initialized to 0
@@ -104,7 +104,7 @@ pub fn initbox<const N: usize>(
             ipar[*nboxes] = Some(par); // parent index
             level[*nboxes] = level[par] + 1; // Increment level for the child
             ichild[*nboxes] = -nchild; // update child information with negative value
-            f[0][*nboxes] = f0[(0, i)]; // set function value
+            f[(0, *nboxes)] = f0[(0, i)]; // set function value
         }
 
         let v1 = v[i];
@@ -144,7 +144,7 @@ pub fn initbox<const N: usize>(
             ipar[*nboxes] = Some(par);
             level[*nboxes] = level[par] + s;
             ichild[*nboxes] = -nchild;
-            f[0][*nboxes] = f0[(j, i)];  // assign function value
+            f[(0, *nboxes)] = f0[(j, i)];  // assign function value
 
             if j >= 1 {
                 if istar[i] == j {
@@ -176,7 +176,7 @@ pub fn initbox<const N: usize>(
             ipar[*nboxes] = Some(par);
             level[*nboxes] = level[par] + 3 - s;
             ichild[*nboxes] = -nchild;
-            f[0][*nboxes] = f0[(j + 1, i)]; // update function value for the next box
+            f[(0, *nboxes)] = f0[(j + 1, i)]; // update function value for the next box
         }
 
         // If the upper end of x0 is below v, generate a final box
@@ -186,7 +186,7 @@ pub fn initbox<const N: usize>(
             ipar[*nboxes] = Some(par);
             level[*nboxes] = level[par] + 1;
             ichild[*nboxes] = -nchild;
-            f[0][*nboxes] = f0[(2, i)];
+            f[(0, *nboxes)] = f0[(2, i)];
         }
 
         if istar[i] == 2 {
@@ -228,6 +228,7 @@ pub fn initbox<const N: usize>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use nalgebra::Matrix2xX;
 
     #[test]
     fn initbox_test_0() {
@@ -253,7 +254,7 @@ mod tests {
         let mut level = vec![0_usize; N];
         let mut ipar = vec![Some(0_usize); N];
         let mut ichild = vec![0_isize; N];
-        let mut f = [vec![0.0; N], vec![0.0; N]];
+        let mut f = Matrix2xX::<f64>::zeros(N);
         let mut nboxes = 0_usize;
 
         let (p, xbest, fbest) =
@@ -277,10 +278,10 @@ mod tests {
             -1, -2, -3, -4, -1, -2, -3, -4, -1, -2, -3, -4, 0,
             0, 0, 0, 0,
         ];
-        let expected_f = [
-            vec![-0.50531499, -0.62323147, -0.50531499, -0.50531499, -0.08793206, -0.86038255, -0.62323147, -0.62323147, -0.09355143, -0.5152638, -0.86038255, -0.86038255, -0.32139218, -0.98834122, -0.86038255, -0.86038255, -0.0251343, -0.37914019, -0.98834122, -0.98834122, -0.65273189, -0.05313547, -0.98834122, -0.98834122, -0.37750674, 0.0, 0.0, 0.0, 0.0, 0.0],
-            vec![0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-        ];
+        let expected_f = Matrix2xX::<f64>::from_row_slice(&[
+            -0.50531499, -0.62323147, -0.50531499, -0.50531499, -0.08793206, -0.86038255, -0.62323147, -0.62323147, -0.09355143, -0.5152638, -0.86038255, -0.86038255, -0.32139218, -0.98834122, -0.86038255, -0.86038255, -0.0251343, -0.37914019, -0.98834122, -0.98834122, -0.65273189, -0.05313547, -0.98834122, -0.98834122, -0.37750674, 0.0, 0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+        ]);
         let expected_isplit = [
             -1, -2, 0, 0, 0, -3, 0, 0, 0, 0, -4, 0, 0,
             -5, 0, 0, 0, 0, 0, -6, 0, 0, 0, 0, 0, 0,
@@ -331,10 +332,10 @@ mod tests {
         let mut ipar = vec![Some(0_usize); N];
         ipar[0] = None;
         let mut ichild = vec![-15, -14, -13, -12, -11, -10, -9, -8, -7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14];
-        let mut f = [
-            vec![0., 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1., 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2., 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.9],
-            vec![-1.5, -1.4, -1.3, -1.2, -1.1, -1., -0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0., 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1., 1.1, 1.2, 1.3, 1.4]
-        ];
+        let mut f = Matrix2xX::<f64>::from_row_slice(&[
+            0., 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1., 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2., 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.9,
+            -1.5, -1.4, -1.3, -1.2, -1.1, -1., -0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0., 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1., 1.1, 1.2, 1.3, 1.4
+        ]);
         let mut nboxes = 0_usize;
 
         let (p, xbest, fbest) =
@@ -354,10 +355,10 @@ mod tests {
         let expected_ichild = [
             1, -1, -2, -3, -4, -1, -2, -3, -4, -5, -1, -2, -3, -4, -5, -1, -2, -3, -4, -5, -1, -2, -3, -4, -5, -1, -2, -3, -4, -5
         ];
-        let expected_f = [
-            [-0.2, -0.1, -0.2, -0.2, -0.3, -1.1, -1.1, -2.2, -2.2, -3.3, -11.1, -11.1, -21.2, -21.2, -31.3, 0.1, 0.1, 0.2, 0.2, 0.3, 1.1, 1.1, 2.2, 2.2, 3.3, 11.1, 11.1, 21.2, 21.2, 31.3],
-            [-1.5, -1.4, -1.3, -1.2, -1.1, -1.0, -0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4]
-        ];
+        let expected_f = Matrix2xX::<f64>::from_row_slice(&[
+            -0.2, -0.1, -0.2, -0.2, -0.3, -1.1, -1.1, -2.2, -2.2, -3.3, -11.1, -11.1, -21.2, -21.2, -31.3, 0.1, 0.1, 0.2, 0.2, 0.3, 1.1, 1.1, 2.2, 2.2, 3.3, 11.1, 11.1, 21.2, 21.2, 31.3,
+            -1.5, -1.4, -1.3, -1.2, -1.1, -1.0, -0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4
+        ]);
         let expected_isplit = [
             -1, -2, -13, -12, -11, -10, -9, -3, -7, -6, -5, -4, -3, -2, -4, -5, 1, 2, 3, 4, 5, 6, -6, 8, 9, 10, 11, 12, 13, 14
         ];
