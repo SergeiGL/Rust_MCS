@@ -10,7 +10,7 @@ pub fn lssep<const N: usize>(
     small: f64,
     sinit: usize,
     short: f64,
-    x: &[f64; N],
+    x: &SVector<f64, N>,
     p: &SVector<f64, N>,
     alist: &mut Vec<f64>,
     flist: &mut Vec<f64>,
@@ -47,7 +47,7 @@ pub fn lssep<const N: usize>(
     let mut aa = Vec::with_capacity(cap);
     let mut ff = Vec::with_capacity(cap);
 
-    let mut x_alp_p = [0.0; N];
+    let mut x_alp_p: SVector<f64, N>;
 
     // Loop for separation points based on the differences in behavior
     while nsep < nmin {
@@ -128,17 +128,17 @@ pub fn lssep<const N: usize>(
         };
 
         if aa.len() > nloc {
-            let mut indices: Vec<usize> = (0..ff.len()).collect();
-            indices.sort_unstable_by(|&i, &j| ff[i].partial_cmp(&ff[j]).unwrap()); // sort by f values
-            aa = indices.iter().take(nloc).map(|&i| aa[i]).collect(); // pick the top nloc values
+            aa = ff.iter()
+                .enumerate()
+                .sorted_unstable_by(|(_, f_i), &(_, f_j)| f_i.total_cmp(&f_j))  // sort by f values
+                .take(nloc)
+                .map(|(i, _)| aa[i]).collect();
         }
 
         // For each midpoint alp, evaluate the function and update lists
         for &alp_elem in &aa {
             alp = alp_elem;
-
-            for i in 0..N { x_alp_p[i] = x[i] + alp_elem * p[i]; }
-
+            x_alp_p = x + p.scale(alp);
             let falp = feval(&x_alp_p);
             alist.push(alp_elem);
             flist.push(falp);
@@ -154,7 +154,7 @@ pub fn lssep<const N: usize>(
 
     // To account for missing separations, add points globally using lsnew
     for _ in 0..(nmin - nsep) {
-        (alp, _) = lsnew(nloc, small, sinit, short, x, p, s, alist, flist, amin, amax, abest, fmed, unitlen);
+        alp = lsnew(nloc, small, sinit, short, x, p, s, alist, flist, amin, amax, abest, fmed, unitlen);
         (abest, fbest, fmed, *up, *down, monotone, *minima, nmin, unitlen, s) = lssort(alist, flist);
     }
 
@@ -172,7 +172,7 @@ mod tests {
         let small = 1e-6;
         let sinit = 1;
         let short = 0.1;
-        let x = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let x = SVector::<f64, 6>::from_row_slice(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
         let p = SVector::<f64, 6>::from_row_slice(&[-1.0, -2.0, -3.0, -4.0, -5.0, -6.0]);
         let mut alist = vec![3.0, 2.0];
         let mut flist = vec![3.0, 2.0];
@@ -208,7 +208,7 @@ mod tests {
         let small = 1e-6;
         let sinit = 1;
         let short = 0.1;
-        let x = [1000.0, 2000.0, 3000.0, 4000.0, 5000.0, 6000.0];
+        let x = SVector::<f64, 6>::from_row_slice(&[1000.0, 2000.0, 3000.0, 4000.0, 5000.0, 6000.0]);
         let p = SVector::<f64, 6>::from_row_slice(&[-1000.0, -2000.0, -3000.0, -4000.0, -5000.0, -6000.0]);
         let mut alist = vec![3000.0, 2000.0];
         let mut flist = vec![3000.0, 2000.0];
@@ -245,7 +245,7 @@ mod tests {
         let small = 0.0;
         let sinit = 0;
         let short = 0.0;
-        let x = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+        let x = SVector::<f64, 6>::from_row_slice(&[0.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
         let p = SVector::<f64, 6>::from_row_slice(&[0.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
         let mut alist = vec![0.0, 0.0];
         let mut flist = vec![0.0, 0.0];

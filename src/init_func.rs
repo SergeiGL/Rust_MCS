@@ -1,7 +1,8 @@
 use crate::feval::feval;
 use crate::sign::sign;
 use crate::{polint::polint, quadratic_func::quadmin, quadratic_func::quadpol};
-use nalgebra::{Matrix2xX, Matrix3xX, SMatrix};
+use itertools::Itertools;
+use nalgebra::{Matrix2xX, Matrix3xX, SMatrix, SVector};
 
 pub fn subint(mut x1: f64, mut x2: f64) ->
 (
@@ -28,7 +29,7 @@ pub fn init<const N: usize>(x0: &SMatrix<f64, N, 3>) -> (
 ) {
     let mut ncall = 0_usize;
 
-    let mut x: [f64; N] = std::array::from_fn(|ind| x0[(ind, 1)]);
+    let mut x: SVector<f64, N> = x0.column(1).into_owned();
 
     let mut f1 = feval(&x);
     ncall += 1;
@@ -36,11 +37,9 @@ pub fn init<const N: usize>(x0: &SMatrix<f64, N, 3>) -> (
     let mut f0 = Matrix3xX::<f64>::repeat(N, 0.0); // L[0] is always = 3
     f0[(1, 0)] = f1;
 
-    let mut istar = [0_usize; N];
+    let mut istar = [1_usize; N];
 
     for i in 0..N {
-        istar[i] = 1;
-
         for j in 0..3 {
             if j == 1 {
                 if i != 0 { f0[(j, i)] = f0[(istar[i - 1], i - 1)]; }
@@ -70,8 +69,8 @@ pub fn initbox<const N: usize>(
     x0: &SMatrix<f64, N, 3>,
     f0: &Matrix3xX<f64>,
     istar: &[usize; N],
-    u: &[f64; N],
-    v: &[f64; N],
+    u: &SVector<f64, N>,
+    v: &SVector<f64, N>,
     isplit: &mut Vec<isize>,
     level: &mut Vec<usize>,
     ipar: &mut Vec<Option<usize>>,
@@ -79,9 +78,9 @@ pub fn initbox<const N: usize>(
     f: &mut Matrix2xX<f64>,
     nboxes: &mut usize,
 ) -> (
-    [usize; N],   // p
-    [f64; N],     // xbest
-    f64           // fbest
+    SVector<usize, N>, // p
+    SVector<f64, N>,   // xbest
+    f64                // fbest
 ) {
     ipar[0] = None; // parent of root box is -1
     level[0] = 1;  // root box level is 1
@@ -89,7 +88,7 @@ pub fn initbox<const N: usize>(
     f[(0, 0)] = f0[(1, 0)];
 
     let mut par = 0_usize; // parent index is 0
-    let mut var = [0.0_f64; N]; // variability for dimensions initialized to 0
+    let mut var = SVector::<f64, N>::repeat(0.0); // variability for dimensions initialized to 0
 
     // Iterate over each dimension
     for i in 0..N {
@@ -212,11 +211,11 @@ pub fn initbox<const N: usize>(
     // Finding the best function value
     let fbest = f0[(istar[N - 1], N - 1)];
 
-    let mut p = [0_usize; N]; // stores the indices of best points
-    let mut xbest = [0.0; N]; // best point values
+    let mut p = SVector::<usize, N>::zeros(); // stores the indices of best points
+    let mut xbest = SVector::<f64, N>::zeros(); // best point values
 
     for i in 0..N {
-        p[i] = var.iter().copied().enumerate().max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap()).unwrap().0; // find the maximum in var
+        p[i] = var.iter().position_max_by(|a, b| a.total_cmp(b)).unwrap(); // find the maximum in var
         var[p[i]] = -1.0; // mark as used
         xbest[i] = x0[(i, istar[i])];  // store the best value of x at that index
     }
@@ -248,8 +247,8 @@ mod tests {
             -0.08793206, -0.09355143, -0.32139218, -0.0251343, -0.65273189, -0.37750674,
         ]);
         let istar = [0, 0, 1, 0, 1, 1];
-        let u = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
-        let v = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0];
+        let u = SVector::<f64, 6>::from_row_slice(&[0.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
+        let v = SVector::<f64, 6>::from_row_slice(&[1.0, 1.0, 1.0, 1.0, 1.0, 1.0]);
         let mut isplit = vec![0_isize; N];
         let mut level = vec![0_usize; N];
         let mut ipar = vec![Some(0_usize); N];
@@ -257,13 +256,7 @@ mod tests {
         let mut f = Matrix2xX::<f64>::zeros(N);
         let mut nboxes = 0_usize;
 
-        let (p, xbest, fbest) =
-            initbox(
-                &x0, &f0, &istar, &u, &v,
-                &mut isplit, &mut level, &mut ipar, &mut ichild,
-                &mut f,
-                &mut nboxes,
-            );
+        let (p, xbest, fbest) = initbox(&x0, &f0, &istar, &u, &v, &mut isplit, &mut level, &mut ipar, &mut ichild, &mut f, &mut nboxes);
 
         let expected_ipar = [
             None, Some(0), Some(0), Some(0), Some(0), Some(1), Some(1), Some(1), Some(1), Some(5), Some(5), Some(5), Some(5),
@@ -297,8 +290,8 @@ mod tests {
         assert_eq!(level, expected_level);
         assert_eq!(ichild, expected_ichild);
         assert_eq!(isplit, expected_isplit);
-        assert_eq!(p, expected_p);
-        assert_eq!(xbest, expected_xbest);
+        assert_eq!(p.as_slice(), expected_p);
+        assert_eq!(xbest.as_slice(), expected_xbest);
         assert_eq!(fbest, expected_fbest);
         assert_eq!(f, expected_f);
         assert_eq!(nboxes, expected_nboxes);
@@ -324,8 +317,8 @@ mod tests {
         ]);
 
         let istar = [0, 1, 2, 0, 1, 2];
-        let u = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
-        let v = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0];
+        let u = SVector::<f64, 6>::from_row_slice(&[0.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
+        let v = SVector::<f64, 6>::from_row_slice(&[1.0, 1.0, 1.0, 1.0, 1.0, 1.0]);
 
         let mut isplit = vec![-15, -14, -13, -12, -11, -10, -9, -8, -7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14];
         let mut level = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29];
@@ -372,8 +365,8 @@ mod tests {
         assert_eq!(level, expected_level);
         assert_eq!(ichild, expected_ichild);
         assert_eq!(isplit, expected_isplit);
-        assert_eq!(p, expected_p);
-        assert_eq!(xbest, expected_xbest);
+        assert_eq!(p.as_slice(), expected_p);
+        assert_eq!(xbest.as_slice(), expected_xbest);
         assert_eq!(fbest, expected_fbest);
         assert_eq!(f, expected_f);
         assert_eq!(nboxes, expected_nboxes);

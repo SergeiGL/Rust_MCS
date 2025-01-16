@@ -1,5 +1,5 @@
 pub fn lsguard(mut alp: f64, alist: &mut Vec<f64>, amax: f64, amin: f64, small: f64) -> f64 {
-    alist.sort_by(|a, b| a.partial_cmp(&b).unwrap());
+    alist.sort_unstable_by(|a, b| a.total_cmp(&b));
     let s = alist.len();
 
     // Enforce extrapolation to be cautious

@@ -1,9 +1,7 @@
 use crate::minq::IerEnum;
 
 pub fn getalp(alpu: f64, alpo: f64, gTp: f64, pTGp: f64) -> (f64, bool, bool, IerEnum) {
-    let mut lba = false;
-    let mut uba = false;
-
+    let (mut lba, mut uba) = (false, false);
     let mut ier = IerEnum::LocalMinimizerFound;
 
     if alpu == f64::NEG_INFINITY && (pTGp < 0.0 || (pTGp == 0.0 && gTp > 0.0)) {
@@ -46,7 +44,6 @@ pub fn getalp(alpu: f64, alpo: f64, gTp: f64, pTGp: f64) -> (f64, bool, bool, Ie
     if uba {
         alp = alpo;
     }
-
 
     (alp, lba, uba, ier)
 }

@@ -1,9 +1,8 @@
 use nalgebra::{Dyn, MatrixView, U1, U2};
 
 pub fn updtrec<const SMAX: usize>(j: usize, s: usize, f: MatrixView<f64, U1, Dyn, U1, U2>, record: &mut [usize; SMAX]) {
-    if record.len() < s {
-        println!("updtrec: VERY CAREFUL record.len() < s");
-    } else if record.len() < s || record[s] == 0 || f[j] < f[record[s]] {
+    debug_assert!(record.len() >= s); // updtrec: VERY CAREFUL record.len() < s"
+    if record.len() < s || record[s] == 0 || f[j] < f[record[s]] {
         record[s] = j;
     }
 }

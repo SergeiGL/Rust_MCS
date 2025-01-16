@@ -4,49 +4,37 @@ use crate::polint::polint1;
 use nalgebra::{SMatrix, SVector};
 
 pub fn triple<const N: usize>(
-    x: &[f64; N],
+    x: &SVector<f64, N>,
     mut f: f64,
-    x1: &mut [f64; N],
-    x2: &mut [f64; N],
-    u: &[f64; N],
-    v: &[f64; N],
+    x1: &mut SVector<f64, N>,
+    x2: &mut SVector<f64, N>,
+    u: &SVector<f64, N>,
+    v: &SVector<f64, N>,
     hess: &SMatrix<f64, N, N>,
     G: &mut SMatrix<f64, N, N>,
     setG: bool,
 ) -> (
-    [f64; N],         // xtrip
-    f64,              // ftrip
-    SVector<f64, N>,  // g
-    usize             // nf
+    SVector<f64, N>,   // xtrip
+    f64,               // ftrip
+    SVector<f64, N>,   // g
+    usize              // nf
 ) {
-    let mut nf: usize = 0;
+    let (mut nf, mut nargin_lower_10) = (0_usize, false);
     let mut g = SVector::<f64, N>::zeros();
-    let mut nargin_lower_10 = false;
 
     if setG {
         nargin_lower_10 = true;
         *G = SMatrix::<f64, N, N>::zeros();
     }
 
-    let ind = x
-        .iter()
-        .enumerate()
-        .filter(|&(i, &xi)| (u[i] < xi) && (xi < v[i]))
-        .map(|(i, _)| i)
-        .collect::<Vec<usize>>();
-
-    let ind1 = x
-        .iter()
-        .enumerate()
-        .filter(|&(i, &xi)| (xi <= u[i]) || (xi >= v[i]))
-        .map(|(i, _)| i)
-        .collect::<Vec<usize>>();
-
-    for &ind1_j in &ind1 {
-        g[ind1_j] = 0.0;
-        for k in 0..N {
-            G[(ind1_j, k)] = 0.0;
-            G[(k, ind1_j)] = 0.0;
+    let mut ind: Vec<usize> = Vec::with_capacity(x.len());
+    for (i, &xi) in x.iter().enumerate() {
+        if (u[i] < xi) && (xi < v[i]) {
+            ind.push(i);
+        } else {
+            g[i] = 0.0;
+            G.fill_row(i, 0.0);
+            G.fill_column(i, 0.0)
         }
     }
 
@@ -56,7 +44,7 @@ pub fn triple<const N: usize>(
     let mut ftripnew = f;
 
     if ind.len() <= 1 {
-        for &i in &ind {
+        for i in ind {
             g[i] = 1.0;
             G[(i, i)] = 1.0;
         }
@@ -69,7 +57,7 @@ pub fn triple<const N: usize>(
 
     let mut k1_option: Option<usize> = None;
 
-    for (_, &i) in ind.iter().enumerate() {
+    for &i in ind.iter() {
         let mut x = xtrip.clone();
         f = ftrip;
 
@@ -182,12 +170,12 @@ mod tests {
 
     #[test]
     fn test_cover() {
-        let x = [0.43365618894869346, 0.8420868988145562, 0.7176872417127306, 0.4916610939334169, 0.18103825707549334, 0.028904638786252483];
+        let x = SVector::<f64, 6>::from_row_slice(&[0.43365618894869346, 0.8420868988145562, 0.7176872417127306, 0.4916610939334169, 0.18103825707549334, 0.028904638786252483]);
         let f = -2.9081562404231485;
-        let mut x1 = [0.4336535629633933, 0.8420817995956955, 0.7176828957903273, 0.49165811670205656, 0.18103716080657348, 0.02890446375552885];
-        let mut x2 = [0.4336588149339936, 0.8420919980334169, 0.7176915876351339, 0.4916640711647772, 0.1810393533444132, 0.028904813816976117];
-        let u = [0.; 6];
-        let v = [1.; 6];
+        let mut x1 = SVector::<f64, 6>::from_row_slice(&[0.4336535629633933, 0.8420817995956955, 0.7176828957903273, 0.49165811670205656, 0.18103716080657348, 0.02890446375552885]);
+        let mut x2 = SVector::<f64, 6>::from_row_slice(&[0.4336588149339936, 0.8420919980334169, 0.7176915876351339, 0.4916640711647772, 0.1810393533444132, 0.028904813816976117]);
+        let u = SVector::<f64, 6>::from_row_slice(&[0.; 6]);
+        let v = SVector::<f64, 6>::from_row_slice(&[1.; 6]);
         let hess = SMatrix::<f64, 6, 6>::repeat(0.);
         let mut G = SMatrix::<f64, 6, 6>::repeat(5.);
         let setG = true;
@@ -206,23 +194,23 @@ mod tests {
         let expected_x2 = [0.4336588149339936, 0.8420868988145562, 0.7176872417127306, 0.4916610939334169, 0.1810393533444132, 0.028904638786252483];
         let expected_nf = 12;
 
-        assert_eq!(xtrip, expected_xtrip);
+        assert_eq!(xtrip.as_slice(), expected_xtrip);
         assert_eq!(ftrip, expected_ftrip);
         assert_eq!(g, expected_g);
         assert_eq!(G, expected_G);
-        assert_eq!(x1, expected_x1);
-        assert_eq!(x2, expected_x2);
+        assert_eq!(x1.as_slice(), expected_x1);
+        assert_eq!(x2.as_slice(), expected_x2);
         assert_eq!(nf, expected_nf);
     }
 
     #[test]
     fn test_real_mistake_1() {
-        let x = [0.4336561889486934, 0.8420868988145562, 0.7176872417127305, 0.4916610939334169, 0.18103825707549337, 0.0289046387862526];
+        let x = SVector::<f64, 6>::from_row_slice(&[0.4336561889486934, 0.8420868988145562, 0.7176872417127305, 0.4916610939334169, 0.18103825707549337, 0.0289046387862526]);
         let f = -2.9081562404231485;
-        let mut x1 = [0.43365356296339325, 0.8420817995956955, 0.7176828957903272, 0.49165811670205656, 0.1810371608065735, 0.028904463755528968];
-        let mut x2 = [0.43365881493399355, 0.8420919980334169, 0.7176915876351337, 0.4916640711647772, 0.18103935334441323, 0.028904813816976235];
-        let u = [0.; 6];
-        let v = [1.; 6];
+        let mut x1 = SVector::<f64, 6>::from_row_slice(&[0.43365356296339325, 0.8420817995956955, 0.7176828957903272, 0.49165811670205656, 0.1810371608065735, 0.028904463755528968]);
+        let mut x2 = SVector::<f64, 6>::from_row_slice(&[0.43365881493399355, 0.8420919980334169, 0.7176915876351337, 0.4916640711647772, 0.18103935334441323, 0.028904813816976235]);
+        let u = SVector::<f64, 6>::from_row_slice(&[0.; 6]);
+        let v = SVector::<f64, 6>::from_row_slice(&[1.; 6]);
         let hess = SMatrix::<f64, 6, 6>::repeat(1.);
         let mut G = SMatrix::<f64, 6, 6>::repeat(154765865.);
         let setG = true;
@@ -240,24 +228,24 @@ mod tests {
         let expected_x2 = [0.43365881493399355, 0.8420868988145562, 0.7176872417127305, 0.4916610939334169, 0.18103935334441323, 0.0289046387862526];
         let expected_nf = 27;
 
-        assert_eq!(xtrip, expected_xtrip);
+        assert_eq!(xtrip.as_slice(), expected_xtrip);
         assert_eq!(ftrip, expected_ftrip);
         assert_eq!(g, expected_g);
         assert_eq!(G, expected_G);
-        assert_eq!(x1, expected_x1);
-        assert_eq!(x2, expected_x2);
+        assert_eq!(x1.as_slice(), expected_x1);
+        assert_eq!(x2.as_slice(), expected_x2);
         assert_eq!(nf, expected_nf);
     }
 
 
     #[test]
     fn test_real_mistake() {
-        let x = [0.43365618894869346, 0.8420868988145562, 0.7176872417127306, 0.4916610939334169, 0.18103825707549334, 0.028904638786252483];
+        let x = SVector::<f64, 6>::from_row_slice(&[0.43365618894869346, 0.8420868988145562, 0.7176872417127306, 0.4916610939334169, 0.18103825707549334, 0.028904638786252483]);
         let f = -2.9081562404231485;
-        let mut x1 = [0.4336535629633933, 0.8420817995956955, 0.7176828957903273, 0.49165811670205656, 0.18103716080657348, 0.02890446375552885];
-        let mut x2 = [0.4336588149339936, 0.8420919980334169, 0.7176915876351339, 0.4916640711647772, 0.1810393533444132, 0.028904813816976117];
-        let u = [0.; 6];
-        let v = [1.; 6];
+        let mut x1 = SVector::<f64, 6>::from_row_slice(&[0.4336535629633933, 0.8420817995956955, 0.7176828957903273, 0.49165811670205656, 0.18103716080657348, 0.02890446375552885]);
+        let mut x2 = SVector::<f64, 6>::from_row_slice(&[0.4336588149339936, 0.8420919980334169, 0.7176915876351339, 0.4916640711647772, 0.1810393533444132, 0.028904813816976117]);
+        let u = SVector::<f64, 6>::from_row_slice(&[0.; 6]);
+        let v = SVector::<f64, 6>::from_row_slice(&[1.; 6]);
         let hess = SMatrix::<f64, 6, 6>::repeat(1.);
         let mut G = SMatrix::<f64, 6, 6>::repeat(154765865.);
         let setG = true;
@@ -277,24 +265,24 @@ mod tests {
         let expected_x2 = [0.4336588149339936, 0.8420868988145562, 0.7176872417127306, 0.4916610939334169, 0.1810393533444132, 0.028904638786252483];
         let expected_nf = 27;
 
-        assert_eq!(xtrip, expected_xtrip);
+        assert_eq!(xtrip.as_slice(), expected_xtrip);
         assert_eq!(ftrip, expected_ftrip);
         assert_eq!(g, expected_g);
         assert_eq!(G, expected_G);
-        assert_eq!(x1, expected_x1);
-        assert_eq!(x2, expected_x2);
+        assert_eq!(x1.as_slice(), expected_x1);
+        assert_eq!(x2.as_slice(), expected_x2);
         assert_eq!(nf, expected_nf);
     }
 
 
     #[test]
     fn test_cover_0() {
-        let x = [1.2, -1.15, 0.01, 2.27, -1.31, 0.3];
+        let x = SVector::<f64, 6>::from_row_slice(&[1.2, -1.15, 0.01, 2.27, -1.31, 0.3]);
         let f = 12.32;
-        let mut x1 = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6];
-        let mut x2 = [0.2, 0.1, 0.4, 0.2, 0.3, 1.2];
-        let u = [-10.0, -10.0, -10.0, -10.0, -10.0, -10.0];
-        let v = [3.0, 3.0, 3.0, 3.0, 3.0, 3.0];
+        let mut x1 = SVector::<f64, 6>::from_row_slice(&[0.1, 0.2, 0.3, 0.4, 0.5, 0.6]);
+        let mut x2 = SVector::<f64, 6>::from_row_slice(&[0.2, 0.1, 0.4, 0.2, 0.3, 1.2]);
+        let u = SVector::<f64, 6>::from_row_slice(&[-10.0, -10.0, -10.0, -10.0, -10.0, -10.0]);
+        let v = SVector::<f64, 6>::from_row_slice(&[3.0, 3.0, 3.0, 3.0, 3.0, 3.0]);
         let hess = SMatrix::<f64, 6, 6>::from_row_slice(&[
             1.0, 2.0, 3.0, 4.0, 5.0, 6.0,
             1.0, 2.0, 3.0, 4.0, 5.0, 6.0,
@@ -337,23 +325,23 @@ mod tests {
         let expected_x2 = [0.2, 0.1, 0.01, 0.2, -1.31, 1.2];
         let expected_nf = 12;
 
-        assert_eq!(xtrip, expected_xtrip);
+        assert_eq!(xtrip.as_slice(), expected_xtrip);
         assert_eq!(ftrip, expected_ftrip);
         assert_eq!(g, expected_g);
         assert_eq!(G, expected_G);
-        assert_eq!(x1, expected_x1);
-        assert_eq!(x2, expected_x2);
+        assert_eq!(x1.as_slice(), expected_x1);
+        assert_eq!(x2.as_slice(), expected_x2);
         assert_eq!(nf, expected_nf);
     }
 
     #[test]
     fn test_cover_1() {
-        let x = [-0.2, 0.15, 1.023, 0.0, 3.0, -10.0];
+        let x = SVector::<f64, 6>::from_row_slice(&[-0.2, 0.15, 1.023, 0.0, 3.0, -10.0]);
         let f = -0.4;
-        let mut x1 = [10.0; 6];
-        let mut x2 = [-10.0; 6];
-        let u = [-5.0; 6];
-        let v = [6.0; 6];
+        let mut x1 = SVector::<f64, 6>::from_row_slice(&[10.0; 6]);
+        let mut x2 = SVector::<f64, 6>::from_row_slice(&[-10.0; 6]);
+        let u = SVector::<f64, 6>::from_row_slice(&[-5.0; 6]);
+        let v = SVector::<f64, 6>::from_row_slice(&[6.0; 6]);
         let hess = SMatrix::<f64, 6, 6>::from_row_slice(&[
             -1.0, 2.0, -3.0, -4.0, -5.0, 0.0,
             -1.0, 2.0, -3.0, -4.0, -5.0, 0.0,
@@ -396,23 +384,23 @@ mod tests {
         let expected_x2 = [-10.0; 6];
         let expected_nf = 10;
 
-        assert_eq!(xtrip, expected_xtrip);
+        assert_eq!(xtrip.as_slice(), expected_xtrip);
         assert_eq!(ftrip, expected_ftrip);
         assert_eq!(g, expected_g);
         assert_eq!(G, expected_G);
-        assert_eq!(x1, expected_x1);
-        assert_eq!(x2, expected_x2);
+        assert_eq!(x1.as_slice(), expected_x1);
+        assert_eq!(x2.as_slice(), expected_x2);
         assert_eq!(nf, expected_nf);
     }
 
     #[test]
     fn test_cover_2() {
-        let x = [0.1, 0.15, -0.02, 0.1, 0.0, -0.4];
+        let x = SVector::<f64, 6>::from_row_slice(&[0.1, 0.15, -0.02, 0.1, 0.0, -0.4]);
         let f = -1.2;
-        let mut x1 = [11.0; 6];
-        let mut x2 = [-4.0; 6];
-        let u = [-20.0; 6];
-        let v = [60.0; 6];
+        let mut x1 = SVector::<f64, 6>::from_row_slice(&[11.0; 6]);
+        let mut x2 = SVector::<f64, 6>::from_row_slice(&[-4.0; 6]);
+        let u = SVector::<f64, 6>::from_row_slice(&[-20.0; 6]);
+        let v = SVector::<f64, 6>::from_row_slice(&[60.0; 6]);
         let hess = SMatrix::<f64, 6, 6>::from_row_slice(&[
             12.0, 0.1, 0.3, -0.4, 0.6, 0.12,
             12.0, 0.1, 0.3, -0.4, 0.6, 0.12,
@@ -455,23 +443,23 @@ mod tests {
         let expected_x2 = [-4.0; 6];
         let expected_nf = 12;
 
-        assert_eq!(xtrip, expected_xtrip);
+        assert_eq!(xtrip.as_slice(), expected_xtrip);
         assert_eq!(ftrip, expected_ftrip);
         assert_eq!(g, expected_g);
         assert_eq!(G, expected_G);
-        assert_eq!(x1, expected_x1);
-        assert_eq!(x2, expected_x2);
+        assert_eq!(x1.as_slice(), expected_x1);
+        assert_eq!(x2.as_slice(), expected_x2);
         assert_eq!(nf, expected_nf);
     }
 
     #[test]
     fn test_cover_3() {
-        let x = [0.112, -0.1, -0.32, 0.0, 10.0, -0.4];
+        let x = SVector::<f64, 6>::from_row_slice(&[0.112, -0.1, -0.32, 0.0, 10.0, -0.4]);
         let f = -4.5;
-        let mut x1 = [11.0; 6];
-        let mut x2 = [-1.0; 6];
-        let u = [-20.0; 6];
-        let v = [60.0; 6];
+        let mut x1 = SVector::<f64, 6>::from_row_slice(&[11.0; 6]);
+        let mut x2 = SVector::<f64, 6>::from_row_slice(&[-1.0; 6]);
+        let u = SVector::<f64, 6>::from_row_slice(&[-20.0; 6]);
+        let v = SVector::<f64, 6>::from_row_slice(&[60.0; 6]);
         let hess = SMatrix::<f64, 6, 6>::from_row_slice(&[
             0.0, 0.1, 0.4, 0.4, 0.4, 0.5,
             0.0, 0.1, 0.4, 0.4, 0.4, 0.5,
@@ -514,23 +502,23 @@ mod tests {
         let expected_x2 = [-1.0; 6];
         let expected_nf = 22;
 
-        assert_eq!(xtrip, expected_xtrip);
+        assert_eq!(xtrip.as_slice(), expected_xtrip);
         assert_eq!(ftrip, expected_ftrip);
         assert_eq!(g, expected_g);
         assert_eq!(G, expected_G);
-        assert_eq!(x1, expected_x1);
-        assert_eq!(x2, expected_x2);
+        assert_eq!(x1.as_slice(), expected_x1);
+        assert_eq!(x2.as_slice(), expected_x2);
         assert_eq!(nf, expected_nf);
     }
 
     #[test]
     fn test_0() {
-        let x = [0.2, 0.15, 0.47, 0.27, 0.31, 0.66];
+        let x = SVector::<f64, 6>::from_row_slice(&[0.2, 0.15, 0.47, 0.27, 0.31, 0.66]);
         let f = -3.32;
-        let mut x1 = [0.201, 0.148, 0.475, 0.273, 0.307, 0.656];
-        let mut x2 = [0.202, 0.146, 0.476, 0.271, 0.308, 0.654];
-        let u = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
-        let v = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0];
+        let mut x1 = SVector::<f64, 6>::from_row_slice(&[0.201, 0.148, 0.475, 0.273, 0.307, 0.656]);
+        let mut x2 = SVector::<f64, 6>::from_row_slice(&[0.202, 0.146, 0.476, 0.271, 0.308, 0.654]);
+        let u = SVector::<f64, 6>::from_row_slice(&[0.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
+        let v = SVector::<f64, 6>::from_row_slice(&[1.0, 1.0, 1.0, 1.0, 1.0, 1.0]);
         let hess = SMatrix::<f64, 6, 6>::from_row_slice(&[
             1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
             1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
@@ -573,23 +561,23 @@ mod tests {
         let expected_x2 = [0.2, 0.146, 0.47, 0.271, 0.308, 0.654];
         let expected_nf = 12;
 
-        assert_eq!(xtrip, expected_xtrip);
+        assert_eq!(xtrip.as_slice(), expected_xtrip);
         assert_eq!(ftrip, expected_ftrip);
         assert_eq!(g, expected_g);
         assert_eq!(G, expected_G);
-        assert_eq!(x1, expected_x1);
-        assert_eq!(x2, expected_x2);
+        assert_eq!(x1.as_slice(), expected_x1);
+        assert_eq!(x2.as_slice(), expected_x2);
         assert_eq!(nf, expected_nf);
     }
 
     #[test]
     fn test_1() {
-        let x = [0.0, 1.0, 0.0, 1.0, 0.0, 1.0];
+        let x = SVector::<f64, 6>::from_row_slice(&[0.0, 1.0, 0.0, 1.0, 0.0, 1.0]);
         let f = -3.32;
-        let mut x1 = [0.001, 0.999, 0.001, 0.999, 0.001, 0.999];
-        let mut x2 = [0.002, 0.998, 0.002, 0.998, 0.002, 0.998];
-        let u = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
-        let v = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0];
+        let mut x1 = SVector::<f64, 6>::from_row_slice(&[0.001, 0.999, 0.001, 0.999, 0.001, 0.999]);
+        let mut x2 = SVector::<f64, 6>::from_row_slice(&[0.002, 0.998, 0.002, 0.998, 0.002, 0.998]);
+        let u = SVector::<f64, 6>::from_row_slice(&[0.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
+        let v = SVector::<f64, 6>::from_row_slice(&[1.0, 1.0, 1.0, 1.0, 1.0, 1.0]);
         let hess = SMatrix::<f64, 6, 6>::from_row_slice(&[
             1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
             1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
@@ -627,23 +615,23 @@ mod tests {
         let expected_x2 = [0.002, 0.998, 0.002, 0.998, 0.002, 0.998];
         let expected_nf = 0;
 
-        assert_eq!(xtrip, expected_xtrip);
+        assert_eq!(xtrip.as_slice(), expected_xtrip);
         assert_eq!(ftrip, expected_ftrip);
         assert_eq!(g, expected_g);
         assert_eq!(G, expected_G);
-        assert_eq!(x1, expected_x1);
-        assert_eq!(x2, expected_x2);
+        assert_eq!(x1.as_slice(), expected_x1);
+        assert_eq!(x2.as_slice(), expected_x2);
         assert_eq!(nf, expected_nf);
     }
 
     #[test]
     fn test_2() {
-        let x = [-0.1, 1.1, -0.1, 1.1, -0.1, 1.1];
+        let x = SVector::<f64, 6>::from_row_slice(&[-0.1, 1.1, -0.1, 1.1, -0.1, 1.1]);
         let f = -3.32;
-        let mut x1 = [-0.1, 1.1, -0.1, 1.1, -0.1, 1.1];
-        let mut x2 = [-0.1, 1.1, -0.1, 1.1, -0.1, 1.1];
-        let u = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
-        let v = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0];
+        let mut x1 = SVector::<f64, 6>::from_row_slice(&[-0.1, 1.1, -0.1, 1.1, -0.1, 1.1]);
+        let mut x2 = SVector::<f64, 6>::from_row_slice(&[-0.1, 1.1, -0.1, 1.1, -0.1, 1.1]);
+        let u = SVector::<f64, 6>::from_row_slice(&[0.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
+        let v = SVector::<f64, 6>::from_row_slice(&[1.0, 1.0, 1.0, 1.0, 1.0, 1.0]);
         let hess = SMatrix::<f64, 6, 6>::from_row_slice(&[
             1.0, 0.0, 0.0, 0.0, 0.0, 0.0,
             0.0, 1.0, 0.0, 0.0, 0.0, 0.0,
@@ -681,12 +669,12 @@ mod tests {
         let expected_x2 = [-0.1, 1.1, -0.1, 1.1, -0.1, 1.1];
         let expected_nf = 0;
 
-        assert_eq!(xtrip, expected_xtrip);
+        assert_eq!(xtrip.as_slice(), expected_xtrip);
         assert_eq!(ftrip, expected_ftrip);
         assert_eq!(g, expected_g);
         assert_eq!(G, expected_G);
-        assert_eq!(x1, expected_x1);
-        assert_eq!(x2, expected_x2);
+        assert_eq!(x1.as_slice(), expected_x1);
+        assert_eq!(x2.as_slice(), expected_x2);
         assert_eq!(nf, expected_nf);
     }
 }

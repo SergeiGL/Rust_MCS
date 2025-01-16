@@ -28,12 +28,12 @@ use lssort::lssort;
 use nalgebra::SVector;
 
 pub fn gls<const N: usize>(
-    x: &[f64; N],
+    x: &SVector<f64, N>,
     p: &SVector<f64, N>,
     alist: &mut Vec<f64>,
     flist: &mut Vec<f64>,
-    u: &[f64; N],
-    v: &[f64; N],
+    u: &SVector<f64, N>,
+    v: &SVector<f64, N>,
     nloc: usize,
     small: f64,
     smax: usize,
@@ -50,33 +50,31 @@ pub fn gls<const N: usize>(
     let bend = false;
 
     // Find range of useful alp
-    let (mut amin, mut amax, scale) = lsrange(x, p, u, v, bend).unwrap();
+    let (mut amin, mut amax, scale) = lsrange(x, p, u, v, bend);
 
     // Call `lsinit` to get initial alist, flist, etc.
-    let (mut alp, _, _, _) = lsinit(x, p, alist, flist, amin, amax, scale);
+    let mut alp = lsinit(x, p, alist, flist, amin, amax, scale);
 
     // Sort alist and flist and get relevant values
-    let (mut abest, mut fbest, mut fmed, mut up, mut down, mut monotone, mut minima, mut nmin, mut unitlen, mut s) = lssort(alist, flist);
+    let (mut abest, mut fbest, mut fmed,
+        mut up, mut down, mut monotone,
+        mut minima, mut nmin, mut unitlen, mut s) = lssort(alist, flist);
 
 
     // The main search loop
     while s < std::cmp::min(5, smax) {
         if nloc == 1 {
             // Parabolic interpolation STEP
-            (abest, fbest, fmed, up, down, monotone, minima, nmin, unitlen, s, alp, _) =
-                lspar(nloc, small, sinit, short, x, p, alist, flist, amin, amax,
-                      alp, abest, fmed, unitlen, s);
+            (fbest, up, down, monotone, minima, nmin) = lspar(nloc, small, sinit, short, x, p, alist, flist, amin, amax,
+                                                              &mut alp, &mut abest, &mut fmed, &mut unitlen, &mut s);
+
             // If no true parabolic STEP has been done and it's monotonic
             if s > 3 && monotone && (abest == amin || abest == amax) {
                 return s - sinit;
             }
         } else {
             // Extrapolation or split
-            let (new_alp, _) =
-                lsnew(nloc, small, sinit, short, x, p, s, alist, flist, amin,
-                      amax, abest, fmed, unitlen,
-                );
-            alp = new_alp;
+            alp = lsnew(nloc, small, sinit, short, x, p, s, alist, flist, amin, amax, abest, fmed, unitlen);
 
             (abest, fbest, fmed, up, down, monotone, minima, nmin, unitlen, s) = lssort(alist, flist);
         }
@@ -87,9 +85,8 @@ pub fn gls<const N: usize>(
         if monotone && (abest == amin || abest == amax) {
             return s - sinit;
         }
-        // println!("1 {nloc}, {small}, {x:?}, {p:?} {alist:?}, {flist:?}, {amin:?}, {amax}, {alp}, {abest}, {fbest}, {fmed}, {up:?}, {down:?}, {monotone}, {minima:?}, {nmin}, {unitlen}, {s}, {saturated}");
         if s == 5 {
-            (amin, amax, alp, abest, fbest, fmed, monotone, nmin, unitlen, s, _, saturated) =
+            (amin, amax, alp, abest, fbest, fmed, monotone, nmin, unitlen, s, saturated) =
                 lsquart(nloc, small, x, p, alist, flist, amin, amax, alp, abest, fbest,
                         fmed, &mut up, &mut down, monotone, &mut minima, nmin, unitlen, s, saturated);
         }
@@ -115,7 +112,7 @@ pub fn gls<const N: usize>(
             &mut down, monotone, &mut minima, nmin, unitlen, s);
 
         // Check saturation
-        (alp, saturated) = lssat(small, &alist, &flist, alp, amin, amax, s, saturated);
+        (alp, saturated) = lssat(small, alist, flist, alp, amin, amax, s, saturated);
 
         if saturated || s == sold || s >= smax {
             break 'inner;
@@ -151,12 +148,12 @@ mod tests {
 
     #[test]
     fn test_coverage_0() {
-        let x = [0.1, -0.6, 0.7, 0.8, -0.9, 1.0];
+        let x = SVector::<f64, 6>::from_row_slice(&[0.1, -0.6, 0.7, 0.8, -0.9, 1.0]);
         let p = SVector::<f64, 6>::from_row_slice(&[1.0, 1.0, 1.0, 1.0, 1.0, 1.0]);
         let mut alist = vec![0.0];
         let mut flist = vec![0.02];
-        let u = [-1.; 6];
-        let v = [2.; 6];
+        let u = SVector::<f64, 6>::from_row_slice(&[-1.; 6]);
+        let v = SVector::<f64, 6>::from_row_slice(&[2.; 6]);
         let nloc = 20;
         let small = 0.01;
         let smax = 6;
@@ -173,12 +170,12 @@ mod tests {
 
     #[test]
     fn test_coverage_1() {
-        let x = [0.1, -0.6, 0.7, 0.8, -0.9, 1.0];
+        let x = SVector::<f64, 6>::from_row_slice(&[0.1, -0.6, 0.7, 0.8, -0.9, 1.0]);
         let p = SVector::<f64, 6>::from_row_slice(&[1.0, 1.0, 1.0, 1.0, 1.0, 1.0]);
         let mut alist = vec![0.0];
         let mut flist = vec![0.2];
-        let u = [-1.; 6];
-        let v = [2.; 6];
+        let u = SVector::<f64, 6>::from_row_slice(&[-1.; 6]);
+        let v = SVector::<f64, 6>::from_row_slice(&[2.; 6]);
         let nloc = 1;
         let small = 0.0001;
         let smax = 5;
@@ -195,12 +192,12 @@ mod tests {
 
     #[test]
     fn test_random_0() {
-        let x = [4.094483795775204, 0.9485906963490542, 2.86519204314813, 3.5992828245887476, 2.023854270382081, 4.665965192082808];
+        let x = SVector::<f64, 6>::from_row_slice(&[4.094483795775204, 0.9485906963490542, 2.86519204314813, 3.5992828245887476, 2.023854270382081, 4.665965192082808]);
         let p = SVector::<f64, 6>::from_row_slice(&[0.0, 0.0, 0.0, 0.0, 1.0, 0.0]);
         let mut alist = vec![-1.1];
         let mut flist = vec![0.3];
-        let u = [0.7910576746302738, 1.6659266237072177, 2.1531189830717956, 2.6279505108000976, 0.08568496163087858, 0.024160521508185373];
-        let v = [1.7910576746302738, 2.6659266237072177, 3.1531189830717956, 3.6279505108000976, 1.0856849616308786, 1.0241605215081853];
+        let u = SVector::<f64, 6>::from_row_slice(&[0.7910576746302738, 1.6659266237072177, 2.1531189830717956, 2.6279505108000976, 0.08568496163087858, 0.024160521508185373]);
+        let v = SVector::<f64, 6>::from_row_slice(&[1.7910576746302738, 2.6659266237072177, 3.1531189830717956, 3.6279505108000976, 1.0856849616308786, 1.0241605215081853]);
         let nloc = 10;
         let small = 1e-10;
         let smax = 50;
@@ -217,12 +214,12 @@ mod tests {
 
     #[test]
     fn test_random_1() {
-        let x = [-2.25104306, -0.25891982, -0.57220876, -7.00526648, -1.37167218, -3.37688706];
+        let x = SVector::<f64, 6>::from_row_slice(&[-2.25104306, -0.25891982, -0.57220876, -7.00526648, -1.37167218, -3.37688706]);
         let p = SVector::<f64, 6>::from_row_slice(&[0.0, 1.0, 0.0, 0.0, 0.0, 0.0]);
         let mut alist = vec![-0.7];
         let mut flist = vec![0.2];
-        let u = [-1.3735792077205666, -1.1435284793384632, -1.1430331519476875, -0.2965544838799241, -1.9311058584546728, -1.570044230736461];
-        let v = [-1.0735792077205666, -0.8435284793384632, -0.8430331519476875, 0.0034455161200758755, -1.6311058584546727, -1.270044230736461];
+        let u = SVector::<f64, 6>::from_row_slice(&[-1.3735792077205666, -1.1435284793384632, -1.1430331519476875, -0.2965544838799241, -1.9311058584546728, -1.570044230736461]);
+        let v = SVector::<f64, 6>::from_row_slice(&[-1.0735792077205666, -0.8435284793384632, -0.8430331519476875, 0.0034455161200758755, -1.6311058584546727, -1.270044230736461]);
         let nloc = 20;
         let small = 1e-11;
         let smax = 50;
@@ -231,7 +228,7 @@ mod tests {
 
         let expected_alist = vec![-0.8846086593384632, -0.8493515437520255, -0.8140944281655877, -0.7971870738926792, -0.7902798583320398, -0.7874342253282521, -0.7862703984433798, -0.7855708211241909, -0.785125139764169, -0.7846794584041472, -0.7837880956841035, -0.7820053702440162, -0.7784399193638416, -0.774874468483667, -0.7713090176034924, -0.7677435667233178, -0.7641781158431431, -0.7623953904030558, -0.7606126649629685, -0.7597213022429248, -0.7588299395228812, -0.7583842581628595, -0.7579385768028375, -0.7570472140827939, -0.728523607041397, -0.7142618035206985, -0.701250695905654, -0.7000854208487842, -0.7, -0.698926562791997, -0.6978531255839941, -0.6944905535337613, -0.6889811070675227, -0.6779622141350454, -0.6559244282700909, -0.6318248865218592, -0.6299912246206081, -0.6292088265730588, -0.6286842281655878, -0.6284305072336874, -0.6281767863017871, -0.6276693444379864, -0.6237137371210822, -0.6187432460765767, -0.612694844914301, -0.6066464437520255, -0.6048217486774715, -0.5978919959043376, -0.5947152040079673, -0.5916448807994049, -0.5896619316732152, -0.5846086593384632];
         let expected_flist = vec![-3.6486666585943875e-152, -1.0803366744954857e-151, -3.1202323292885654e-151, -5.143374274850338e-151, -6.298113056111975e-151, -6.844293414832105e-151, -7.080765545344288e-151, -1.6467579155022036e-150, -7.321245517906356e-151, -7.416969067795014e-151, -7.612096498798265e-151, -8.017504576462822e-151, -8.892548959109939e-151, -9.860589844505158e-151, -1.0931231837672606e-150, -1.2115041248076118e-150, -1.3423639183099886e-150, -1.4128678720567895e-150, -1.4869803323158416e-150, -1.52544554854951e-150, -1.5648809162133424e-150, -1.584969825627249e-150, -1.6053102458864408e-150, 0.2, -3.691908794763577e-150, -5.494289172160822e-150, -7.868454054544235e-150, -8.124320622193561e-150, -5.480881447124661e-149, -8.386803466329519e-150, -8.637291212342694e-150, -9.469998774805086e-150, -1.1006033565301753e-149, -1.4838899679685561e-149, -2.677809095340146e-149, -5.050265583349299e-149, -5.297516289370337e-149, -5.4065546511784635e-149, -1.692475594480888e-148, -5.517184296473476e-149, -5.553720448932115e-149, -5.627498474273394e-149, -6.236139983685429e-149, -7.091967074437646e-149, -8.287814949876298e-149, -9.678222969295206e-149, -1.0140356243010133e-148, -1.2098267751338764e-148, -1.3113886237217697e-148, -1.4173693832299761e-148, -1.4901768519684082e-148, -7.226728668820279e-151];
-        
+
         assert_eq!(alist, expected_alist);
         assert_eq!(flist, expected_flist);
         assert_eq!(nf, 51);
@@ -240,12 +237,12 @@ mod tests {
 
     #[test]
     fn test_0() {
-        let x = [1.0, 0.0, 0.0, 0.0, 0.0, -6.0];
+        let x = SVector::<f64, 6>::from_row_slice(&[1.0, 0.0, 0.0, 0.0, 0.0, -6.0]);
         let p = SVector::<f64, 6>::from_row_slice(&[0.0, 1.0, 0.0, 0.0, 0.0, 0.0]);
         let mut alist = vec![];
         let mut flist = vec![];
-        let u = [-1.0, -1.0, -1.0, -1.0, -1.0, -1.0];
-        let v = [11.0, 11.0, 11.0, 11.0, 11.0, 10.0];
+        let u = SVector::<f64, 6>::from_row_slice(&[-1.0, -1.0, -1.0, -1.0, -1.0, -1.0]);
+        let v = SVector::<f64, 6>::from_row_slice(&[11.0, 11.0, 11.0, 11.0, 11.0, 10.0]);
         let nloc = 10;
         let small = 1e-20;
         let smax = 60;
@@ -263,12 +260,12 @@ mod tests {
 
     #[test]
     fn test_1() {
-        let x = [-7.0, -7.0, -9.0, -8.0, -9.0, -10.0];
+        let x = SVector::<f64, 6>::from_row_slice(&[-7.0, -7.0, -9.0, -8.0, -9.0, -10.0]);
         let p = SVector::<f64, 6>::from_row_slice(&[0.0, 0.0, 1.0, 0.0, 0.0, 0.0]);
         let mut alist = vec![];
         let mut flist = vec![];
-        let u = [-10.0, -11.0, -9.0, -8.0, -9.0, -12.0];
-        let v = [-5.0, -5.0, -6.0, -7.0, -8.0, -9.0];
+        let u = SVector::<f64, 6>::from_row_slice(&[-10.0, -11.0, -9.0, -8.0, -9.0, -12.0]);
+        let v = SVector::<f64, 6>::from_row_slice(&[-5.0, -5.0, -6.0, -7.0, -8.0, -9.0]);
         let nloc = 10;
         let small = 1e-10;
         let smax = 100;
@@ -284,12 +281,12 @@ mod tests {
     }
     #[test]
     fn test_2() {
-        let x = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let x = SVector::<f64, 6>::from_row_slice(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
         let p = SVector::<f64, 6>::from_row_slice(&[0.0, 0.0, 0.0, 0.0, 0.0, 1.0]);
         let mut alist = vec![];
         let mut flist = vec![];
-        let u = [-10.0, -10.0, -10.0, -10.0, -10.0, -10.0];
-        let v = [12.0, 12.0, 12.0, 12.0, 12.0, 12.0];
+        let u = SVector::<f64, 6>::from_row_slice(&[-10.0, -10.0, -10.0, -10.0, -10.0, -10.0]);
+        let v = SVector::<f64, 6>::from_row_slice(&[12.0, 12.0, 12.0, 12.0, 12.0, 12.0]);
         let nloc = 20;
         let small = 1e-10;
         let smax = 15;
@@ -306,12 +303,12 @@ mod tests {
 
     #[test]
     fn test_3() {
-        let x = [-100.0, -200.0, -300.0, -400.0, -500.0, 500.0];
+        let x = SVector::<f64, 6>::from_row_slice(&[-100.0, -200.0, -300.0, -400.0, -500.0, 500.0]);
         let p = SVector::<f64, 6>::from_row_slice(&[0.0, 0.0, 0.0, 0.0, 1.0, 0.0]);
         let mut alist = vec![];
         let mut flist = vec![];
-        let u = [-10.0, -11.0, -12.0, -13.0, -10.0, -10.0];
-        let v = [12.0, 15.0, 12.0, 12.0, 12.0, 12.0];
+        let u = SVector::<f64, 6>::from_row_slice(&[-10.0, -11.0, -12.0, -13.0, -10.0, -10.0]);
+        let v = SVector::<f64, 6>::from_row_slice(&[12.0, 15.0, 12.0, 12.0, 12.0, 12.0]);
         let nloc = 20;
         let small = 1e-10;
         let smax = 10;
@@ -327,12 +324,12 @@ mod tests {
     }
     #[test]
     fn test_4() {
-        let x = [-1.0, -2.0, -3.0, -4.0, 0.0, 0.0];
+        let x = SVector::<f64, 6>::from_row_slice(&[-1.0, -2.0, -3.0, -4.0, 0.0, 0.0]);
         let p = SVector::<f64, 6>::from_row_slice(&[0.0, 0.0, 0.0, 1.0, 0.0, 0.0]);
         let mut alist = Vec::new();
         let mut flist = Vec::new();
-        let u = [-10.0, -11.0, -12.0, -13.0, -10.0, -10.0];
-        let v = [0.0, 0.0, 0.1, -0.1, 0.0, 0.0];
+        let u = SVector::<f64, 6>::from_row_slice(&[-10.0, -11.0, -12.0, -13.0, -10.0, -10.0]);
+        let v = SVector::<f64, 6>::from_row_slice(&[0.0, 0.0, 0.1, -0.1, 0.0, 0.0]);
         let nloc = 20;
         let small = 1e-10;
         let smax = 10;
@@ -351,12 +348,12 @@ mod tests {
 
     #[test]
     fn test_minimum_valid_input() {
-        let x = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let x = SVector::<f64, 6>::from_row_slice(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
         let p = SVector::<f64, 6>::from_row_slice(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
         let mut alist = Vec::new();
         let mut flist = Vec::new();
-        let u = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
-        let v = [10.0, 10.0, 10.0, 10.0, 10.0, 10.0];
+        let u = SVector::<f64, 6>::from_row_slice(&[0.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
+        let v = SVector::<f64, 6>::from_row_slice(&[10.0, 10.0, 10.0, 10.0, 10.0, 10.0]);
         let nloc = 1;
         let small = 1e-5;
         let smax = 10;
@@ -374,12 +371,12 @@ mod tests {
 
     #[test]
     fn test_small_vector_values() {
-        let x = [-1e-8, 1e-8, -1e-8, 1e-8, -1e-8, 1e-8];
+        let x = SVector::<f64, 6>::from_row_slice(&[-1e-8, 1e-8, -1e-8, 1e-8, -1e-8, 1e-8]);
         let p = SVector::<f64, 6>::from_row_slice(&[1e-8, -1e-8, 1e-8, -1e-8, 1e-8, -1e-8]);
         let mut alist = Vec::new();
         let mut flist = Vec::new();
-        let u = [-1e-8, -1e-8, -1e-8, -1e-8, -1e-8, -1e-8];
-        let v = [1e-8, 1e-8, 1e-8, 1e-8, 1e-8, 1e-8];
+        let u = SVector::<f64, 6>::from_row_slice(&[-1e-8, -1e-8, -1e-8, -1e-8, -1e-8, -1e-8]);
+        let v = SVector::<f64, 6>::from_row_slice(&[1e-8, 1e-8, 1e-8, 1e-8, 1e-8, 1e-8]);
         let nloc = 1;
         let small = 1e-12;
         let smax = 5;
@@ -397,12 +394,12 @@ mod tests {
 
     #[test]
     fn test_edge_case_maximum_search_steps() {
-        let x = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let x = SVector::<f64, 6>::from_row_slice(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
         let p = SVector::<f64, 6>::from_row_slice(&[-1.0, -2.0, -3.0, -4.0, -5.0, -6.0]);
         let mut alist = Vec::new();
         let mut flist = Vec::new();
-        let u = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
-        let v = [10.0, 10.0, 10.0, 10.0, 10.0, 10.0];
+        let u = SVector::<f64, 6>::from_row_slice(&[0.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
+        let v = SVector::<f64, 6>::from_row_slice(&[10.0, 10.0, 10.0, 10.0, 10.0, 10.0]);
         let nloc = 1;
         let small = 1e-5;
         let smax = 1;
@@ -420,12 +417,12 @@ mod tests {
 
     #[test]
     fn test_empty_lists() {
-        let x = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let x = SVector::<f64, 6>::from_row_slice(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
         let p = SVector::<f64, 6>::from_row_slice(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
         let mut alist = Vec::new();
         let mut flist = Vec::new();
-        let u = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
-        let v = [10.0, 10.0, 10.0, 10.0, 10.0, 10.0];
+        let u = SVector::<f64, 6>::from_row_slice(&[0.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
+        let v = SVector::<f64, 6>::from_row_slice(&[10.0, 10.0, 10.0, 10.0, 10.0, 10.0]);
         let nloc = 1;
         let small = 1e-5;
         let smax = 10;
@@ -444,12 +441,12 @@ mod tests {
 
     #[test]
     fn test_real_mistake_0() {
-        let x = [0.2, 0.2, 0.45, 0.56, 0.68, 0.72];
+        let x = SVector::<f64, 6>::from_row_slice(&[0.2, 0.2, 0.45, 0.56, 0.68, 0.72]);
         let p = SVector::<f64, 6>::from_row_slice(&[1.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
         let mut alist = vec![0.0];
         let mut flist = vec![-2.7];
-        let u = [0.0; 6];
-        let v = [1.0; 6];
+        let u = SVector::<f64, 6>::from_row_slice(&[0.0; 6]);
+        let v = SVector::<f64, 6>::from_row_slice(&[1.0; 6]);
         let nloc = 1;
         let small = 0.1;
         let smax = 6;
@@ -466,12 +463,12 @@ mod tests {
     }
     #[test]
     fn test_real_mistake_1() {
-        let x = [0.190983, 0.6, 0.7, 0.8, 0.9, 1.0];
+        let x = SVector::<f64, 6>::from_row_slice(&[0.190983, 0.6, 0.7, 0.8, 0.9, 1.0]);
         let p = SVector::<f64, 6>::from_row_slice(&[0.0, 1.0, 0.0, 0.0, 0.0, 0.0]);
         let mut alist = vec![0.0];
         let mut flist = vec![-0.01523227097945881];
-        let u = [-1.0; 6];
-        let v = [1.0; 6];
+        let u = SVector::<f64, 6>::from_row_slice(&[-1.0; 6]);
+        let v = SVector::<f64, 6>::from_row_slice(&[1.0; 6]);
         let nloc = 1;
         let small = 0.1;
         let smax = 6;
@@ -480,7 +477,6 @@ mod tests {
 
 
         let expected_alist = vec![-1.6, -1.1, -0.6, -0.40767007775845987, -0.30750741391479774, -0.10250247130493258, 0.0];
-
         let expected_flist = vec![-0.00033007085742366247, -0.005222762849281021, -0.019362461793975085, -0.02327501776110989, -0.023740401281451076, -0.019450678518268937, -0.01523227097945881];
         let expected_nf = 6;
 

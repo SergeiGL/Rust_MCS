@@ -1,7 +1,9 @@
+use itertools::Itertools;
+
 pub fn lssat(
     small: f64,
-    alist: &Vec<f64>,
-    flist: &Vec<f64>,
+    alist: &[f64],
+    flist: &[f64],
     mut alp: f64,
     amin: f64,
     amax: f64,
@@ -11,37 +13,38 @@ pub fn lssat(
     f64, // alp
     bool // saturated
 ) {
-    let cont = saturated;
+    if !saturated {
+        return (alp, saturated);
+    }
 
-    if cont {
-        let i = flist
-            .iter()
-            .position(|&val| val == *flist.iter().min_by(|x, y| x.partial_cmp(y).unwrap()).unwrap())
-            .unwrap();
-        if !(i == 0 || i == s - 1) {
-            // Select 3 points for parabolic interpolation
-            let aa = &alist[(i - 1)..=(i + 1)];
-            let ff = &flist[(i - 1)..=(i + 1)];
+    // Find the index of the minimum element directly without iterating twice
+    let i = flist
+        .iter()
+        .position_min_by(|x, y| x.total_cmp(y))
+        .unwrap();
 
-            let f12 = (ff[1] - ff[0]) / (aa[1] - aa[0]);
-            let f23 = (ff[2] - ff[1]) / (aa[2] - aa[1]);
-            let f123 = (f23 - f12) / (aa[2] - aa[0]);
+    if !(i == 0 || i == s - 1) {
+        // Select points for parabolic interpolation
+        let (aa0, aa1, aa2) = (alist[i - 1], alist[i], alist[i + 1]);
+        let (ff0, ff1, ff2) = (flist[i - 1], flist[i], flist[i + 1]);
 
-            if f123 > 0.0 {
-                alp = 0.5 * (aa[1] + aa[2] - f23 / f123);
-                alp = alp.clamp(amin, amax);
+        let f12 = (ff1 - ff0) / (aa1 - aa0);
+        let f23 = (ff2 - ff1) / (aa2 - aa1);
+        let f123 = (f23 - f12) / (aa2 - aa0);
 
-                let alptol = small * (aa[2] - aa[0]);
-                saturated = (alist[i] - alp).abs() <= alptol;
-            } else {
-                saturated = false;
-            }
+        if f123 > 0.0 {
+            alp = 0.5 * (aa1 + aa2 - f23 / f123);
+            alp = alp.clamp(amin, amax);
+
+            let alptol = small * (aa2 - aa0);
+            saturated = (alist[i] - alp).abs() <= alptol;
+        } else {
+            saturated = false;
         }
     }
 
     (alp, saturated)
 }
-
 
 #[cfg(test)]
 mod tests {

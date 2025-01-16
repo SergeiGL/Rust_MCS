@@ -3,15 +3,17 @@ use nalgebra::{SMatrix, SVector};
 pub fn hessian<const N: usize>(
     i: usize,
     k: usize,
-    x: &[f64; N],
-    x0: &[f64; N],
+    x: &SVector<f64, N>,
+    x0: &SVector<f64, N>,
     f: f64,
     f0: f64,
     g: &SVector<f64, N>,
     G: &SMatrix<f64, N, N>,
 ) -> f64 {
-    let h = f - f0 - g[i] * (x[i] - x0[i]) - g[k] * (x[k] - x0[k]) - 0.5 * G[(i, i)] * (x[i] - x0[i]).powi(2) - 0.5 * G[(k, k)] * (x[k] - x0[k]).powi(2);
-    h / (x[i] - x0[i]) / (x[k] - x0[k])
+    let xi_x0i = x[i] - x0[i];
+    let xk_x0k = x[k] - x0[k];
+    let h = f - f0 - g[i] * xi_x0i - g[k] * (xk_x0k) - 0.5 * G[(i, i)] * xi_x0i.powi(2) - 0.5 * G[(k, k)] * (xk_x0k).powi(2);
+    h / (xi_x0i) / (xk_x0k)
 }
 
 
@@ -23,8 +25,8 @@ mod tests {
     fn test_0() {
         let i = 0;
         let k = 0;
-        let x = [1.0f64, 1.0e-10];
-        let x0 = [0.0f64, 1.0e-10];
+        let x = SVector::<f64, 2>::from_row_slice(&[1.0f64, 1.0e-10]);
+        let x0 = SVector::<f64, 2>::from_row_slice(&[0.0f64, 1.0e-10]);
         let f = 0.0f64;
         let f0 = 0.0f64;
         let g = SVector::<f64, 2>::from_row_slice(&[0.0f64, 0.0f64]);
@@ -37,8 +39,8 @@ mod tests {
     fn test_1() {
         let i = 0;
         let k = 1;
-        let x = [-0.5f64, -0.75];
-        let x0 = [-1.0f64, -1.0];
+        let x = SVector::<f64, 2>::from_row_slice(&[-0.5f64, -0.75]);
+        let x0 = SVector::<f64, 2>::from_row_slice(&[-1.0f64, -1.0]);
         let f = -2.0f64;
         let f0 = -3.0f64;
         let g = SVector::<f64, 2>::from_row_slice(&[-1.0f64, -1.5]);
@@ -51,8 +53,8 @@ mod tests {
     fn test_2() {
         let i = 0;
         let k = 1;
-        let x = [0.5f64, 0.75];
-        let x0 = [1.0f64, 1.0];
+        let x = SVector::<f64, 2>::from_row_slice(&[0.5f64, 0.75]);
+        let x0 = SVector::<f64, 2>::from_row_slice(&[1.0f64, 1.0]);
         let f = 12.0f64;
         let f0 = 64.0f64;
         let g = SVector::<f64, 2>::from_row_slice(&[-1.0f64, 1.5]);
@@ -65,8 +67,8 @@ mod tests {
     fn test_3() {
         let i = 4;
         let k = 1;
-        let x = [0.112, 11.0, -0.32, 0.0, -1.0, -0.4];
-        let x0 = [0.112, -0.1, -0.32, 0.0, 10.0, -0.4];
+        let x = SVector::<f64, 6>::from_row_slice(&[0.112, 11.0, -0.32, 0.0, -1.0, -0.4]);
+        let x0 = SVector::<f64, 6>::from_row_slice(&[0.112, -0.1, -0.32, 0.0, 10.0, -0.4]);
         let f = -0.000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004289691165770153;
         let f0 = -4.5;
         let g = SVector::<f64, 6>::from_row_slice(&[-3.6334635451080715, -4.594594594594595, -6.220120557002464, -4.090909090909091, 4.090909096062172, 0.]);

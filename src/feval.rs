@@ -1,8 +1,7 @@
-pub fn feval<const N: usize>(x: &[f64; N]) -> f64 {
-    let x6: [f64; 6] = [
-        x[0], x[1], x[2], x[3], x[4], x[5],
-    ];
-    hm6(&x6)
+use nalgebra::SVector;
+
+pub fn feval<const N: usize>(x: &SVector<f64, N>) -> f64 {
+    hm6(x.as_slice())
 }
 
 const HM6_A: [[f64; 6]; 4] = [
@@ -22,22 +21,18 @@ const HM6_P: [[f64; 6]; 4] = [
 const C: [f64; 4] = [1.0, 1.2, 3.0, 3.2];
 
 #[inline(always)]
-fn hm6(x: &[f64; 6]) -> f64 {
+fn hm6(x: &[f64]) -> f64 {
+    debug_assert!(x.len() == 6);
     let mut sum = 0.0;
 
-    // Iterate over each of the 4 columns
     for i in 0..4 {
         let a = HM6_A[i];
         let p = HM6_P[i];
         let mut d_i = 0.0;
 
-        // Manually unroll the inner loop for better optimization
-        d_i += a[0] * (x[0] - p[0]).powi(2);
-        d_i += a[1] * (x[1] - p[1]).powi(2);
-        d_i += a[2] * (x[2] - p[2]).powi(2);
-        d_i += a[3] * (x[3] - p[3]).powi(2);
-        d_i += a[4] * (x[4] - p[4]).powi(2);
-        d_i += a[5] * (x[5] - p[5]).powi(2);
+        for i in 0..6 {
+            d_i += a[i] * (x[i] - p[i]).powi(2);
+        }
 
         sum += C[i] * (-d_i).exp();
     }

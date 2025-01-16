@@ -1,5 +1,6 @@
 use crate::minq::ldlrk1::ldlrk1;
-use nalgebra::{DMatrix, DVector, SMatrix, SVector};
+use nalgebra::{SMatrix, SVector};
+
 
 pub fn ldlup<const N: usize>(
     L: &mut SMatrix<f64, N, N>,
@@ -9,122 +10,84 @@ pub fn ldlup<const N: usize>(
 ) ->
     Option<SVector<f64, N>> // p
 {
-    let mut p_option: Option<SVector<f64, N>> = None;
-    let eps = 2.2204e-16;
-
-    // Create index vectors I and K
-    let I: Vec<usize> = (0..j).collect();
-    let K: Vec<usize> = ((j + 1)..N).collect();
+    let N_times_EPS = (N as f64) * f64::EPSILON;
 
     // Special case for j == 0
     if j == 0 {
-        let delta = g[j];
-        if delta <= (N as f64) * eps {
-            p_option = Some(SVector::<f64, N>::zeros());
-            if let Some(ref mut p_vect) = p_option {
-                p_vect[0] = 1.0;
-            }
-            return p_option;
+        if g[0] <= N_times_EPS {
+            let mut p = SVector::<f64, N>::zeros();
+            p[0] = 1.0;
+            return Some(p);
         }
-
-        for &i in &I {
-            L[(0, i)] = 0.0;
-        }
-        d[0] = delta;
-        return p_option;
+        d[0] = g[0];
+        return None;
     }
 
-    let LII = DMatrix::from_fn(j, j, |row, col| L[(row, col)]);
-    let gI = DVector::from_fn(j, |i, _| g[i]);
-    let u = LII.clone().lu().solve(&gI).unwrap();
+    let LII = L.view((0, 0), (j, j));
+    let LII_T = LII.transpose();
 
-    let v = u.component_div(&DVector::from_fn(j, |i, _| d[i]));
+    let gI = g.rows(0, j);
+
+    let u = LII.lu().solve(&gI).unwrap();
+    let v = u.component_div(&d.rows(0, j));
 
     let delta = g[j] - u.dot(&v);
 
-    if delta <= (N as f64) * eps {
-        // Negative or zero curvature
-        p_option = Some(SVector::<f64, N>::zeros());
-        let p1 =
-            LII.transpose()
-                .lu()
-                .solve(&v)
-                .unwrap()
-                .iter()
-                .cloned()
-                .collect::<Vec<f64>>();
-        if let Some(ref mut p_vect) = p_option {
-            for (i, &val) in p1.iter().enumerate() {
-                p_vect[i] = val;
-            }
-            p_vect[j] = -1.0;
-        }
+    if delta <= N_times_EPS {
+        let mut p = SVector::<f64, N>::zeros();
+        let p_head = LII_T.lu().solve(&v).unwrap();
 
-        return p_option;
+        p.rows_mut(0, j).copy_from(&p_head);
+        p[j] = -1.0;
+        return Some(p);
     }
 
 
-    let (q, w, LKI) = if !K.is_empty() {
-        let LKI = DMatrix::from_fn(K.len(), I.len(), |row, col| L[(K[row], col)]);
+    if j + 1 < N {
+        let k_size = N - (j + 1);
+        let LKI = L.view((j + 1, 0), (k_size, j));
+        let LKI_T = LKI.transpose();
+        let gK = g.rows(j + 1, k_size);
 
-        let gK = DVector::from_fn(K.len(), |i, _| g[K[i]]);
-
-        let mut w = (gK - (&LKI * &u)).scale(1.0 / delta);
-
-        let mut LKK = DMatrix::from_fn(K.len(), K.len(), |row, col| L[(K[row], K[col])]);
-
-        let mut dK = DVector::from_fn(K.len(), |i, _| d[K[i]]);
+        let mut w = (&gK - &(LKI * &u)).scale(1.0 / delta);
+        let mut LKK = L.view_mut((j + 1, j + 1), (k_size, k_size));
+        let mut dK = d.rows_mut(j + 1, k_size);
 
         let q = ldlrk1(&mut LKK, &mut dK, -delta, &mut w);
 
-        for (i, &k) in K.iter().enumerate() {
-            d[k] = dK[i];
-        }
-        (q, w, LKI)
+        return match q.is_empty() {
+            false => {
+                let pi = w.dot(&q);
+                let piv = v.scale(pi);
+                let lki_q = LKI_T * &q;
+                let piv_lki_q = piv - lki_q;
+
+                let p_head = LII_T.lu().solve(&piv_lki_q).unwrap();
+
+                let mut p = SVector::<f64, N>::zeros();
+                p.rows_mut(0, j).copy_from(&p_head);
+                p[j] = -pi;
+                p.rows_mut(j + 1, k_size).copy_from(&q);
+
+                Some(p)
+            }
+            true => {
+                L.view_mut((j, 0), (1, j)).copy_from(&v.transpose());
+                L[(j, j)] = 1.0;
+                L.view_mut((j + 1, j), (k_size, 1)).copy_from(&w);
+                d[j] = delta;
+                None
+            }
+        };
     } else {
-        (
-            DVector::<f64>::zeros(0),
-            DVector::<f64>::zeros(0),
-            DMatrix::<f64>::zeros(0, 0),
-        )
-    };
-
-    // TODO: strange
-    if !K.is_empty() && q.is_empty() {
-        for (idx, &i) in I.iter().enumerate() {
-            L[(j, i)] = v[idx];
-        }
-        L[(j, j)] = 1.0;
-
-        // Update L[K,j] with w values
-        for (k_idx, &k) in K.iter().enumerate() {
-            L[(k, j)] = w[k_idx];
-        }
-
-        d[j] = delta;
-    } else if !K.is_empty() {
-        let pi = w.dot(&q);
-        let piv = v.scale(pi);
-        let lki_q = &LKI.transpose() * &q;
-        let piv_lki_q = piv - lki_q;
-        let pi_solve = LII.transpose().lu().solve(&piv_lki_q).unwrap();
-
-        // Construct the SVector from the combined iterator
-        p_option = Some(SVector::from_iterator(
-            pi_solve.iter().copied()
-                .chain(std::iter::once(-pi))
-                .chain(q.iter().copied())
-        ));
-    } else {
-        for (idx, &i) in I.iter().enumerate() {
-            L[(j, i)] = v[idx];
-        }
+        // Last row case - direct update without K partition
+        L.view_mut((j, 0), (1, j)).copy_from(&v.transpose());
         L[(j, j)] = 1.0;
         d[j] = delta;
+
+        return None;
     }
-    p_option
 }
-
 
 #[cfg(test)]
 mod tests {

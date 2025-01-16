@@ -1,6 +1,6 @@
 use crate::split_func::split1;
 use crate::updtf::updtf;
-use nalgebra::{Const, Matrix2xX, Matrix3xX, MatrixView, SMatrix, U1, U2, U3};
+use nalgebra::{Const, Matrix2xX, Matrix3xX, MatrixView, SMatrix, SVector, U1, U2, U3};
 
 enum J3 {
     One,
@@ -86,9 +86,9 @@ fn vert3<const N: usize>(
 // L is always full of 2
 pub fn vertex<const N: usize>(
     j: usize,
-    u: &[f64; N],
-    v: &[f64; N],
-    v1: &[f64; N],
+    u: &SVector<f64, N>,
+    v: &SVector<f64, N>,
+    v1: &SVector<f64, N>,
     x0: &SMatrix<f64, N, 3>,
     f0: &Matrix3xX<f64>,
     ipar: &Vec<Option<usize>>,
@@ -97,21 +97,21 @@ pub fn vertex<const N: usize>(
     z: &Matrix2xX<f64>,
     f: &Matrix2xX<f64>,
 ) -> (
-    [usize; N],  // n0
-    [f64; N],    // x
-    [f64; N],    // y
-    [f64; N],    // x1
-    [f64; N],    // x2
-    [f64; N],    // f1
-    [f64; N],    // f2
+    SVector<usize, N>, // n0
+    SVector<f64, N>,   // x
+    SVector<f64, N>,   // y
+    SVector<f64, N>,   // x1
+    SVector<f64, N>,   // x2
+    SVector<f64, N>,   // f1
+    SVector<f64, N>,   // f2
 ) {
-    let mut x = [f64::INFINITY; N];
-    let mut y = [f64::INFINITY; N];
-    let mut x1 = [f64::INFINITY; N];
-    let mut x2 = [f64::INFINITY; N];
-    let mut f1 = [0.0; N];
-    let mut f2 = [0.0; N];
-    let mut n0 = [0_usize; N];
+    let mut x = SVector::<f64, N>::repeat(f64::INFINITY);
+    let mut y = SVector::<f64, N>::repeat(f64::INFINITY);
+    let mut x1 = SVector::<f64, N>::repeat(f64::INFINITY);
+    let mut x2 = SVector::<f64, N>::repeat(f64::INFINITY);
+    let mut f1 = SVector::<f64, N>::zeros();
+    let mut f2 = SVector::<f64, N>::zeros();
+    let mut n0 = SVector::<usize, N>::zeros();
 
     let mut fold = f[(0, j)];
     let mut m = j;
@@ -129,7 +129,7 @@ pub fn vertex<const N: usize>(
                 val => val - 1,
             }
         } else {
-            split_val.abs() as usize
+            split_val as usize
         };
 
         n0[i] += 1;
@@ -310,9 +310,9 @@ mod tests {
     #[test]
     fn test_0() {
         let j: usize = 0;
-        let u = [0.0];
-        let v = [1.0];
-        let v1 = [1.0];
+        let u = SVector::<f64, 1>::from_row_slice(&[0.0]);
+        let v = SVector::<f64, 1>::from_row_slice(&[1.0]);
+        let v1 = SVector::<f64, 1>::from_row_slice(&[1.0]);
         let x0 = SMatrix::<f64, 1, 3>::from_row_slice(&[0.0, 0.5, 1.0]);
         let f0 = Matrix3xX::<f64>::from_row_slice(&[
             -0.5, -0.8, -0.3,
@@ -327,21 +327,21 @@ mod tests {
 
         let (n0, x, y, x1, x2, f1, f2) = vertex(j, &u, &v, &v1, &x0, &f0, &ipar, &isplit, &ichild, &z, &f);
 
-        assert_eq!(n0, [0]);
-        assert_eq!(x, [0.5]);
-        assert_eq!(y, [1.0]);
-        assert_eq!(x1, [0.0]);
-        assert_eq!(x2, [1.0]);
-        assert_eq!(f1, [-0.5]);
-        assert_eq!(f2, [-0.7]);
+        assert_eq!(n0.as_slice(), [0]);
+        assert_eq!(x.as_slice(), [0.5]);
+        assert_eq!(y.as_slice(), [1.0]);
+        assert_eq!(x1.as_slice(), [0.0]);
+        assert_eq!(x2.as_slice(), [1.0]);
+        assert_eq!(f1.as_slice(), [-0.5]);
+        assert_eq!(f2.as_slice(), [-0.7]);
     }
 
     #[test]
     fn test_1() {
         let j: usize = 0;
-        let u = [0.0, 0.0, 0.0];
-        let v = [1.0, 1.0, 1.0];
-        let v1 = [1.0, 1.0, 1.0];
+        let u = SVector::<f64, 3>::from_row_slice(&[0.0, 0.0, 0.0]);
+        let v = SVector::<f64, 3>::from_row_slice(&[1.0, 1.0, 1.0]);
+        let v1 = SVector::<f64, 3>::from_row_slice(&[1.0, 1.0, 1.0]);
         let x0 = SMatrix::<f64, 3, 3>::from_row_slice(&[
             0.0, 0.5, 1.0,
             0.0, 0.5, 1.0,
@@ -356,21 +356,21 @@ mod tests {
 
         let (n0, x, y, x1, x2, f1, f2) = vertex(j, &u, &v, &v1, &x0, &f0, &ipar, &isplit, &ichild, &z, &f);
 
-        assert_eq!(n0, [0, 0, 0]);
-        assert_eq!(x, [0.5, 0.5, 0.5]);
-        assert_eq!(y, [1.0, 1.0, 1.0]);
-        assert_eq!(x1, [0.0, 0.0, 0.0]);
-        assert_eq!(x2, [1.0, 1.0, 1.0]);
-        assert_eq!(f1, [0.0, 0.0, 0.0]);
-        assert_eq!(f2, [0.0, 0.0, 0.0]);
+        assert_eq!(n0.as_slice(), [0, 0, 0]);
+        assert_eq!(x.as_slice(), [0.5, 0.5, 0.5]);
+        assert_eq!(y.as_slice(), [1.0, 1.0, 1.0]);
+        assert_eq!(x1.as_slice(), [0.0, 0.0, 0.0]);
+        assert_eq!(x2.as_slice(), [1.0, 1.0, 1.0]);
+        assert_eq!(f1.as_slice(), [0.0, 0.0, 0.0]);
+        assert_eq!(f2.as_slice(), [0.0, 0.0, 0.0]);
     }
 
     #[test]
     fn test_2() {
         let j: usize = 0;
-        let u = [0.0, 0.0, 0.0];
-        let v = [1.0, 1.0, 1.0];
-        let v1 = [-1.0, -1.0, -1.0];
+        let u = SVector::<f64, 3>::from_row_slice(&[0.0, 0.0, 0.0]);
+        let v = SVector::<f64, 3>::from_row_slice(&[1.0, 1.0, 1.0]);
+        let v1 = SVector::<f64, 3>::from_row_slice(&[-1.0, -1.0, -1.0]);
         let x0 = SMatrix::<f64, 3, 3>::from_row_slice(&[
             -0.0, -0.5, -1.0,
             -0.0, -0.5, -1.0,
@@ -385,22 +385,22 @@ mod tests {
 
         let (n0, x, y, x1, x2, f1, f2) = vertex(j, &u, &v, &v1, &x0, &f0, &ipar, &isplit, &ichild, &z, &f);
 
-        assert_eq!(n0, [0, 0, 0]);
-        assert_eq!(x, [-0.5, -0.5, -0.5]);
-        assert_eq!(y, [-1.0, -1.0, -1.0]);
-        assert_eq!(x1, [-0.0, -0.0, -0.0]);
-        assert_eq!(x2, [-1.0, -1.0, -1.0]);
-        assert_eq!(f1, [1.0, 1.0, 1.0]);
-        assert_eq!(f2, [1.0, 1.0, 1.0]);
+        assert_eq!(n0.as_slice(), [0, 0, 0]);
+        assert_eq!(x.as_slice(), [-0.5, -0.5, -0.5]);
+        assert_eq!(y.as_slice(), [-1.0, -1.0, -1.0]);
+        assert_eq!(x1.as_slice(), [-0.0, -0.0, -0.0]);
+        assert_eq!(x2.as_slice(), [-1.0, -1.0, -1.0]);
+        assert_eq!(f1.as_slice(), [1.0, 1.0, 1.0]);
+        assert_eq!(f2.as_slice(), [1.0, 1.0, 1.0]);
     }
 
 
     #[test]
     fn test_3() {
         let j: usize = 1;
-        let u = [0.0, 0.0, 0.0];
-        let v = [1.0, 1.0, 1.0];
-        let v1 = [-1.0, -2.0, -3.0];
+        let u = SVector::<f64, 3>::from_row_slice(&[0.0, 0.0, 0.0]);
+        let v = SVector::<f64, 3>::from_row_slice(&[1.0, 1.0, 1.0]);
+        let v1 = SVector::<f64, 3>::from_row_slice(&[-1.0, -2.0, -3.0]);
         let x0 = SMatrix::<f64, 3, 3>::from_row_slice(&[
             -0.0, -0.5, -1.0,
             -0.1, -0.52, -1.2,
@@ -415,21 +415,21 @@ mod tests {
 
         let (n0, x, y, x1, x2, f1, f2) = vertex(j, &u, &v, &v1, &x0, &f0, &ipar, &isplit, &ichild, &z, &f);
 
-        assert_eq!(n0, [1, 0, 1]);
-        assert_eq!(x, [-0., -0.52, 0.2]);
-        assert_eq!(y, [-0.30901699437494745, -2.0, 0.0]);
-        assert_eq!(x1, [-0.5, -0.1, 0.5]);
-        assert_eq!(x2, [-1.0, -1.2, 2.0]);
-        assert_eq!(f1, [1.31, 1.31, 1.0]);
-        assert_eq!(f2, [1.31, 1.31, 1.0]);
+        assert_eq!(n0.as_slice(), [1, 0, 1]);
+        assert_eq!(x.as_slice(), [-0., -0.52, 0.2]);
+        assert_eq!(y.as_slice(), [-0.30901699437494745, -2.0, 0.0]);
+        assert_eq!(x1.as_slice(), [-0.5, -0.1, 0.5]);
+        assert_eq!(x2.as_slice(), [-1.0, -1.2, 2.0]);
+        assert_eq!(f1.as_slice(), [1.31, 1.31, 1.0]);
+        assert_eq!(f2.as_slice(), [1.31, 1.31, 1.0]);
     }
 
     #[test]
     fn test_4() {
         let j: usize = 1;
-        let u = [0.0, 0.0, 0.0];
-        let v = [1.0, 1.0, 1.0];
-        let v1 = [3.0, 1.0, -3.0];
+        let u = SVector::<f64, 3>::from_row_slice(&[0.0, 0.0, 0.0]);
+        let v = SVector::<f64, 3>::from_row_slice(&[1.0, 1.0, 1.0]);
+        let v1 = SVector::<f64, 3>::from_row_slice(&[3.0, 1.0, -3.0]);
         let x0 = SMatrix::<f64, 3, 3>::from_row_slice(&[
             3.0, 1.5, 1.0,
             1.0, 0.5, -1.0,
@@ -444,22 +444,22 @@ mod tests {
 
         let (n0, x, y, x1, x2, f1, f2) = vertex(j, &u, &v, &v1, &x0, &f0, &ipar, &isplit, &ichild, &z, &f);
 
-        assert_eq!(n0, [1, 0, 1]);
-        assert_eq!(x, [3., 0.5, 1.]);
-        assert_eq!(y, [0., 1., 1.]);
-        assert_eq!(x1, [1.5, 1., 1.]);
-        assert_eq!(x2, [1., -1., f64::INFINITY]);
-        assert_eq!(f1, [1., 1., 1.]);
-        assert_eq!(f2, [1., 1., 0.]);
+        assert_eq!(n0.as_slice(), [1, 0, 1]);
+        assert_eq!(x.as_slice(), [3., 0.5, 1.]);
+        assert_eq!(y.as_slice(), [0., 1., 1.]);
+        assert_eq!(x1.as_slice(), [1.5, 1., 1.]);
+        assert_eq!(x2.as_slice(), [1., -1., f64::INFINITY]);
+        assert_eq!(f1.as_slice(), [1., 1., 1.]);
+        assert_eq!(f2.as_slice(), [1., 1., 0.]);
     }
 
 
     #[test]
     fn test_5() {
         let j: usize = 1;
-        let u = [0.0, 0.0, 0.0];
-        let v = [1.0, 1.0, 1.0];
-        let v1 = [3.0, 1.0, -3.0];
+        let u = SVector::<f64, 3>::from_row_slice(&[0.0, 0.0, 0.0]);
+        let v = SVector::<f64, 3>::from_row_slice(&[1.0, 1.0, 1.0]);
+        let v1 = SVector::<f64, 3>::from_row_slice(&[3.0, 1.0, -3.0]);
         let x0 = SMatrix::<f64, 3, 3>::from_row_slice(&[
             3.0, 1.5, 1.0,
             1.0, 0.5, -1.0,
@@ -474,12 +474,12 @@ mod tests {
 
         let (n0, x, y, x1, x2, f1, f2) = vertex(j, &u, &v, &v1, &x0, &f0, &ipar, &isplit, &ichild, &z, &f);
 
-        assert_eq!(n0, [2, 0, 0]);
-        assert_eq!(x, [3., 0.5, -1.5]);
-        assert_eq!(y, [5.47213595499958, 1., -3.]);
-        assert_eq!(x1, [7., 1., -1.]);
-        assert_eq!(x2, [1., -1., 2.]);
-        assert_eq!(f1, [1., 1., 1.]);
-        assert_eq!(f2, [1., 1., 1.]);
+        assert_eq!(n0.as_slice(), [2, 0, 0]);
+        assert_eq!(x.as_slice(), [3., 0.5, -1.5]);
+        assert_eq!(y.as_slice(), [5.47213595499958, 1., -3.]);
+        assert_eq!(x1.as_slice(), [7., 1., -1.]);
+        assert_eq!(x2.as_slice(), [1., -1., 2.]);
+        assert_eq!(f1.as_slice(), [1., 1., 1.]);
+        assert_eq!(f2.as_slice(), [1., 1., 1.]);
     }
 }

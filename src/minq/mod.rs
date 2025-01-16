@@ -4,9 +4,10 @@ mod ldlup;
 mod ldldown;
 mod minqsub;
 
+use crate::helper_funcs::clamp_SVector_mut;
 use crate::minq::{getalp::getalp, minqsub::minqsub};
-use nalgebra::{Const, DimMin, SMatrix, SVector};
 
+use nalgebra::{Const, DimMin, SMatrix, SVector};
 
 #[derive(Debug, PartialOrd, PartialEq, Clone, Copy)]
 pub enum IerEnum {
@@ -20,136 +21,121 @@ pub fn minq<const N: usize>(
     gam: f64,
     c: &SVector<f64, N>,
     G: &mut SMatrix<f64, N, N>,
-    xu: &[f64; N],
-    xo: &[f64; N],
+    xu: &SVector<f64, N>,
+    xo: &SVector<f64, N>,
 ) -> (
-    SVector<f64, N>,   // x
-    f64,               // fct
-    IerEnum            // ier
+    SVector<f64, N>,  // x
+    f64,              // fct
+    IerEnum           // ier
 ) where
     Const<N>: DimMin<Const<N>, Output=Const<N>>,
 {
-    let (mut alp, mut alpu, mut alpo, mut lba, mut uba) = (0.0, 0.0, 0.0, true, true);
-
-    let convex = false;
-
-    // Ensure input consistency
-    let mut ier = IerEnum::LocalMinimizerFound;
-
-    let maxit = 3 * N;
-    let nitrefmax = 3;
-
-    let mut x = SVector::<f64, N>::from_fn(|i, _| 0.0_f64.clamp(xu[i], xo[i]));
-
-    let hpeps = 2.2204e-14;
-
-    for i in 0..N {
-        G[(i, i)] += hpeps * G[(i, i)];
-    }
-    // println!("{G:?}");
-
-    let mut K = [false; N];
+    let mut g: SVector::<f64, N>;
+    let mut x = SVector::<f64, N>::zeros();
+    let mut K = SVector::<bool, N>::repeat(false);
+    let mut free = SVector::<bool, N>::repeat(false);
     let mut L = SMatrix::<f64, N, N>::identity();
     let mut d = SVector::<f64, N>::repeat(1.0);
 
-    let mut free = [false; N];
+    clamp_SVector_mut(&mut x, &xu, &xo);
+
+    // Regularization for low rank problems // TODO: WTF
+    let hpeps = 2.2204e-14;
+    for i in 0..N {
+        G[(i, i)] += hpeps * G[(i, i)];
+    }
+
+    let (nitrefmax, maxit) = (3, 3 * N);
     let mut nfree: usize = 0;
     let mut nfree_old_option: Option<usize> = None;
-
     let mut fct = f64::INFINITY;
-    let mut nsub = 0;
-    let mut unfix = true;
-    let mut nitref = 0;
-    let mut improvement = true;
-    let mut g;
+    let (mut nsub, mut nitref) = (0_usize, 0_usize);
+    let (mut unfix, mut improvement) = (true, true);
+    let mut ier = IerEnum::LocalMinimizerFound;
 
-    // Main loop: alternating coordinate and subspace searches
-    loop {
-        if x.iter().any(|&val| val.is_infinite()) {
-            panic!("infinite x in minq {x:?}");
-        }
+    'main: loop {
+        debug_assert!(!x.iter().any(|&val| val.is_infinite()));
 
         g = *G * x + c;
 
-        let fctnew = gam + (x.transpose().scale(0.5) * (c + g))[0];
+        let fctnew = gam + 0.5 * x.dot(&(c + g));
 
-        // println!("{improvement}, {nitref}, {nitrefmax}");
-        if !improvement || nitref > nitrefmax || (nitref > 0 && nfree_old_option.map_or(false, |nfree_old| nfree_old == nfree) && fctnew >= fct) {
-            // println!("--");
-            ier = IerEnum::LocalMinimizerFound;
-            break;
-        } else if nitref == 0 {
-            fct = fct.min(fctnew);
-        } else {
-            fct = fctnew;
+        if !improvement || nitref > nitrefmax ||
+            (nitref > 0 && nfree_old_option.map_or(false, |nfree_old| nfree_old == nfree) && fctnew >= fct) {
+            break 'main;
         }
+
+        fct = if nitref == 0 { fct.min(fctnew) } else { fctnew };
 
         if nitref == 0 && nsub >= maxit {
             ier = IerEnum::MaxitExceeded;
-            break;
+            break 'main;
         }
 
-        // Coordinate search
-        let mut count: usize = 0;
-        let mut k: usize = 0;
+        // Optimized coordinate search
+        let mut count = 0_usize;
+        let mut k = 0_usize;
         let mut k_init = true;
-        loop {
+
+        'coord: loop {
+            // Combined loop for coordinate search
             while count <= N {
                 count += 1;
-                k = match (k_init, k + 1) {
-                    (false, k_new) if N == k_new => 0,
-                    (true, _) => {
-                        k_init = false;
-                        0
-                    }
-                    _ => k + 1,
+                k = if !k_init && k + 1 == N {
+                    0
+                } else if k_init {
+                    k_init = false;
+                    0
+                } else {
+                    k + 1
                 };
+
                 if free[k] || unfix {
                     break;
                 }
             }
 
             if count > N {
-                break;
+                break 'coord;
             }
 
+            // Get column view once
             let q = G.column(k);
-            alpu = xu[k] - x[k];
-            alpo = xo[k] - x[k];
+            let (alpu, alpo) = (xu[k] - x[k], xo[k] - x[k]);
 
-            // Find STEP size
-            (alp, lba, uba, ier) = getalp(alpu, alpo, g[k], q[k]);
-            if ier != IerEnum::LocalMinimizerFound {
-                x = SVector::<f64, N>::zeros();
+            // Find step size
+            let (alp, lba, uba, step_ier) = getalp(alpu, alpo, g[k], q[k]);
+            if step_ier != IerEnum::LocalMinimizerFound {
+                x = SVector::zeros();
                 x[k] = if lba { -1.0 } else { 1.0 };
-                return (x, fct, ier);
+                return (x, fct, step_ier);
             }
 
             let xnew = x[k] + alp;
 
-            if lba || (xnew <= xu[k]) {
+            // Optimized bounds handling
+            if lba || xnew <= xu[k] {
                 if alpu != 0.0 {
                     x[k] = xu[k];
-                    g += q.scale(alpu);
+                    g.axpy(alpu, &q, 1.0);
                     count = 0;
                 }
                 free[k] = false;
-            } else if uba || (xnew >= xo[k]) {
+            } else if uba || xnew >= xo[k] {
                 if alpo != 0.0 {
                     x[k] = xo[k];
-                    g += q.scale(alpo);
+                    g.axpy(alpo, &q, 1.0);
                     count = 0;
                 }
                 free[k] = false;
-            } else {
-                if alp != 0.0 {
-                    x[k] = xnew;
-                    g += q.scale(alp);
-                    free[k] = true;
-                }
+            } else if alp != 0.0 {
+                x[k] = xnew;
+                g.axpy(alp, &q, 1.0);
+                free[k] = true;
             }
         }
 
+        // Count free variables using SIMD-optimized operation
         nfree = free.iter().filter(|&&b| b).count();
 
         if unfix && nfree_old_option.map_or(false, |nfree_old| nfree_old == nfree) {
@@ -160,29 +146,26 @@ pub fn minq<const N: usize>(
         }
         nfree_old_option = Some(nfree);
 
-        let gain_cs: f64 = fct - gam - x.scale(0.5).dot(&(c + g));
+        let gain_cs = fct - gam - 0.5 * x.dot(&(c + g));
+        improvement = gain_cs > 0.0 || !unfix;
 
-        improvement = (gain_cs > 0.0) || !unfix;
-
-        if !(!improvement || nitref > nitrefmax) && !(nitref > nitrefmax) && nfree == 0 {
+        if !(!improvement || nitref > nitrefmax) && nfree == 0 {
             unfix = true;
-        } else if !(!improvement || nitref > nitrefmax) && !(nitref > nitrefmax) && !(nfree == 0) {
+        } else if !(!improvement || nitref > nitrefmax) && nfree > 0 {
             let mut subdone = false;
-            // println!("PRE minqsub\nnsub={nsub}\nfree={free:?}\n{d:?}\n{K:?}\ng={g:?}x={x:?}\n{convex}\nnfree={nfree:?}\nunfix={unfix:?}\nalp={alp:?}\nalpu={alpu:?}\nalpo={alpo:?}\nlba={lba:?}\nuba={uba:?}\nier={ier:?}\nsubdone{subdone}");
-            // println!("{L:.15}\n{G:.15}");
-            minqsub(&mut nsub, &mut free, &mut L, &mut d, &mut K, &G, &mut g,
-                    &mut x, xo, xu, &convex, &mut nfree, &mut unfix, &mut alp, &mut alpu, &mut alpo, &mut lba, &mut uba, &mut ier, &mut subdone);
-            // println!("PRE minqsub\nnsub={nsub}\nfree={free:?}\n{d:?}\n{K:?}\ng={g:?}x={x:?}\n{convex}\nnfree={nfree:?}\nunfix={unfix:?}\nalp={alp:?}\nalpu={alpu:?}\nalpo={alpo:?}\nlba={lba:?}\nuba={uba:?}\nier={ier:?}\nsubdone{subdone}");
-            // println!("{L:.15}\n{G:.15}");
+            minqsub(&mut nsub, &mut free, &mut L, &mut d, &mut K, G, &mut g,
+                    &mut x, xo, xu, &mut nfree, &mut unfix,
+                    &mut 0.0, &mut 0.0, &mut 0.0, &mut true, &mut true,
+                    &mut ier, &mut subdone);
 
-            if !subdone || (ier != IerEnum::LocalMinimizerFound) {
+            if !subdone || ier != IerEnum::LocalMinimizerFound {
                 return (x, fct, ier);
             }
         }
     }
+
     (x, fct, ier)
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -203,8 +186,8 @@ mod tests {
             0.014037902478796585, 0.19693639958736797, 0.05546105384553863, 0.21035363638609691, 0.705041024447086, -0.34021712157041645,
             0.894694212391099, -0.0582154345898392, 0.14420187864794054, -0.8769174708134662, -0.34021712157041645, 80.21965674487866
         ]);
-        let xu = [-0.125, -0.06239714070289448, -0.11155191538152609, -0.1875, -0.07153472077076538, -0.019673386763705048];
-        let xo = [0.125, 0.06239714070289448, 0.11155191538152609, 0.1875, 0.07153472077076538, 0.019673386763705048];
+        let xu = SVector::<f64, 6>::from_row_slice(&[-0.125, -0.06239714070289448, -0.11155191538152609, -0.1875, -0.07153472077076538, -0.019673386763705048]);
+        let xo = SVector::<f64, 6>::from_row_slice(&[0.125, 0.06239714070289448, 0.11155191538152609, 0.1875, 0.07153472077076538, 0.019673386763705048]);
 
         let (x, fct, ier) = minq(gam, &c, &mut G, &xu, &xo);
 
@@ -226,8 +209,8 @@ mod tests {
             -0.3, 0.08, 0.105, -0.9, 0.7, -0.4,
             4., 0.08, 0.105, -0.9, 0.7, -0.4,
         ]);
-        let xu = [-1.; 6];
-        let xo = [1.; 6];
+        let xu = SVector::<f64, 6>::from_row_slice(&[-1.; 6]);
+        let xo = SVector::<f64, 6>::from_row_slice(&[1.; 6]);
 
         let (x, fct, ier) = minq(gam, &c, &mut G, &xu, &xo);
 
@@ -250,8 +233,8 @@ mod tests {
             0.6, 0.08, -0.07, -0.9, 0.7, -0.41,
             0.001, 0.018, 0.074, -0.9, 0.7, -0.7,
         ]);
-        let xu = [-1.; 6];
-        let xo = [1.; 6];
+        let xu = SVector::<f64, 6>::from_row_slice(&[-1.; 6]);
+        let xo = SVector::<f64, 6>::from_row_slice(&[1.; 6]);
 
         let (x, fct, ier) = minq(gam, &c, &mut G, &xu, &xo);
 
@@ -274,8 +257,8 @@ mod tests {
             -0.3, 0.08, 0.105, 0.9, 0.7, -0.4,
             4., 0.08, 0.105, -0.9, 0.7, -0.4
         ]);
-        let xu = [-2.; 6];
-        let xo = [2.; 6];
+        let xu = SVector::<f64, 6>::from_row_slice(&[-2.; 6]);
+        let xo = SVector::<f64, 6>::from_row_slice(&[2.; 6]);
 
         let (x, fct, ier) = minq(gam, &c, &mut G, &xu, &xo);
 
@@ -298,8 +281,8 @@ mod tests {
             -0.3, 0.08, 0.105, 0.9, 0.7, -0.4,
             4., 0.08, 0.105, -0.9, 0.7, -0.4
         ]);
-        let xu = [-3.; 6];
-        let xo = [3.; 6];
+        let xu = SVector::<f64, 6>::from_row_slice(&[-3.; 6]);
+        let xo = SVector::<f64, 6>::from_row_slice(&[3.; 6]);
 
         let (x, fct, ier) = minq(gam, &c, &mut G, &xu, &xo);
 
@@ -322,8 +305,8 @@ mod tests {
             -0.3, 0.08, 0.105, 0.9, 0.7, -0.4,
             4., 0.08, 0.105, -0.9, 0.7, 0.0
         ]);
-        let xu = [-3.; 6];
-        let xo = [3.; 6];
+        let xu = SVector::<f64, 6>::from_row_slice(&[-3.; 6]);
+        let xo = SVector::<f64, 6>::from_row_slice(&[3.; 6]);
 
         let (x, fct, ier) = minq(gam, &c, &mut G, &xu, &xo);
 
@@ -339,8 +322,8 @@ mod tests {
         let gam = -5.0;
         let c = SVector::<f64, 3>::from_row_slice(&[0.2, 0.0, 0.02]);
         let mut G = SMatrix::<f64, 3, 3>::from_row_slice(&[1.0, 2.0, 4.0, 2.0, 5.0, 0.0, -0.1, -0.5, -0.005]);
-        let xu = [0.0, -2.0, 1.0];
-        let xo = [1.0, 2.0, 5.0];
+        let xu = SVector::<f64, 3>::from_row_slice(&[0.0, -2.0, 1.0]);
+        let xo = SVector::<f64, 3>::from_row_slice(&[1.0, 2.0, 5.0]);
 
         let (x, fct, ier) = minq(gam, &c, &mut G, &xu, &xo);
 
@@ -367,8 +350,8 @@ mod tests {
             0.6200434355044614, 0.9546431929998173, 0.6513411970145672, 0.788714900630957, 0.6639219390032586, 0.8826883301558496,
             0.3084173620636186, 0.677362811459593, 0.5567194989820659, 0.11920779835756423, 0.02987925514845613, 0.4411971174881518
         ]);
-        let xu = [0.9558285681648798, 0.5194757464362438, 0.3015417041472618, 0.8101331118648574, 0.061618326392057776, 0.5421792878798574];
-        let xo = [2.172274965654365, 2.8179460480833494, 2.1123039892888325, 2.4283704885558492, 2.500248662862857, 2.874993639004977];
+        let xu = SVector::<f64, 6>::from_row_slice(&[0.9558285681648798, 0.5194757464362438, 0.3015417041472618, 0.8101331118648574, 0.061618326392057776, 0.5421792878798574]);
+        let xo = SVector::<f64, 6>::from_row_slice(&[2.172274965654365, 2.8179460480833494, 2.1123039892888325, 2.4283704885558492, 2.500248662862857, 2.874993639004977]);
 
         let (x, fct, ier) = minq(gam, &c, &mut G, &xu, &xo);
 
@@ -393,8 +376,8 @@ mod tests {
             5.497168193855644, 9.631296164721292, 5.929885023156226, 3.4969159387270485, 3.123296730543715, 5.2414836381601955,
             7.738659525956443, 7.329831212331891, 5.539367070865469, 8.846867842872843, 9.224333102762714, 6.83895842907691
         ]);
-        let xu = [-4.769677847426308, -3.5969155931370618, -1.9037195727875393, -1.9430412656953555, -3.076515775656527, -3.3371066538862233];
-        let xo = [-3.7696778474263084, -2.5969155931370618, -0.9037195727875393, -0.9430412656953555, -2.076515775656527, -2.3371066538862233];
+        let xu = SVector::<f64, 6>::from_row_slice(&[-4.769677847426308, -3.5969155931370618, -1.9037195727875393, -1.9430412656953555, -3.076515775656527, -3.3371066538862233]);
+        let xo = SVector::<f64, 6>::from_row_slice(&[-3.7696778474263084, -2.5969155931370618, -0.9037195727875393, -0.9430412656953555, -2.076515775656527, -2.3371066538862233]);
 
         let (x, fct, ier) = minq(gam, &c, &mut G, &xu, &xo);
 
@@ -417,8 +400,8 @@ mod tests {
             1.7864612279290097, -0.9992079198191761, -3.5009378170622605, -1.0333246379471976, 89.37343113076405, 4.016171463395642,
             -0.7406818881433185, 0.1810561706642408, 0.09958957165430643, 0.9233898437170295, 4.016171463395642, 48.17000841044120 // accidentally deleted 1 digit
         ]);
-        let xo = [0.20094711239564478, 0.1495167421889697, 0.3647846775, 0.2559626362565812, 0.331602309105488, 0.3724789161602837];
-        let xu = [-0.20094711239564478, -0.1495167421889697, -0.3647846775, -0.2559626362565812, -0.331602309105488, -0.3724789161602837];
+        let xo = SVector::<f64, 6>::from_row_slice(&[0.20094711239564478, 0.1495167421889697, 0.3647846775, 0.2559626362565812, 0.331602309105488, 0.3724789161602837]);
+        let xu = SVector::<f64, 6>::from_row_slice(&[-0.20094711239564478, -0.1495167421889697, -0.3647846775, -0.2559626362565812, -0.331602309105488, -0.3724789161602837]);
 
         let (x, fct, ier) = minq(gam, &c, &mut G, &xu, &xo);
 
@@ -435,8 +418,8 @@ mod tests {
         let gam = 1.0;
         let c = SVector::<f64, 1>::from_row_slice(&[-1.0]);
         let mut G = SMatrix::<f64, 1, 1>::from_row_slice(&[0.0]);
-        let xu = [f64::NEG_INFINITY];
-        let xo = [f64::INFINITY];
+        let xu = SVector::<f64, 1>::from_row_slice(&[f64::NEG_INFINITY]);
+        let xo = SVector::<f64, 1>::from_row_slice(&[f64::INFINITY]);
 
         let (x, fct, ier) = minq(gam, &c, &mut G, &xu, &xo);
 
@@ -450,8 +433,8 @@ mod tests {
         let gam = 0.0;
         let c = SVector::<f64, 2>::from_row_slice(&[-1.0, 20.0]);
         let mut G = SMatrix::<f64, 2, 2>::from_row_slice(&[123.0, 26.0, -0.3, -9.5]);
-        let xu = [0.0, 0.0];
-        let xo = [11.0, 22.0];
+        let xu = SVector::<f64, 2>::from_row_slice(&[0.0, 0.0]);
+        let xo = SVector::<f64, 2>::from_row_slice(&[11.0, 22.0]);
 
         let (x, fct, ier) = minq(gam, &c, &mut G, &xu, &xo);
 
@@ -464,8 +447,8 @@ mod tests {
         let gam = 1.0;
         let c = SVector::<f64, 2>::from_row_slice(&[1.0, 2.0]);
         let mut G = SMatrix::<f64, 2, 2>::from_row_slice(&[1.0, 2.0, 3.0, 5.0]);
-        let xu = [0.0, 0.0];
-        let xo = [1.0, 2.0];
+        let xu = SVector::<f64, 2>::from_row_slice(&[0.0, 0.0]);
+        let xo = SVector::<f64, 2>::from_row_slice(&[1.0, 2.0]);
 
         let (x, fct, ier) = minq(gam, &c, &mut G, &xu, &xo);
 
@@ -479,8 +462,8 @@ mod tests {
         let gam = 2.0;
         let c = SVector::<f64, 3>::from_row_slice(&[1.0, 2.0, 3.0]);
         let mut G = SMatrix::<f64, 3, 3>::from_row_slice(&[1.0, 2.0, -4.0, 3.0, 5.0, -1.0, 0.0, -3.0, -10.0]);
-        let xu = [-10.0, -10.0, -3.0];
-        let xo = [1.0, 2.0, 4.0];
+        let xu = SVector::<f64, 3>::from_row_slice(&[-10.0, -10.0, -3.0]);
+        let xo = SVector::<f64, 3>::from_row_slice(&[1.0, 2.0, 4.0]);
 
         let (x, fct, ier) = minq(gam, &c, &mut G, &xu, &xo);
 
@@ -496,8 +479,8 @@ mod tests {
         let gam = 200.0;
         let c = SVector::<f64, 3>::from_row_slice(&[1.0, 2.0, 3.0]);
         let mut G = SMatrix::<f64, 3, 3>::from_row_slice(&[1.0, 2.0, 4.0, 3.0, 5.0, -1.0, 0.0, -3.0, -10.0]);
-        let xu = [0.0, 0.0, -3.0];
-        let xo = [1.0, 2.0, 4.0];
+        let xu = SVector::<f64, 3>::from_row_slice(&[0.0, 0.0, -3.0]);
+        let xo = SVector::<f64, 3>::from_row_slice(&[1.0, 2.0, 4.0]);
 
         let (x, fct, ier) = minq(gam, &c, &mut G, &xu, &xo);
         let expected_x = SVector::<f64, 3>::from_row_slice(&[0.0, 0.39999999999999114, 4.0]);
@@ -513,8 +496,8 @@ mod tests {
         let gam = -200.0;
         let c = SVector::<f64, 2>::from_row_slice(&[-1.0, -2.0]);
         let mut G = SMatrix::<f64, 2, 2>::from_row_slice(&[-1.0, -2.0, 5.0, -1.0]);
-        let xu = [0.0, 0.0];
-        let xo = [10.0, 20.0];
+        let xu = SVector::<f64, 2>::from_row_slice(&[0.0, 0.0]);
+        let xo = SVector::<f64, 2>::from_row_slice(&[10.0, 20.0]);
 
         let (x, fct, ier) = minq(gam, &c, &mut G, &xu, &xo);
         let expected_x = SVector::<f64, 2>::from_row_slice(&[10.0, 0.0]);

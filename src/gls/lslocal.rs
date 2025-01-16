@@ -7,7 +7,7 @@ use nalgebra::SVector;
 pub fn lslocal<const N: usize>(
     nloc: usize,
     small: f64,
-    x: &[f64; N],
+    x: &SVector<f64, N>,
     p: &SVector<f64, N>,
     alist: &mut Vec<f64>,
     flist: &mut Vec<f64>,
@@ -38,14 +38,12 @@ pub fn lslocal<const N: usize>(
 ) {
     // Calculate up and down vectors
     up.clear();
-    for i in 0..s - 1 {
-        up.push(flist[i] < flist[i + 1]);
-    }
-
     down.clear();
-    for i in 1..s {
-        down.push(flist[i] <= flist[i - 1]);
-    }
+    flist.windows(2).take(s - 1).for_each(|win| {
+        up.push(win[0] < win[1]);
+        down.push(win[1] <= win[0]);
+    });
+
     // Fix the last element of down as in Python
     if down.len() > 0 {
         down[s - 2] = flist[s - 1] < flist[s - 2];
@@ -53,41 +51,43 @@ pub fn lslocal<const N: usize>(
 
     // Calculate minima using Python's logic of padding with True
     minima.clear();
-    let mut padded_up = up.clone();
-    padded_up.push(true);
-    let mut padded_down = vec![true];
-    padded_down.extend(down.iter().cloned());
+    minima.extend(
+        up.iter()
+            .chain(std::iter::once(&true))
+            .zip(std::iter::once(&true).chain(down.iter()))
+            .take(s)
+            .map(|(up_val, down_val)| *up_val && *down_val)
+    );
 
-    for i in 0..s {
-        minima.push(padded_up[i] && padded_down[i]);
+    // Pre-allocate with capacity to avoid reallocations
+    let mut index_value_pairs = Vec::with_capacity(minima.len());
+
+    // Single pass through data to collect indices and values together
+    for (idx, &is_min) in minima.iter().enumerate() {
+        if is_min {
+            index_value_pairs.push((idx, flist[idx]));
+        }
     }
 
-    // Get indices of minima
-    let mut imin: Vec<usize> = minima.iter()
-        .enumerate()
-        .filter(|(_, &is_min)| is_min)
-        .map(|(i, _)| i)
-        .collect();
+    // Sort by values directly, avoiding separate permutation vector
+    index_value_pairs.sort_unstable_by(|a, b| a.1.total_cmp(&b.1));
 
-    // Sort minima by function values and get permutation
-    let ff: Vec<f64> = imin.iter().map(|&i| flist[i]).collect();
-    let mut perm: Vec<usize> = (0..ff.len()).collect();
-    perm.sort_by(|&a, &b| ff[a].partial_cmp(&ff[b]).unwrap());
+    // Take needed number of elements, reverse, and extract indices
+    let nind = std::cmp::min(nloc, index_value_pairs.len());
 
-    // Apply permutation to imin
-    imin = perm.iter().map(|&i| imin[i]).collect();
-    let nind = std::cmp::min(nloc, imin.len());
-    // Match Python's slice exactly: imin[nind-1::-1]
-    if nind > 0 {
-        imin = imin[..nind].iter().rev().cloned().collect();
-    } else {
-        imin.clear();
+    // Preallocate result vector with exact size
+    let mut imin = Vec::with_capacity(nind);
+    for i in (0..nind).rev() {
+        imin.push(index_value_pairs[i].0);
     }
+
 
     let mut nadd = 0;
     let mut nsat = 0;
 
-    for &i in &imin {
+    let mut x_alp_p: SVector<f64, N>;
+
+    for i in imin {
         // Select nearest five points for local formula
         let (ind, ii) = if i <= 1 {
             ([0, 1, 2, 3, 4], i)
@@ -97,8 +97,8 @@ pub fn lslocal<const N: usize>(
             ([i - 2, i - 1, i, i + 1, i + 2], 2)
         };
 
-        let aa: Vec<f64> = ind.iter().map(|&j| alist[j]).collect();
-        let ff: Vec<f64> = ind.iter().map(|&j| flist[j]).collect();
+        let aa: [f64; 5] = std::array::from_fn(|i| alist[ind[i]]);
+        let ff: [f64; 5] = std::array::from_fn(|i| flist[ind[i]]);
 
         // Get divided differences
         let f12 = (ff[1] - ff[0]) / (aa[1] - aa[0]);
@@ -171,8 +171,8 @@ pub fn lslocal<const N: usize>(
                     (f24 - f12) / (aa[3] - aa[0])
                 };
                 alp = 0.5 * (aa[1] + aa[2] - f23 / (f123 + f234 - f1x4));
-                if alp <= *aa.iter().min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap() ||
-                    alp >= *aa.iter().max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap() {
+                if alp <= *aa.iter().min_by(|a, b| a.total_cmp(b)).unwrap() ||
+                    alp >= *aa.iter().max_by(|a, b| a.total_cmp(b)).unwrap() {
                     cas = 0;
                     alp = 0.5 * (aa[1] + aa[2] - f23 / f123.max(f234));
                 }
@@ -186,8 +186,8 @@ pub fn lslocal<const N: usize>(
                     (f35 - f23) / (aa[4] - aa[1])
                 };
                 alp = 0.5 * (aa[2] + aa[3] - f34 / (f234 + f345 - f2x5));
-                if alp <= *aa.iter().min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap() ||
-                    alp >= *aa.iter().max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap() {
+                if alp <= *aa.iter().min_by(|a, b| a.total_cmp(b)).unwrap() ||
+                    alp >= *aa.iter().max_by(|a, b| a.total_cmp(b)).unwrap() {
                     cas = 0;
                     alp = 0.5 * (aa[2] + aa[3] - f34 / f234.max(f345));
                 }
@@ -213,11 +213,12 @@ pub fn lslocal<const N: usize>(
         }
 
         saturated = nsat == nind;
-        let final_check = saturated && !alist.iter().any(|&a| (a - alp).abs() < f64::EPSILON);
+        let final_check = saturated && !alist.iter().any(|&a| a == alp);
 
         if cas >= 0 && (final_check || !close) {
             nadd += 1;
-            let falp = feval(&std::array::from_fn::<f64, N, _>(|i| x[i] + alp * p[i]));
+            x_alp_p = x + p.scale(alp);
+            let falp = feval(&x_alp_p);
             alist.push(alp);
             flist.push(falp);
         }
@@ -239,7 +240,7 @@ mod tests {
     fn test_basic_minimum() {
         let nloc = 3;
         let small = 1e-6;
-        let x = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let x = SVector::<f64, 6>::from_row_slice(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
         let p = SVector::<f64, 6>::from_row_slice(&[0.1, 0.1, 0.1, 0.1, 0.1, 0.1]);
         let mut alist = vec![0.0, 0.5, 1.0, 1.5, 2.0];
         let mut flist = vec![10.0, 8.0, 7.0, 8.0, 10.0];
@@ -288,7 +289,7 @@ mod tests {
     fn test_multiple_minima() {
         let nloc = 3;
         let small = 1e-6;
-        let x = [1.0; 6];
+        let x = SVector::<f64, 6>::from_row_slice(&[1.0; 6]);
         let p = SVector::<f64, 6>::from_row_slice(&[0.2; 6]);
         let mut alist = vec![0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0];
         let mut flist = vec![10.0, 8.0, 6.0, 9.0, 5.0, 7.0, 10.0];
@@ -337,7 +338,7 @@ mod tests {
     fn test_boundary_minimum_left() {
         let nloc = 3;
         let small = 1e-6;
-        let x = [2.0, 3.0, 4.0, 5.0, 6.0, 7.0];
+        let x = SVector::<f64, 6>::from_row_slice(&[2.0, 3.0, 4.0, 5.0, 6.0, 7.0]);
         let p = SVector::<f64, 6>::from_row_slice(&[-0.1; 6]);
         let mut alist = vec![0.0, 0.5, 1.0, 1.5, 2.0];
         let mut flist = vec![5.0, 6.0, 7.0, 8.0, 9.0];
@@ -383,7 +384,7 @@ mod tests {
     fn test_boundary_minimum_right() {
         let nloc = 3;
         let small = 1e-6;
-        let x = [2.0, 3.0, 4.0, 5.0, 6.0, 7.0];
+        let x = SVector::<f64, 6>::from_row_slice(&[2.0, 3.0, 4.0, 5.0, 6.0, 7.0]);
         let p = SVector::<f64, 6>::from_row_slice(&[0.1; 6]);
         let mut alist = vec![0.0, 0.5, 1.0, 1.5, 2.0];
         let mut flist = vec![9.0, 8.0, 7.0, 6.0, 5.0];
@@ -429,7 +430,7 @@ mod tests {
     fn test_saturated_case() {
         let nloc = 2;
         let small = 1e-6;
-        let x = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let x = SVector::<f64, 6>::from_row_slice(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
         let p = SVector::<f64, 6>::from_row_slice(&[0.1; 6]);
         let mut alist = vec![0.0, 0.25, 0.5, 0.75, 1.0];
         let mut flist = vec![10.0, 8.0, 7.0, 8.0, 10.0];

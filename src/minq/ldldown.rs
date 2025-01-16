@@ -1,5 +1,5 @@
 use crate::minq::ldlrk1::ldlrk1;
-use nalgebra::{DMatrix, DVector, SMatrix, SVector};
+use nalgebra::{SMatrix, SVector};
 
 
 pub fn ldldown<const N: usize>(
@@ -7,92 +7,37 @@ pub fn ldldown<const N: usize>(
     d: &mut SVector<f64, N>,
     j: usize,
 ) {
-    let K: Vec<usize> = ((j + 1)..N).collect();
+    let dj = d[j];
 
-    let K_len = K.len();
-    let mut LKK = DMatrix::<f64>::zeros(K_len, K_len);
-    for (row, &i) in K.iter().enumerate() {
-        for (col, &k) in K.iter().enumerate() {
-            LKK[(row, col)] = L[(i, k)];
+    let mut LKj = L.view_range((j + 1)..N, j).into_owned();
+
+    // Saves LKI allocation; but due to this there is a code duplication
+    match j {
+        0 => {
+            let mut LKK = L.view_range_mut((j + 1)..N, (j + 1)..N);
+            let mut dK = d.view_range_mut((j + 1)..N, 0);
+
+            ldlrk1(&mut LKK.as_view_mut(), &mut dK.as_view_mut(), dj, &mut LKj);
+
+            L.fill_row(j, 0.0);
+            L.fill_column(j, 0.0)
+        }
+        _ => {
+            let LKI = L.view_range((j + 1)..N, 0..j).into_owned();
+
+            let mut LKK = L.view_range_mut((j + 1)..N, (j + 1)..N);
+            let mut dK = d.view_range_mut((j + 1)..N, 0);
+
+            ldlrk1(&mut LKK.as_view_mut(), &mut dK.as_view_mut(), dj, &mut LKj);
+
+            L.fill_row(j, 0.0);
+            L.view_range_mut(j.., j).fill(0.0);
+
+            L.view_range_mut((j + 1)..N, 0..j).copy_from(&LKI);
         }
     }
 
-    let mut dK = DVector::<f64>::zeros(K_len);
-    for (idx, &k) in K.iter().enumerate() {
-        dK[idx] = d[k];
-    }
-
-    let mut LKj = DVector::<f64>::zeros(K_len);
-    for (idx, &k) in K.iter().enumerate() {
-        LKj[idx] = L[(k, j)];
-    }
-
-    ldlrk1(&mut LKK, &mut dK, d[j], &mut LKj);
-
-    for (idx, &k) in K.iter().enumerate() {
-        d[k] = dK[idx];
-    }
-
-    let mut new_L = DMatrix::<f64>::zeros(N, N);
-
-
-    for i in 0..j {
-        for col in 0..N {
-            new_L[(i, col)] = L[(i, col)];
-        }
-    }
-
-
-    // Assign r2 (a row of zeros)
-    // It's already zeros in new_L, so no action needed
-
-    // Construct r3 based on whether I is empty or not
-    if j == 0 {
-        // When I is empty, r3 consists of [zeros | LKK]
-        for row in 0..K.len() {
-            new_L[(j + 1 + row, 0)] = 0.0; // First column is zero
-            for col in 0..K_len {
-                new_L[(j + 1 + row, col + 1)] = LKK[(row, col)];
-            }
-        }
-    } else {
-        // When I is not empty, construct LKI and then r3
-        let mut LKI = DMatrix::<f64>::zeros(K_len, j);
-        for (row, &k) in K.iter().enumerate() {
-            for i in 0..j {
-                LKI[(row, i)] = L[(k, i)];
-            }
-        }
-
-        if !K.is_empty() {
-            for row in 0..K.len() {
-                for i in 0..j {
-                    new_L[(j + 1 + row, i)] = LKI[(row, i)];
-                }
-                // Assign the zero column
-                new_L[(j + 1 + row, j)] = 0.0;
-                // Assign LKK
-                for col in 0..K_len {
-                    new_L[(j + 1 + row, j + 1 + col)] = LKK[(row, col)];
-                }
-            }
-        }
-    }
-
-    // Assign the top part (r1) remains unchanged if I is not empty
-    // Assign the middle row (r2) is already zeros
-    // Assign the lower part (r3) has been handled above
-
-    // Finally, set L[j, j] = 1
-    new_L[(j, j)] = 1.0;
-
-    // Now, copy new_L back to L
-    for i in 0..N {
-        for k in 0..N {
-            L[(i, k)] = new_L[(i, k)];
-        }
-    }
-
+    L[(j, j)] = 1.0;
     d[j] = 1.;
 }
 

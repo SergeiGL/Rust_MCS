@@ -7,7 +7,7 @@ pub fn lsnew<const N: usize>(
     small: f64,
     sinit: usize,
     short: f64,
-    x: &[f64; N],
+    x: &SVector<f64, N>,
     p: &SVector<f64, N>,
     s: usize,
     alist: &mut Vec<f64>,
@@ -17,59 +17,64 @@ pub fn lsnew<const N: usize>(
     abest: f64,
     fmed: f64,
     unitlen: f64,
-) -> (
-    f64,  // alp
-    f64   // fac
-) {
-    let leftok = if alist[0] <= amin {
-        false
-    } else if flist[0] >= fmed.max(flist[1]) {
-        sinit == 1 || nloc > 1
-    } else {
-        true
-    };
+) ->
+    f64 // alp
+{
+    let fmed_max_f1 = fmed.max(flist[1]);
+    let condition = sinit == 1 || nloc > 1;
+    let last_idx = s - 1;
 
-    let rightok = if alist[s - 1] >= amax {
-        false
-    } else if flist[s - 1] >= fmed.max(flist[s - 2]) {
-        sinit == 1 || nloc > 1
-    } else {
-        true
-    };
+    // Use const generics and inline calculations for better performance
+    #[inline(always)]
+    fn check_boundary(val: bool, f: f64, fmax: f64, cond: bool) -> bool {
+        val && (f < fmax || cond)
+    }
 
-    let step = if sinit == 1 { s - 1 } else { 1 };
-    let mut fac = short;
+    // Compute leftok and rightok using optimized checks
+    let leftok = check_boundary(alist[0] > amin, flist[0], fmed_max_f1, condition);
 
-    let alp = if leftok && (flist[0] < flist[s - 1] || !rightok) {
+    let rightok = check_boundary(alist[last_idx] < amax, flist[last_idx], fmed.max(flist[s - 2]), condition);
+
+    let step = if sinit == 1 { last_idx } else { 1 };
+
+    let alp = if leftok && (flist[0] < flist[last_idx] || !rightok) {
+        // Left branch optimization
         let al = alist[0] - (alist[step] - alist[0]) / small;
         amin.max(al)
     } else if rightok {
-        let au = alist[s - 1] + (alist[s - 1] - alist[s - 1 - step]) / small;
+        // Right branch optimization
+        let au = alist[last_idx] + (alist[last_idx] - alist[last_idx - step]) / small;
         amax.min(au)
     } else {
-        let lenth = alist[1..s].iter().zip(&alist[0..s - 1])
-            .map(|(i, j)| i - j).collect::<Vec<f64>>();
-        let dist = alist[1..s].iter()
-            .zip(&alist[0..s - 1])
-            .map(|(i, j)| f64::max(i - abest, f64::max(abest - j, unitlen)))
-            .collect::<Vec<f64>>();
-        let wid: Vec<f64> = lenth.iter().zip(dist.iter()).map(|(l, d)| l / d).collect();
+        // Single-pass optimization: Combine the windows iteration and max finding
+        let mut max_ratio = f64::NEG_INFINITY;
+        let mut i_max = 0;
 
-        // Properly use enumerate to get index with max value
-        let (i_max, _) = wid.iter().enumerate().max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap()).unwrap();
+        // Process windows and track maximum in a single pass
+        for (i, window) in alist.windows(2).enumerate() {
+            let length = window[1] - window[0];
+            let d = f64::max(
+                window[1] - abest,
+                f64::max(abest - window[0], unitlen),
+            );
 
-        let new_alp;
-        (new_alp, fac) = lssplit(i_max, alist, flist, short).unwrap();
-        new_alp
+            // Track maximum ratio during iteration
+            let ratio = length / d;
+            if ratio.total_cmp(&max_ratio) == std::cmp::Ordering::Greater {
+                max_ratio = ratio;
+                i_max = i;
+            }
+        }
+
+        lssplit(alist[i_max], alist[i_max + 1], flist[i_max], flist[i_max + 1], short).0
     };
 
-
-    let falp = feval(&std::array::from_fn::<f64, N, _>(|i| x[i] + alp * p[i]));
+    let falp = feval(&(x + p.scale(alp)));
 
     alist.push(alp);
     flist.push(falp);
 
-    (alp, fac)
+    alp
 }
 
 #[cfg(test)]
@@ -82,7 +87,7 @@ mod tests {
         let small = 0.1;
         let sinit = 1;
         let short = 0.5;
-        let x = [0.1, 0.2, 0.3, 0.4, 0.5, 0.66];
+        let x = SVector::<f64, 6>::from_row_slice(&[0.1, 0.2, 0.3, 0.4, 0.5, 0.66]);
         let p = SVector::<f64, 6>::from_row_slice(&[1.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
         let s = 3;
         let mut alist = vec![0.0, 0.5, 1.0];
@@ -93,12 +98,10 @@ mod tests {
         let fmed = 2.5;
         let unitlen = 1.0;
 
-        let (result_alp, result_fac) = lsnew(nloc, small, sinit, short, &x, &p, s,
-                                             &mut alist, &mut flist, amin, amax, abest, fmed, unitlen,
-        );
+        let result_alp = lsnew(nloc, small, sinit, short, &x, &p, s,
+                               &mut alist, &mut flist, amin, amax, abest, fmed, unitlen);
 
         assert_eq!(result_alp, 2.0);
-        assert_eq!(result_fac, 0.5);
         assert_eq!(alist, vec![0.0, 0.5, 1.0, 2.0]);
         assert_eq!(flist, vec![3.0, 2.0, 1.0, -0.00033660405573826796]);
     }
@@ -109,7 +112,7 @@ mod tests {
         let small = 0.1;
         let sinit = 1;
         let short = 0.5;
-        let x = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let x = SVector::<f64, 6>::from_row_slice(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
         let p = SVector::<f64, 6>::from_row_slice(&[0.0, 1.0, 0.0, 0.0, 0.0, 0.0]);
         let s = 3;
         let mut alist = vec![-1.0, 0.0, 1.0];
@@ -120,12 +123,10 @@ mod tests {
         let fmed = 3.5;
         let unitlen = 1.0;
 
-        let (result_alp, result_fac) = lsnew(nloc, small, sinit, short, &x, &p, s,
-                                             &mut alist, &mut flist, amin, amax, abest, fmed, unitlen,
-        );
+        let result_alp = lsnew(nloc, small, sinit, short, &x, &p, s,
+                               &mut alist, &mut flist, amin, amax, abest, fmed, unitlen);
 
         assert_eq!(result_alp, 2.0);
-        assert_eq!(result_fac, 0.5);
         assert_eq!(alist, vec![-1.0, 0.0, 1.0, 2.0]);
         assert_eq!(flist, vec![4.0, 3.0, 2.0, -6.021808044063958e-206]);
     }
@@ -136,7 +137,7 @@ mod tests {
         let small = 0.1;
         let sinit = 1;
         let short = 0.5;
-        let x = [0.2, 0.4, 0.6, 0.8, 1.0, 0.42];
+        let x = SVector::<f64, 6>::from_row_slice(&[0.2, 0.4, 0.6, 0.8, 1.0, 0.42]);
         let p = SVector::<f64, 6>::from_row_slice(&[1.0, 1.0, 0.0, 0.0, 0.0, 1.0]);
         let s = 3;
         let mut alist = vec![0.5, 1.5, 2.0];
@@ -147,12 +148,10 @@ mod tests {
         let fmed = 0.75;
         let unitlen = 1.0;
 
-        let (result_alp, result_fac) = lsnew(nloc, small, sinit, short, &x, &p, s,
-                                             &mut alist, &mut flist, amin, amax, abest, fmed, unitlen,
-        );
+        let result_alp = lsnew(nloc, small, sinit, short, &x, &p, s,
+                               &mut alist, &mut flist, amin, amax, abest, fmed, unitlen);
 
         assert_eq!(result_alp, 0.0);
-        assert_eq!(result_fac, 0.5);
         assert_eq!(alist, vec![0.5, 1.5, 2.0, 0.0]);
         assert_eq!(flist, vec![1.0, 0.5, 0.3, -0.08558359712218677]);
     }
@@ -163,7 +162,7 @@ mod tests {
         let small = 0.05;
         let sinit = 1;
         let short = 0.6;
-        let x = [0.15, 0.25, 0.35, 0.45, 0.55, 0.65];
+        let x = SVector::<f64, 6>::from_row_slice(&[0.15, 0.25, 0.35, 0.45, 0.55, 0.65]);
         let p = SVector::<f64, 6>::from_row_slice(&[0.0, 1.0, 0.0, 1.0, 0.0, 0.0]);
         let s = 2;
         let mut alist = vec![-10.0, 1.2, 9.0];
@@ -174,12 +173,10 @@ mod tests {
         let fmed = 1.9;
         let unitlen = 1.0;
 
-        let (result_alp, result_fac) = lsnew(nloc, small, sinit, short, &x, &p, s,
-                                             &mut alist, &mut flist, amin, amax, abest, fmed, unitlen,
-        );
+        let result_alp = lsnew(nloc, small, sinit, short, &x, &p, s,
+                               &mut alist, &mut flist, amin, amax, abest, fmed, unitlen);
 
         assert_eq!(result_alp, -5.5200000000000005);
-        assert_eq!(result_fac, 0.4);
         assert_eq!(alist, vec![-10.0, 1.2, 9.0, -5.5200000000000005]);
         assert_eq!(flist, vec![2.0, 1.8, 10.0, -6.269043201318317e-79])
     }
@@ -190,7 +187,7 @@ mod tests {
         let small = 0.1;
         let sinit = 1;
         let short = 0.7;
-        let x = [0.5, 0.3, 0.2, 0.4, 0.1, 0.6];
+        let x = SVector::<f64, 6>::from_row_slice(&[0.5, 0.3, 0.2, 0.4, 0.1, 0.6]);
         let p = SVector::<f64, 6>::from_row_slice(&[1.0, 0.0, 0.0, 0.0, 0.0, 1.0]);
         let s = 4;
         let mut alist = vec![0.1, 0.3, 1.5, 1.7];
@@ -201,11 +198,10 @@ mod tests {
         let fmed = 1.5;
         let unitlen = 1.0;
 
-        let (result_alp, result_fac) = lsnew(nloc, small, sinit, short, &x, &p, s,
-                                             &mut alist, &mut flist, amin, amax, abest, fmed, unitlen);
+        let result_alp = lsnew(nloc, small, sinit, short, &x, &p, s,
+                               &mut alist, &mut flist, amin, amax, abest, fmed, unitlen);
 
         assert_eq!(result_alp, 0.66);
-        assert_eq!(result_fac, 0.30000000000000004);
         assert_eq!(alist, vec![0.1, 0.3, 1.5, 1.7, 0.66]);
         assert_eq!(flist, vec![1.9, 1.4, 1.2, 1.0, -0.005635405914473198]);
     }
@@ -217,7 +213,7 @@ mod tests {
         let small = 0.1;
         let sinit = 0;
         let short = 0.5;
-        let x = [0.2, 0.4, 0.6, 0.8, 1.0, 0.42];
+        let x = SVector::<f64, 6>::from_row_slice(&[0.2, 0.4, 0.6, 0.8, 1.0, 0.42]);
         let p = SVector::<f64, 6>::from_row_slice(&[1.0, 1.0, 0.0, 0.0, 0.0, 1.0]);
         let s = 3;
         let mut alist = vec![0.5, 1.5, 2.0];
@@ -228,11 +224,10 @@ mod tests {
         let fmed = 0.75;
         let unitlen = 1.0;
 
-        let (result_alp, result_fac) = lsnew(nloc, small, sinit, short, &x, &p, s,
-                                             &mut alist, &mut flist, amin, amax, abest, fmed, unitlen);
+        let result_alp = lsnew(nloc, small, sinit, short, &x, &p, s,
+                               &mut alist, &mut flist, amin, amax, abest, fmed, unitlen);
 
         assert_eq!(result_alp, 1.0);
-        assert_eq!(result_fac, 0.5);
         assert_eq!(alist, vec![0.5, 1.5, 2.0, 1.0]);
         assert_eq!(flist, vec![1.0, 0.5, 0.3, -3.674762767159534e-09]);
     }

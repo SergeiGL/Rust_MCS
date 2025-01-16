@@ -63,7 +63,7 @@
 //     // Find the best result using iterator methods
 //     let (xbest_global, fbest_global) = results
 //         .into_iter()
-//         .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+//         .min_by(|a, b| a.1.total_cmp(&b.1))
 //         .unwrap_or(([0.0; N], f64::INFINITY));
 //
 //     (

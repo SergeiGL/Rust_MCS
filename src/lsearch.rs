@@ -1,99 +1,81 @@
-use crate::chk_flag::update_flag;
 use crate::csearch::csearch;
 use crate::feval::feval;
 use crate::gls::gls;
+use crate::helper_funcs::*;
 use crate::minq::minq;
 use crate::neighbor::neighbor;
 use crate::triple::triple;
-use nalgebra::{Const, DVector, DimMin, SMatrix, SVector};
-
-
-fn clamp_xmin<const N: usize>(xmin: &mut [f64; N], u: &[f64; N], v: &[f64; N]) {
-    xmin.iter_mut().zip(u.iter()).zip(v.iter()).for_each(|((x_i, &u_i), &v_i)| {
-        *x_i = x_i.clamp(u_i, v_i);
-    });
-}
+use crate::StopStruct;
+use nalgebra::{Const, DimMin, SMatrix, SVector};
 
 pub fn lsearch<const N: usize>(
-    x: &[f64; N],
+    x: &SVector<f64, N>,
     mut f: f64,
     f0: f64,
-    u: &[f64; N],
-    v: &[f64; N],
-    nf: isize,
-    stop: &[f64],
+    u: &SVector<f64, N>,
+    v: &SVector<f64, N>,
+    nf_left: Option<usize>,
+    stop_struct: &StopStruct,
     maxstep: usize,
     gamma: f64,
     hess: &SMatrix<f64, N, N>,
 ) -> (
-    [f64; N], // xmin
-    f64,      // fmi
-    usize,    // ncall
-    bool,     // flag
+    SVector<f64, N>, // xmin
+    f64,             // fmi
+    usize,           // ncall
+    bool,            // flag
 ) where
     Const<N>: DimMin<Const<N>, Output=Const<N>>,
 {
-    let mut ncall = 0_usize;
+    let EPS_POW_1_3 = f64::EPSILON.powf(1.0 / 3.0);
 
-    let x0: Vec<f64> = u.iter()
-        .zip(v.iter())
-        .map(|(&u_i, &v_i)| 0.0_f64.clamp(u_i, v_i))
-        .collect();
-
-    let mut eps0 = 0.001;
-    let nloc = 1;
-    let small = 0.1;
-    let smaxls = 15;
+    let (mut eps0, mut ncall, nloc, small, smaxls, mut flag) = (0.001, 0_usize, 1, 0.1, 15, true);
 
     let (mut xmin, mut fmi, mut g, mut G, nfcsearch) = csearch(x, f, u, v);
-    // println!("{g:?}");
-    clamp_xmin(&mut xmin, u, v);
+    clamp_SVector_mut(&mut xmin, u, v);
 
     ncall += nfcsearch;
 
     let mut xold = xmin.clone();
     let mut fold = fmi.clone();
-    let eps: f64 = 2.220446049250313e-16;
 
-    let mut flag = true;
-    update_flag(&mut flag, &stop, fmi, 1);
+    update_flag(&mut flag, fmi, stop_struct);
 
-    if !flag {
-        return (xmin, fmi, ncall, flag);
-    }
+    if !flag { return (xmin, fmi, ncall, flag); }
 
-    // Compute d
-    let mut d: [f64; N] = std::array::from_fn(|i|
-        f64::min(f64::min(xmin[i] - u[i], v[i] - xmin[i]), 0.25 * (1.0 + (x[i] - x0[i]).abs()))
-    );
+    let mut x0: SVector<f64, N> = SVector::zeros();
+    clamp_SVector_mut(&mut x0, u, v);
 
-    let (mut p, _, _) = minq(
-        fmi,
-        &g,
-        &mut G,
-        &std::array::from_fn(|i| -d[i]),
-        &std::array::from_fn(|i| d[i]),
-    );
+    let mut d: SVector<f64, N> = (xmin - u) // Component-wise subtraction
+        .zip_map(&(v - xmin), f64::min)  // Parallel minimum operation
+        .zip_map(
+            &((x - x0).abs().add_scalar(1.0).scale(0.25)),  // Compute 0.25 * (1.0 + |x - x0|)
+            f64::min,
+        );
 
+    let (mut p, _, _) = minq(fmi, &g, &mut G, &-d, &d);
 
-    let x_new = std::array::from_fn::<f64, N, _>(|i| (xmin[i] + p[i]).clamp(u[i], v[i]));
+    let mut x_new = xmin + p;
+    clamp_SVector_mut(&mut x_new, u, v);
 
-    p = SVector::<f64, N>::from_iterator(
-        x_new.iter()
-            .zip(&xmin)
-            .map(|(&x_i, &xmin_i)| x_i - xmin_i)
-    );
+    p = x_new - xmin;
+
     let norm = p.norm();
 
-    let mut alist;
-    let mut flist;
+    let mut alist = Vec::<f64>::with_capacity(10_000);
+    let mut flist = Vec::<f64>::with_capacity(10_000);
+
     let (mut gain, mut r) = if norm != 0.0 {
         let f1 = feval(&x_new);
         ncall += 1;
-        alist = vec![0., 1.];
-        flist = vec![fmi, f1];
 
-        let fpred = fmi + (g.transpose() * p)[(0, 0)] + (0.5 * (p.transpose() * (G * p)))[(0, 0)];
+        alist.clear();
+        alist.extend([0.0, 1.0]);
+
+        flist.clear();
+        flist.extend([fmi, f1]);
+
+        let fpred = fmi + g.dot(&p) + 0.5 * (p.dot(&(G * p)));
 
         ncall += gls(&xmin, &p, &mut alist, &mut flist, u, v, nloc, small, smaxls);
 
@@ -101,7 +83,7 @@ pub fn lsearch<const N: usize>(
         let (mut i, &fminew) = flist
             .iter()
             .enumerate()
-            .min_by(|(_, &a), (_, b)| a.partial_cmp(b).unwrap())
+            .min_by(|(_, &a), (_, b)| a.total_cmp(b))
             .unwrap();
 
         if fminew == fmi {
@@ -115,9 +97,9 @@ pub fn lsearch<const N: usize>(
             *x_ref += p_scaled;
         };
 
-        clamp_xmin(&mut xmin, u, v);
+        clamp_SVector_mut(&mut xmin, u, v);
 
-        update_flag(&mut flag, &stop, fmi, 1);
+        update_flag(&mut flag, fmi, stop_struct);
 
         if !flag {
             return (xmin, fmi, ncall, flag);
@@ -131,39 +113,39 @@ pub fn lsearch<const N: usize>(
     let mut diag = false;
 
     // Compute ind
-    let mut ind: Vec<usize> = (0..N)
+    let mut ind_len = (0..N)
         .filter(|&i| u[i] < xmin[i] && xmin[i] < v[i])
-        .collect();
+        .count();
 
-    let dot_right: SVector<f64, N> = SVector::from_fn(|i, _|
-        xmin[i].abs().max(xold[i].abs())
-    );
-    let mut b = (g.transpose().abs() * dot_right)[(0, 0)];
+    let dot_right: SVector<f64, N> = SVector::<f64, N>::from_fn(|i, _| xmin[i].abs().max(xold[i].abs()));
+
+    let mut b = g.abs().dot(&dot_right);
     let mut nstep = 0;
 
-    // println!("{xmin:?}"); // correct
-    // Begin while loop
-    while ((ncall as isize) < nf)
+    // Compute minusd and mind
+    let mut minusd: SVector<f64, N>;
+    let mut mind: SVector<f64, N>;
+
+    while (nf_left.is_some() && ncall < nf_left.unwrap())
         && (nstep < maxstep)
         && (
-        (diag || ind.len() < N)
-            || (stop[0] == 0.0 && fmi - gain <= stop[1])
+        (diag || ind_len < N)
+            || (stop_struct.nsweeps == 0 && fmi - gain <= stop_struct.freach)
             || (b >= gamma * (f0 - f) && gain > 0.0)
     )
     {
         nstep += 1;
-        let mut delta: [f64; N] = std::array::from_fn(|i| xmin[i].abs() * eps.powf(1.0 / 3.0));
-
+        let mut delta = xmin.abs().scale(EPS_POW_1_3);
         for delta_i in delta.iter_mut() {
             if *delta_i == 0.0 {
-                *delta_i = eps.powf(1.0 / 3.0);
+                *delta_i = EPS_POW_1_3;
             }
         }
 
         let (mut x1, mut x2) = neighbor(&xmin, &delta, u, v);
         f = fmi;
 
-        if ind.len() < N && (b < gamma * (f0 - f) || gain == 0.0) {
+        if ind_len < N && (b < gamma * (f0 - f) || gain == 0.0) {
             let mut ind1: Vec<Option<usize>> = u.iter()
                 .zip(v.iter())
                 .enumerate()
@@ -176,6 +158,7 @@ pub fn lsearch<const N: usize>(
                 })
                 .collect();
 
+            p = SVector::<f64, N>::zeros();
             for k in 0..ind1.len() {
                 if let Some(i) = ind1[k] {
                     let mut x = xmin.clone();
@@ -184,16 +167,20 @@ pub fn lsearch<const N: usize>(
                     ncall += 1;
 
                     if f1 < fmi {
-                        alist = vec![0.0, x[i], -xmin[i]];
-                        flist = vec![fmi, f1];
-                        p = SVector::<f64, N>::repeat(0.0);
+                        alist.clear();
+                        alist.extend([0.0, x[i], -xmin[i]]);
+
+                        flist.clear();
+                        flist.extend([fmi, f1]);
+
                         p[i] = 1.0;
                         ncall += gls(&xmin, &p, &mut alist, &mut flist, u, v, nloc, small, 6);
+                        p[i] = 0.0;
 
                         let (mut j, &fminew) = flist
                             .iter()
                             .enumerate()
-                            .min_by(|(_, &a), (_, b)| a.partial_cmp(b).unwrap())
+                            .min_by(|(_, &a), (_, b)| a.total_cmp(b))
                             .unwrap();
 
                         if fminew == fmi {
@@ -209,7 +196,7 @@ pub fn lsearch<const N: usize>(
                 }
             }
 
-            clamp_xmin(&mut xmin, u, v);
+            clamp_SVector_mut(&mut xmin, u, v);
 
             // if not sum(ind1):
             if ind1.iter().fold(ind1.len(), |acc, x| {
@@ -221,11 +208,11 @@ pub fn lsearch<const N: usize>(
                 break;
             }
 
-            delta = std::array::from_fn(|i| xmin[i].abs() * eps.powf(1.0 / 3.0));
+            delta = xmin.abs().scale(EPS_POW_1_3);
 
             for delta_i in delta.iter_mut() {
                 if *delta_i == 0.0 {
-                    *delta_i = eps.powf(1.0 / 3.0);
+                    *delta_i = EPS_POW_1_3;
                 }
             }
             (x1, x2) = neighbor(&xmin, &delta, u, v);
@@ -247,7 +234,7 @@ pub fn lsearch<const N: usize>(
         xold = xmin.clone();
         fold = fmi;
 
-        update_flag(&mut flag, &stop, fmi, 1);
+        update_flag(&mut flag, fmi, stop_struct);
 
         if !flag {
             return (xmin, fmi, ncall, flag);
@@ -265,42 +252,40 @@ pub fn lsearch<const N: usize>(
         }
 
         // Compute minusd and mind
-        let minusd = std::array::from_fn(|jnx| (u[jnx] - xmin[jnx]).max(-d[jnx]));
-        let mind = std::array::from_fn(|jnx| (v[jnx] - xmin[jnx]).min(d[jnx]));
+        minusd = (u - xmin).zip_map(&d, |diff, d_val| diff.max(-d_val));
+        mind = (v - xmin).zip_map(&d, |diff, d_val| diff.min(d_val));
 
-        // Recompute p using minq
-        // println!("MINQ:\nfmi={fmi}\ng={g:?}\nG={G:?}\nminusd={minusd:?}\nmind={mind:?}");
         p = minq(fmi, &g, &mut G, &minusd, &mind).0;
         let norm = p.norm();
-        // println!("{p}");
 
-        if norm == 0.0 && !diag && ind.len() == N {
+        if norm == 0.0 && !diag && ind_len == N {
             break;
         }
 
         if norm != 0.0 {
-            let fpred = fmi + (g.transpose() * p)[(0, 0)] + (0.5 * (p.transpose() * (G * p)))[(0, 0)];
-            let x_pred = std::array::from_fn::<f64, N, _>(|i| xmin[i] + p[i]);
-            let f1 = feval(&x_pred);
+            let fpred = fmi + g.dot(&p) + 0.5 * p.dot(&(G * p));
+            let f1 = feval(&(xmin + p));
             ncall += 1;
 
-            alist = vec![0.0, 1.0];
-            flist = vec![fmi, f1];
+            alist.clear();
+            alist.extend([0.0, 1.0]);
+
+            flist.clear();
+            flist.extend([fmi, f1]);
+
             ncall += gls(&xmin, &p, &mut alist, &mut flist, u, v, nloc, small, smaxls);
 
             let (argmin, &fmi_new) = flist
                 .iter()
                 .enumerate()
-                .min_by(|(_, &a), (_, b)| a.partial_cmp(b).unwrap())
+                .min_by(|(_, &a), (_, b)| a.total_cmp(b))
                 .unwrap();
             fmi = fmi_new;
 
-            xmin = std::array::from_fn(|i| {
-                let new_xmin_i = xmin[i] + alist[argmin] * p[i];
-                new_xmin_i.clamp(u[i], v[i])
-            });
+            xmin = xmin + alist[argmin] * p;
+            clamp_SVector_mut(&mut xmin, u, v);
 
-            update_flag(&mut flag, &stop, fmi, 1);
+            update_flag(&mut flag, fmi, stop_struct);
 
             if !flag {
                 return (xmin, fmi, ncall, flag);
@@ -317,7 +302,7 @@ pub fn lsearch<const N: usize>(
             };
 
             if fmi < fold {
-                eps0 = ((1.0 - 1.0 / r).abs() * eps0).min(0.001).max(eps);
+                eps0 = ((1.0 - 1.0 / r).abs() * eps0).min(0.001).max(f64::EPSILON);
             } else {
                 eps0 = 0.001;
             }
@@ -329,17 +314,9 @@ pub fn lsearch<const N: usize>(
             }
         }
 
-        ind = (0..N)
-            .filter(|&inx| u[inx] < xmin[inx] && xmin[inx] < v[inx])
-            .collect();
+        ind_len = (0..N).filter(|&inx| u[inx] < xmin[inx] && xmin[inx] < v[inx]).count();
 
-        let dot_right = DVector::from_vec(
-            xmin.iter()
-                .zip(&xold)
-                .map(|(&xmin_i, &xold_i)| xmin_i.abs().max(xold_i.abs()))
-                .collect::<Vec<f64>>()
-        );
-        b = g.abs().dot(&dot_right);
+        b = g.abs().dot(&SVector::<f64, N>::from_fn(|i, _| xmin[i].abs().max(xold[i].abs())));
     }
 
     (xmin, fmi, ncall, flag)
@@ -355,18 +332,18 @@ mod tests {
 
     #[test]
     fn test_0() {
-        let x = [0.20601133, 0.20601133, 0.45913871, 0.15954294, 0.37887001, 0.62112999];
+        let x = SVector::<f64, 6>::from_row_slice(&[0.20601133, 0.20601133, 0.45913871, 0.15954294, 0.37887001, 0.62112999]);
         let f = -2.728684905407648;
         let f0 = -0.9883412202327723;
-        let u = [0.0; 6];
-        let v = [1.0; 6];
-        let nf = -95;
-        let stop = vec![18.0, f64::NEG_INFINITY];
+        let u = SVector::<f64, 6>::from_row_slice(&[0.0; 6]);
+        let v = SVector::<f64, 6>::from_row_slice(&[1.0; 6]);
+        let nf_left = None;
+        let stop = StopStruct::new(vec![18.0, f64::NEG_INFINITY, 0.0]);
         let maxstep = 50;
-        let gamma = 2.220446049250313e-16;
+        let gamma = f64::EPSILON;
         let hess: SMatrix<f64, 6, 6> = SMatrix::repeat(1.0);
 
-        let (xmin, fmi, ncall, flag) = lsearch(&x, f, f0, &u, &v, nf, &stop, maxstep, gamma, &hess);
+        let (xmin, fmi, ncall, flag) = lsearch(&x, f, f0, &u, &v, nf_left, &stop, maxstep, gamma, &hess);
 
         let expected_xmin = [0.20290601266983127, 0.14223984340198792, 0.4775778674570614, 0.2700662542458104, 0.3104183680708858, 0.6594579515964624];
 
@@ -378,18 +355,18 @@ mod tests {
 
     #[test]
     fn test_1() {
-        let x = [0.20601133, 0.20601133, 0.45913871, 0.15954294, 0.37887001, 0.62112999];
+        let x = SVector::<f64, 6>::from_row_slice(&[0.20601133, 0.20601133, 0.45913871, 0.15954294, 0.37887001, 0.62112999]);
         let f = -2.728684905407648;
         let f0 = -0.9883412202327723;
-        let u = [0.0; 6];
-        let v = [1.0; 6];
-        let nf = 95;
-        let stop = vec![18.0, f64::NEG_INFINITY];
+        let u = SVector::<f64, 6>::from_row_slice(&[0.0; 6]);
+        let v = SVector::<f64, 6>::from_row_slice(&[1.0; 6]);
+        let nf_left = Some(95);
+        let stop = StopStruct::new(vec![18.0, f64::NEG_INFINITY, 0.0]);
         let maxstep = 50;
         let gamma = 2e-6;
         let hess: SMatrix<f64, 6, 6> = SMatrix::repeat(1.0);
 
-        let (xmin, fmi, ncall, flag) = lsearch(&x, f, f0, &u, &v, nf, &stop, maxstep, gamma, &hess);
+        let (xmin, fmi, ncall, flag) = lsearch(&x, f, f0, &u, &v, nf_left, &stop, maxstep, gamma, &hess);
 
         let expected_xmin = [0.20169016858295652, 0.1500100239040133, 0.4768726575742668, 0.2753321620932197, 0.31165307086540384, 0.6572993388248786];
 
@@ -401,18 +378,18 @@ mod tests {
 
     #[test]
     fn test_2() {
-        let x = [-0.2, 0.0, 0.4, 0.5, 1.0, 1.7];
+        let x = SVector::<f64, 6>::from_row_slice(&[-0.2, 0.0, 0.4, 0.5, 1.0, 1.7]);
         let f = -2.7;
         let f0 = -0.9;
-        let u = [0.0; 6];
-        let v = [1.0; 6];
-        let nf = 95;
-        let stop = vec![18.0, f64::NEG_INFINITY];
+        let u = SVector::<f64, 6>::from_row_slice(&[0.0; 6]);
+        let v = SVector::<f64, 6>::from_row_slice(&[1.0; 6]);
+        let nf_left = Some(95);
+        let stop = StopStruct::new(vec![18.0, f64::NEG_INFINITY, 0.0]);
         let maxstep = 50;
         let gamma = 2e-6;
         let hess: SMatrix<f64, 6, 6> = SMatrix::repeat(1.0);
 
-        let (xmin, fmi, ncall, flag) = lsearch(&x, f, f0, &u, &v, nf, &stop, maxstep, gamma, &hess);
+        let (xmin, fmi, ncall, flag) = lsearch(&x, f, f0, &u, &v, nf_left, &stop, maxstep, gamma, &hess);
 
         let expected_xmin = [0.0, 0.0, 0.4, 0.5, 1.0, 1.0];
 
@@ -425,18 +402,18 @@ mod tests {
 
     #[test]
     fn test_3() {
-        let x = [0.0, 1.8, -0.4, -0.5, -1.0, -1.7];
+        let x = SVector::<f64, 6>::from_row_slice(&[0.0, 1.8, -0.4, -0.5, -1.0, -1.7]);
         let f = 2.1;
         let f0 = 0.8;
-        let u = [0.0; 6];
-        let v = [1.0; 6];
-        let nf = 90;
-        let stop = vec![20.0, f64::NEG_INFINITY];
+        let u = SVector::<f64, 6>::from_row_slice(&[0.0; 6]);
+        let v = SVector::<f64, 6>::from_row_slice(&[1.0; 6]);
+        let nf_left = Some(90);
+        let stop = StopStruct::new(vec![20.0, f64::NEG_INFINITY, 0.0]);
         let maxstep = 100;
         let gamma = 2e-6;
         let hess: SMatrix<f64, 6, 6> = SMatrix::repeat(1.0);
 
-        let (xmin, fmi, ncall, flag) = lsearch(&x, f, f0, &u, &v, nf, &stop, maxstep, gamma, &hess);
+        let (xmin, fmi, ncall, flag) = lsearch(&x, f, f0, &u, &v, nf_left, &stop, maxstep, gamma, &hess);
 
         let expected_xmin = [0.40466193295801317, 0.8824636278527813, 0.8464090444977177, 0.5740213137874376, 0.13816034855820664, 0.0384741244365488];
 

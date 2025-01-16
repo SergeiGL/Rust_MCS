@@ -1,4 +1,6 @@
-pub fn add_basket<const N: usize>(nbasket_option: &mut Option<usize>, xmin: &mut Vec<[f64; N]>, fmi: &mut Vec<f64>, x_val: &mut [f64; N], f_val: f64) {
+use nalgebra::SVector;
+
+pub fn add_basket<const N: usize>(nbasket_option: &mut Option<usize>, xmin: &mut Vec<SVector<f64, N>>, fmi: &mut Vec<f64>, x_val: &mut SVector<f64, N>, f_val: f64) {
     let nbasket = match nbasket_option {
         Some(val) => {
             *val += 1;

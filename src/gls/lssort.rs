@@ -10,17 +10,12 @@ pub fn lssort(alist: &mut Vec<f64>, flist: &mut Vec<f64>) -> (
     f64,         // unitlen
     usize        // s
 ) {
-    // Create a vector of tuples containing (value, index, flist_value)
-    let mut paired: Vec<(f64, usize, f64)> = alist.iter()
-        .zip(0..alist.len())
-        .map(|(a, i)| (*a, i, flist[i]))
-        .collect();
-
-    // Sort the paired vector based on the first element (alist values)
+    // Pair and sort alist and flist
+    let mut paired: Vec<(f64, f64)> = alist.iter().copied().zip(flist.iter().copied()).collect();
     paired.sort_unstable_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
 
-    // Update alist and flist in a single pass
-    for (i, (a, _, f)) in paired.iter().enumerate() {
+    // Update alist and flist based on the sorted order
+    for (i, (a, f)) in paired.iter().enumerate() {
         alist[i] = *a;
         flist[i] = *f;
     }
@@ -28,17 +23,17 @@ pub fn lssort(alist: &mut Vec<f64>, flist: &mut Vec<f64>) -> (
     let s = alist.len();
 
     // Calculate up and down vectors
-    let mut up = Vec::with_capacity(s - 1);
-    let mut down = Vec::with_capacity(s - 1);
+    let mut up = Vec::with_capacity(s);
+    let mut down = Vec::with_capacity(s);
 
     for i in 0..s - 1 {
-        up.push(flist[i] < flist[i + 1]);
-        down.push(flist[i + 1] <= flist[i]);
+        let (curr, next) = (flist[i], flist[i + 1]);
+        up.push(curr < next);
+        down.push(next <= curr);
     }
 
-    if down.len() == 1 {
-        down[0] = flist[s - 1] < flist[s - 2];
-    } else if !down.is_empty() {
+    // Fix down last element if necessary
+    if s > 1 {
         down[s - 2] = flist[s - 1] < flist[s - 2];
     }
 
@@ -61,49 +56,31 @@ pub fn lssort(alist: &mut Vec<f64>, flist: &mut Vec<f64>) -> (
     let (abest, fbest) = flist
         .iter()
         .enumerate()
-        .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
+        .min_by(|(_, a), (_, b)| a.total_cmp(b))
         .map(|(i, &value)| (alist[i], value)) // Unpack reference to owned values
         .unwrap();
 
-    // Calculate median
-    let fmed = if s % 2 == 0 {
-        let mid1 = s / 2 - 1;
-        let mid2 = s / 2;
-
-        let (m1, m2) = {
-            let mut to_sort = flist.clone();
-
-            let m1 = *to_sort.select_nth_unstable_by(mid1, |a, b| a.partial_cmp(b).unwrap()).1;
-            let m2 = *to_sort.select_nth_unstable_by(mid2, |a, b| a.partial_cmp(b).unwrap()).1;
-
-            (m1, m2)
-        };
-        (m1 + m2) / 2.0
-    } else {
-        // Find the single middle element for an odd-length vector:
-        let mid = s / 2;
+    // Compute median of flist
+    let fmed = {
         let mut to_sort = flist.clone();
-        let m = *to_sort.select_nth_unstable_by(mid, |a, b| a.partial_cmp(b).unwrap()).1;
-        m
+        let mid = s / 2;
+        if s % 2 == 0 {
+            let mid1 = *to_sort.select_nth_unstable_by(mid - 1, |a, b| a.total_cmp(b)).1;
+            let mid2 = *to_sort.select_nth_unstable_by(mid, |a, b| a.total_cmp(b)).1;
+            (mid1 + mid2) / 2.0
+        } else {
+            *to_sort.select_nth_unstable_by(mid, |a, b| a.total_cmp(b)).1
+        }
     };
 
     let unitlen = if nmin > 1 {
-        let mut al = Vec::with_capacity(minima.len());
-
-        for (i, &is_minimum) in minima.iter().enumerate() {
-            if is_minimum {
-                al.push(alist[i]);
-            }
-        }
-
-        if let Some(pos) = al.iter().position(|&x| (x - abest).abs() < f64::EPSILON) {
-            // swap_remove is O(1) instead of O(n) for remove
-            al.swap_remove(pos);
-        }
-
-        al.iter()
-            .map(|&x| (x - abest).abs())
-            .min_by(|a, b| a.partial_cmp(&b).unwrap()).unwrap()
+        minima.iter()
+            .enumerate()
+            .filter_map(|(i, &is_min)| if is_min { Some(alist[i]) } else { None })
+            .filter(|&x| (x - abest).abs() >= f64::EPSILON)
+            .map(|x| (x - abest).abs())
+            .min_by(|a, b| a.total_cmp(b))
+            .unwrap_or(0.0)
     } else {
         (alist[s - 1] - abest).max(abest - alist[0])
     };

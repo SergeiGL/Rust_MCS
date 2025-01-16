@@ -3,7 +3,7 @@ use crate::gls::lssort::lssort;
 use nalgebra::SVector;
 
 pub fn lsdescent<const N: usize>(
-    x: &[f64; N],
+    x: &SVector<f64, N>,
     p: &SVector<f64, N>,
     alist: &mut Vec<f64>,
     flist: &mut Vec<f64>,
@@ -33,7 +33,7 @@ pub fn lsdescent<const N: usize>(
 
         (i, fbest) = flist.iter()
             .enumerate()
-            .min_by(|(_, &a), (_, &b)| a.partial_cmp(&b).unwrap())
+            .min_by(|(_, &a), (_, &b)| a.total_cmp(&b))
             .map(|(i, &val)| (i, val))
             .unwrap();
 
@@ -44,14 +44,6 @@ pub fn lsdescent<const N: usize>(
         } else if alist[i] > 0.0 {
             if alist[i] < 4.0 * alist[i - 1] {
                 return (alp, abest, fbest, fmed, monotone, nmin, unitlen, s);
-            }
-        } else {
-            if i == 0 {
-                fbest = flist[1];
-            } else if i == s - 1 {
-                fbest = flist[s - 2];
-            } else {
-                fbest = flist[i - 1].min(flist[i + 1]);
             }
         }
 
@@ -70,7 +62,7 @@ pub fn lsdescent<const N: usize>(
             }
         }
 
-        let falp = feval(&std::array::from_fn::<f64, N, _>(|i| x[i] + alp * p[i]));
+        let falp = feval(&(x + p.scale(alp)));
 
         // Insert the new alp and falp into the lists.
         alist.push(alp);
@@ -89,7 +81,7 @@ mod tests {
 
     #[test]
     fn test_case_0() {
-        let x = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let x = SVector::<f64, 6>::from_row_slice(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
         let p = SVector::<f64, 6>::from_row_slice(&[-1.0, -2.0, -3.0, -4.0, -5.0, -6.0]);
         let mut alist = vec![3.0, 2.0];
         let mut flist = vec![3.0, 2.0];
@@ -128,7 +120,7 @@ mod tests {
 
     #[test]
     fn test_case_1() {
-        let x = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0];
+        let x = SVector::<f64, 6>::from_row_slice(&[0.0, 1.0, 2.0, 3.0, 4.0, 5.0]);
         let p = SVector::<f64, 6>::from_row_slice(&[5.0, 4.0, 3.0, 2.0, 1.0, 0.0]);
         let mut alist = vec![1.0, 2.0, -1.0, 0.5];
         let mut flist = vec![5.0, 7.0, 3.0, 10.0];
@@ -167,7 +159,7 @@ mod tests {
 
     #[test]
     fn test_case_2() {
-        let x = [1.0, -1.0, 1.0, -1.0, 1.0, -1.0];
+        let x = SVector::<f64, 6>::from_row_slice(&[1.0, -1.0, 1.0, -1.0, 1.0, -1.0]);
         let p = SVector::<f64, 6>::from_row_slice(&[-1.0, 1.0, -1.0, 1.0, -1.0, 1.0]);
         let mut alist = vec![-1.2, -3.4, -4.0, 2.5];
         let mut flist = vec![1.0, 4.5, 6.5, 2.0];
@@ -198,7 +190,7 @@ mod tests {
         assert_eq!(up, vec![false, false, false, false, false, false]);
         assert_eq!(down, vec![true, false, true, false, true, false]);
         assert_eq!(new_monotone, false);
-        assert_eq!(minima, vec![]);
+        assert!(minima.is_empty());
         assert_eq!(new_nmin, 0);
         assert_eq!(new_unitlen, 1.0);
         assert_eq!(new_s, 4);
@@ -207,7 +199,7 @@ mod tests {
 
     #[test]
     fn test_real_mistake_0() {
-        let x = [0.2, 0.2, 0.45, 0.56, 0.68, 0.72];
+        let x = SVector::<f64, 6>::from_row_slice(&[0.2, 0.2, 0.45, 0.56, 0.68, 0.72]);
         let p = SVector::<f64, 6>::from_row_slice(&[1.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
         let mut alist = vec![-0.2, -0.1, -0.02602472805313486, 0.0, 0.048253975355972145, 0.2];
         let mut flist = vec![-0.3098962997361745, -0.35807529391557985, -0.36128396643179006, -2.7, -0.33610446976533986, -0.23322360512233206];
