@@ -305,15 +305,25 @@ mod tests {
     // cargo flamegraph --unit-test -- tests::test_for_flamegraph_0
     #[test]
     fn test_for_flamegraph_0() {
-        const SMAX: usize = 1_000;
-        let stop = StopStruct::new(vec![70., f64::NEG_INFINITY, 1_000_000.]);
-        let iinit = IinitEnum::Zero;
-        let local = 20;
-        let gamma = 2e-7;
-        let u = SVector::<f64, 6>::from_row_slice(&[0.; 6]);
-        let v = SVector::<f64, 6>::from_row_slice(&[1.0; 6]);
-        let hess = SMatrix::<f64, 6, 6>::repeat(1.);
+        // Define your optimization bounds
+        let u = SVector::<f64, 6>::from_row_slice(&[0.; 6]); // lower bounds
+        let v = SVector::<f64, 6>::from_row_slice(&[1.0; 6]); // upper bounds
 
+        // Configure stopping criteria
+        let stop = StopStruct {
+            nsweeps: 70,                // maximum number of sweeps
+            freach: f64::NEG_INFINITY,  // target function value
+            nf: 1_000_000,              // maximum number of function evaluations
+        };
+
+        // Additional parameters
+        const SMAX: usize = 1_000;                      // number of levels used
+        let iinit = IinitEnum::Zero;                    // choice of init procedure
+        let local = 20;                                 // local search level
+        let gamma = 2e-7;                               // acceptable relative accuracy for local search
+        let hess = SMatrix::<f64, 6, 6>::repeat(1.);   // sparsity pattern of Hessian
+
+        // Run the optimization
         let (xbest, fbest, xmin, fmi, ncall, ncloc, flag) = mcs::<SMAX, 6>(&u, &v, &stop, &iinit, local, gamma, &hess);
     }
 

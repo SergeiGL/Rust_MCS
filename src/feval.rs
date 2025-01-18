@@ -8,12 +8,13 @@ pub fn feval<const N: usize>(x: &SVector<f64, N>) -> f64 {
 
     #[cfg(not(test))]
     {
-        release_func(x.as_ref())    // Called in non-test configurations (e.g., release mode); for real world usage
+        release_func(x)   // Called in non-test configurations (e.g., release mode); for real world usage
     }
 }
 
-fn release_func(_x: &[f64]) -> f64 {
-    1. // Implement your function
+#[inline]
+fn release_func<const N: usize>(_x: &SVector<f64, N>) -> f64 {
+    1. // Implement your function here
 }
 
 
