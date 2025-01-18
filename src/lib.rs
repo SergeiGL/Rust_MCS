@@ -2,47 +2,28 @@
 
 pub mod minq;
 pub mod gls;
+pub mod mcs_utils;
 mod feval;
-mod init_func;
-mod sign;
-mod polint;
-mod quadratic_func;
-mod strtsw;
-mod updtf;
-mod split_func;
-mod chk_locks;
-mod splrnk;
-mod updtrec;
-mod exgain;
-mod basket_func;
-mod vertex_func;
-mod lsearch;
-mod neighbor;
-mod hessian;
-mod triple;
-mod csearch;
-mod add_basket;
-mod split_box_for_par;
-mod helper_funcs;
 
-use crate::add_basket::add_basket;
-use crate::basket_func::basket;
-use crate::basket_func::basket1;
-use crate::chk_locks::chkloc;
-use crate::chk_locks::fbestloc;
-use crate::exgain::exgain;
-use crate::helper_funcs::update_flag;
-use crate::init_func::init;
-use crate::init_func::initbox;
-use crate::lsearch::lsearch;
-use crate::split_func::splinit;
-use crate::split_func::split;
-use crate::splrnk::splrnk;
-use crate::strtsw::strtsw;
-use crate::updtrec::updtrec;
-use crate::vertex_func::vertex;
 use feval::feval;
-use nalgebra::{Const, DimMin, Matrix2xX, Matrix3x1, SMatrix, SVector};
+use mcs_utils::add_basket::add_basket;
+use mcs_utils::basket_func::basket;
+use mcs_utils::basket_func::basket1;
+use mcs_utils::chk_locks::chkloc;
+use mcs_utils::chk_locks::fbestloc;
+use mcs_utils::exgain::exgain;
+use mcs_utils::helper_funcs::update_flag;
+use mcs_utils::init_func::init;
+use mcs_utils::init_func::initbox;
+use mcs_utils::lsearch::lsearch;
+use mcs_utils::split_func::splinit;
+use mcs_utils::split_func::split;
+use mcs_utils::splrnk::splrnk;
+use mcs_utils::strtsw::strtsw;
+use mcs_utils::updtrec::updtrec;
+use mcs_utils::vertex::vertex;
+
+use nalgebra::{Const, DimMin, Matrix2xX, SMatrix, SVector};
 
 #[derive(PartialEq)]
 pub enum IinitEnum {
@@ -54,7 +35,7 @@ pub enum IinitEnum {
 
 pub enum ExitFlagEnum {
     NormalShutdown,         // flag 1: True
-    StopNfExceeded,             // flag 2: ncall >= nf
+    StopNfExceeded,         // flag 2: ncall >= nf
     StopNsweepsExceeded,    // flag 3: (nsweep - nsweepbest) >= stop[0]
 }
 pub struct StopStruct {
@@ -80,8 +61,7 @@ impl StopStruct {
 }
 
 
-const STEP1: usize = 10_000_usize;
-const STEP: usize = 40_000_usize;
+const INIT_VEC_CAPACITY: usize = 10_000;
 
 
 pub fn mcs<const SMAX: usize, const N: usize>(
@@ -143,22 +123,19 @@ pub fn mcs<const SMAX: usize, const N: usize>(
     });
 
 
-    let mut dim = STEP1;
+    let mut isplit = vec![0_isize; INIT_VEC_CAPACITY]; // can be any negative or positive integer number
+    let mut ichild = vec![0_isize; INIT_VEC_CAPACITY]; // can be negative
+    let mut ipar = vec![Some(0_usize); INIT_VEC_CAPACITY]; // can be >=0 or -1 (None)
+    let mut level = vec![0_usize; INIT_VEC_CAPACITY];
+    let mut nogain = vec![0_usize; INIT_VEC_CAPACITY];
 
-    let mut isplit = vec![0_isize; STEP1]; // can be any negative or positive integer number
-    let mut ichild = vec![0_isize; STEP1]; // can be negative
-    let mut ipar = vec![Some(0_usize); STEP1]; // can be >=0 or -1 (None)
-
-    let mut level = vec![0_usize; STEP1];
-    let mut nogain = vec![0_usize; STEP1];
-
-    let mut f = Matrix2xX::<f64>::zeros(STEP1);
-    let mut z = Matrix2xX::<f64>::zeros(STEP1);
+    let mut f = Matrix2xX::<f64>::zeros(INIT_VEC_CAPACITY);
+    let mut z = Matrix2xX::<f64>::zeros(INIT_VEC_CAPACITY);
 
     let (mut ncloc, mut nboxes, mut m) = (0_usize, 0_usize, N);
     let (mut nbasket_option, mut nbasket0_option): (Option<usize>, Option<usize>) = (None, None); // -1
     let (mut nsweep, mut nsweepbest) = (1_usize, 0_usize);
-    let mut xloc: Vec<SVector<f64, N>> = Vec::with_capacity(200);
+    let mut xloc: Vec<SVector<f64, N>> = Vec::with_capacity(INIT_VEC_CAPACITY);
     let mut flag = true;
 
     // Initialize the boxes
@@ -171,13 +148,15 @@ pub fn mcs<const SMAX: usize, const N: usize>(
 
     let mut loc: bool;
     let mut nf_left: Option<usize>;
-    let (mut fmi, mut xmin): (Vec<f64>, Vec<SVector<f64, N>>) = (Vec::with_capacity(STEP1), Vec::with_capacity(STEP1));
-    let (mut e, mut f01, mut ncall_add): (SVector<f64, N>, Matrix3x1<f64>, usize);
+    let (mut fmi, mut xmin): (Vec<f64>, Vec<SVector<f64, N>>) = (Vec::with_capacity(INIT_VEC_CAPACITY), Vec::with_capacity(INIT_VEC_CAPACITY));
+    let (mut e, mut xmin1, mut ncall_add): (SVector<f64, N>, SVector<f64, N>, usize);
+
+    let (mut n0, mut x, mut y, mut x1, mut x2, mut f1, mut f2) =
+        (SVector::<usize, N>::zeros(), SVector::<f64, N>::repeat(f64::INFINITY), SVector::<f64, N>::repeat(f64::INFINITY), SVector::<f64, N>::repeat(f64::INFINITY), SVector::<f64, N>::repeat(f64::INFINITY), SVector::<f64, N>::zeros(), SVector::<f64, N>::zeros());
 
     while s < SMAX && ncall + 1 <= stop_struct.nf {
         let par = record[s];
-        let (n0, mut x, mut y,
-            x1, x2, f1, f2) = vertex(par, u, v, &v1, &x0, &f0, &ipar, &isplit, &ichild, &z, &f);
+        vertex(par, u, &v1, &x0, &f0, &ipar, &isplit, &ichild, &z, &f, &mut n0, &mut x, &mut y, &mut x1, &mut x2, &mut f1, &mut f2);
 
         let splt = if s > 2 * N * (n0.min() + 1) {
             // Splitting index and splitting value z[1][par] for splitting by rank
@@ -201,40 +180,23 @@ pub fn mcs<const SMAX: usize, const N: usize>(
         };
 
         if splt {
-            let i = match isplit[par] {
-                n if n >= 0 => n as usize,
-                _ => panic!("lib.rs: isplit[par] < 0"),
-            };
+            debug_assert!(isplit[par] >= 0);
+            let i = isplit[par] as usize;
 
             level[par] = 0;
             if z[(1, par)] == f64::INFINITY {
                 m += 1;
                 z[(1, par)] = m as f64;
-                (f01, ncall_add) = splinit(i, s, par, &x0, u, v, &mut x, &mut xmin, &mut fmi, &mut ipar, &mut level, &mut ichild, &mut f,
-                                           &mut xbest, &mut fbest, &mut record, &mut nboxes, &mut nbasket_option, &mut nsweepbest, &mut nsweep);
-
-                f0.resize_horizontally_mut(f0.ncols() + 1, 0.0);
-                f0.set_column(f0.ncols() - 1, &f01);
-                ncall += ncall_add;
+                splinit(i, s, par, &x0, u, v, &mut x, &mut xmin, &mut fmi,
+                        &mut ipar, &mut level, &mut ichild, &mut isplit, &mut nogain, &mut f, &mut z,
+                        &mut xbest, &mut fbest, &mut record, &mut nboxes, &mut nbasket_option, &mut nsweepbest, &mut nsweep, &mut f0);
+                ncall += 2; // splinit does exactly 2 calls
             } else {
                 z[(0, par)] = x[i];
-                let ncall1;
-                ncall1 = split(i, s, par, &mut x, &mut y, z[(0, par)], z[(1, par)],
-                               &mut xmin, &mut fmi, &mut ipar, &mut level, &mut ichild, &mut f, &mut xbest, &mut fbest,
-                               &mut record, &mut nboxes, &mut nbasket_option, &mut nsweepbest, &mut nsweep);
-                ncall += ncall1;
-            }
-            if nboxes > dim - 200 {
-                level.resize(level.len() + STEP, 0_usize);
-                ipar.resize(ipar.len() + STEP, Some(0_usize));
-                isplit.resize(isplit.len() + STEP, 0isize);
-                ichild.resize(ichild.len() + STEP, 0_isize);
-                nogain.resize(nogain.len() + STEP, 0_usize);
-
-                f.resize_horizontally_mut(f.ncols() + STEP, 1.0);
-                z.resize_horizontally_mut(z.ncols() + STEP, 1.0);
-
-                dim = nboxes + STEP;
+                split(i, s, par, &mut x, &mut y, z[(0, par)], z[(1, par)], &mut xmin, &mut fmi, &mut ipar, &mut level,
+                      &mut ichild, &mut isplit, &mut nogain, &mut f, &mut z, &mut xbest, &mut fbest, &mut record, &mut nboxes,
+                      &mut nbasket_option, &mut nsweepbest, &mut nsweep);
+                ncall += 1; // split does exactly 1 call
             }
         } else {
             if s + 1 < SMAX {
@@ -242,7 +204,7 @@ pub fn mcs<const SMAX: usize, const N: usize>(
                 updtrec(par, s + 1, f.row(0), &mut record);
             } else {
                 level[par] = 0;
-                add_basket(&mut nbasket_option, &mut xmin, &mut fmi, &mut x, f[(0, par)]);
+                add_basket(&mut nbasket_option, &mut xmin, &mut fmi, &x, f[(0, par)]);
             }
         }
 
@@ -273,7 +235,6 @@ pub fn mcs<const SMAX: usize, const N: usize>(
                     let mut f1 = fmi[j];
                     if chkloc(&xloc, &x) {
                         xloc.push(x);
-                        let ncall_add;
                         (loc, flag, ncall_add) = basket(&mut x, &mut f1, &mut xmin, &mut fmi, &mut xbest, &mut fbest, stop_struct, &nbasket0_option, nsweep, &mut nsweepbest);
                         ncall += ncall_add;
                         if !flag {
@@ -284,17 +245,16 @@ pub fn mcs<const SMAX: usize, const N: usize>(
                                 true => { Some(stop_struct.nf - ncall) }
                                 false => { None }
                             };
-                            let (mut xmin1, fmi1, nc, flag_new) =
-                                lsearch(&mut x, f1, f0min, u, v, nf_left, stop_struct, local, gamma, hess);
+                            let (fmi1, nc);
+                            (xmin1, fmi1, nc, flag) = lsearch(&mut x, f1, f0min, u, v, nf_left, stop_struct, local, gamma, hess);
                             ncall = ncall + nc;
                             ncloc = ncloc + nc;
-                            flag = flag_new;
                             if fmi1 < fbest {
                                 xbest = xmin1.clone();
                                 fbest = fmi1;
                                 nsweepbest = nsweep;
                                 if !flag {
-                                    add_basket(&mut nbasket0_option, &mut xmin, &mut fmi, &mut xmin1, fmi1);
+                                    add_basket(&mut nbasket0_option, &mut xmin, &mut fmi, &xmin1, fmi1);
                                     break;
                                 }
                                 update_flag(&mut flag, fbest, stop_struct);
@@ -302,22 +262,16 @@ pub fn mcs<const SMAX: usize, const N: usize>(
                                     return (xbest, fbest, xmin, fmi, ncall, ncloc, ExitFlagEnum::NormalShutdown);
                                 }
                             }
-                            let ncall_add;
-                            (loc, flag, ncall_add) =
-                                basket1(&mut xmin1, fmi1, &mut xmin, &mut fmi, &mut xbest, &mut fbest, stop_struct,
-                                        &nbasket0_option, nsweep, &mut nsweepbest);
+                            (loc, flag, ncall_add) = basket1(&mut xmin1, fmi1, &mut xmin, &mut fmi, &mut xbest, &mut fbest, stop_struct,
+                                                             &nbasket0_option, nsweep, &mut nsweepbest);
                             ncall += ncall_add;
 
-                            if !flag {
-                                break;
-                            }
+                            if !flag { break; }
                             if loc {
-                                add_basket(&mut nbasket0_option, &mut xmin, &mut fmi, &mut xmin1, fmi1);
+                                add_basket(&mut nbasket0_option, &mut xmin, &mut fmi, &xmin1, fmi1);
                                 fbestloc(&fmi, &mut fbest, &xmin, &mut xbest, nbasket0_option.unwrap());
 
-                                if !flag {
-                                    break;
-                                }
+                                if !flag { break; }
                             }
                         }
                     }
@@ -351,11 +305,11 @@ mod tests {
     // cargo flamegraph --unit-test -- tests::test_for_flamegraph_0
     #[test]
     fn test_for_flamegraph_0() {
-        const SMAX: usize = 200;
-        let stop = StopStruct::new(vec![18., f64::NEG_INFINITY, 1000.]);
+        const SMAX: usize = 1_000;
+        let stop = StopStruct::new(vec![70., f64::NEG_INFINITY, 1_000_000.]);
         let iinit = IinitEnum::Zero;
-        let local = 50;
-        let gamma = 2e-6;
+        let local = 20;
+        let gamma = 2e-7;
         let u = SVector::<f64, 6>::from_row_slice(&[0.; 6]);
         let v = SVector::<f64, 6>::from_row_slice(&[1.0; 6]);
         let hess = SMatrix::<f64, 6, 6>::repeat(1.);

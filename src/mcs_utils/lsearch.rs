@@ -1,10 +1,7 @@
-use crate::csearch::csearch;
 use crate::feval::feval;
 use crate::gls::gls;
-use crate::helper_funcs::*;
+use crate::mcs_utils::{csearch::csearch, helper_funcs::*, neighbor::neighbor, triple::triple};
 use crate::minq::minq;
-use crate::neighbor::neighbor;
-use crate::triple::triple;
 use crate::StopStruct;
 use nalgebra::{Const, DimMin, SMatrix, SVector};
 

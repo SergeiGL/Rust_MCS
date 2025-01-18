@@ -1,8 +1,6 @@
 use crate::feval::feval;
 use crate::gls::gls;
-use crate::helper_funcs::clamp_SVector;
-use crate::hessian::hessian;
-use crate::polint::polint1;
+use crate::mcs_utils::{helper_funcs::clamp_SVector, hessian::hessian, polint::polint1};
 use nalgebra::{SMatrix, SVector};
 
 pub fn csearch<const N: usize>(

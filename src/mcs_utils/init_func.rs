@@ -1,8 +1,8 @@
 use crate::feval::feval;
-use crate::sign::sign;
-use crate::{polint::polint, quadratic_func::quadmin, quadratic_func::quadpol};
+use crate::mcs_utils::{polint::polint, quadratic_func::quadmin, quadratic_func::quadpol, sign::sign};
 use itertools::Itertools;
 use nalgebra::{Matrix2xX, Matrix3xX, SMatrix, SVector};
+
 
 pub fn subint(mut x1: f64, mut x2: f64) ->
 (

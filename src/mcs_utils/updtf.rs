@@ -1,5 +1,6 @@
 use nalgebra::SVector;
 
+#[inline]
 pub fn updtf<const N: usize>(
     i: usize,
     x1: &SVector<f64, N>,
@@ -9,13 +10,15 @@ pub fn updtf<const N: usize>(
     fold: f64,
     f: f64,
 ) -> f64 {
+    let fold_minus_f = fold - f;
+
     for i1 in 0..N {
         if i1 != i {
             if x1[i1] == f64::INFINITY {
-                f1[i1] += fold - f;
+                f1[i1] += fold_minus_f;
             }
             if x2[i1] == f64::INFINITY {
-                f2[i1] += fold - f;
+                f2[i1] += fold_minus_f;
             }
         }
     }

@@ -1,26 +1,40 @@
 use nalgebra::SVector;
 
 pub fn feval<const N: usize>(x: &SVector<f64, N>) -> f64 {
-    hm6(x.as_slice())
+    #[cfg(test)]
+    {
+        hm6(x.as_slice())  // Called only in test mode
+    }
+
+    #[cfg(not(test))]
+    {
+        release_func(x.as_ref())    // Called in non-test configurations (e.g., release mode); for real world usage
+    }
 }
 
+fn release_func(_x: &[f64]) -> f64 {
+    1. // Implement your function
+}
+
+
+#[cfg(test)]
 const HM6_A: [[f64; 6]; 4] = [
     [10.00, 3.00, 17.00, 3.50, 1.70, 8.00],
     [0.05, 10.00, 17.00, 0.10, 8.00, 14.00],
     [3.00, 3.50, 1.70, 10.00, 17.00, 8.00],
     [17.00, 8.00, 0.05, 10.00, 0.10, 14.00],
 ];
-
+#[cfg(test)]
 const HM6_P: [[f64; 6]; 4] = [
     [0.1312, 0.1696, 0.5569, 0.0124, 0.8283, 0.5886],
     [0.2329, 0.4135, 0.8307, 0.3736, 0.1004, 0.9991],
     [0.2348, 0.1451, 0.3522, 0.2883, 0.3047, 0.6650],
     [0.4047, 0.8828, 0.8732, 0.5743, 0.1091, 0.0381],
 ];
-
+#[cfg(test)]
 const C: [f64; 4] = [1.0, 1.2, 3.0, 3.2];
 
-#[inline(always)]
+#[cfg(test)]
 fn hm6(x: &[f64]) -> f64 {
     debug_assert!(x.len() == 6);
     let mut sum = 0.0;

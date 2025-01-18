@@ -8,6 +8,9 @@ nalgebra = "*"
 approx = "*"
 itertools = "*"
 
+[profile.release]
+debug = true
+
 [dev-dependencies]
 criterion = { version = "*", features = ["html_reports"] }
 

@@ -1,4 +1,4 @@
-use crate::{init_func::subint, polint::polint, quadratic_func::quadmin, quadratic_func::quadpol};
+use crate::mcs_utils::{init_func::subint, polint::polint, quadratic_func::quadmin, quadratic_func::quadpol};
 use nalgebra::{Matrix3xX, SVector};
 
 

@@ -10,16 +10,18 @@ pub fn strtsw<const SMAX: usize>(
 ) {
     let mut record = [0; SMAX];
     let mut s = SMAX;
-    for j in 0..=nboxes {
-        if level[j] > 0 {
-            if level[j] < s {
-                s = level[j];
-            }
-            if record[level[j]] == 0 || f[j] < f[record[level[j]]] {
-                record[level[j]] = j;
+
+    for (j, &level_val) in level.iter().take(nboxes + 1).enumerate() {
+        if level_val != 0 {
+            s = s.min(level_val);
+
+            // Update record if needed
+            if record[level_val] == 0 || f[j] < f[record[level_val]] {
+                record[level_val] = j;
             }
         }
     }
+
     (s, record)
 }
 

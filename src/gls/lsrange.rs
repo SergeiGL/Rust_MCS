@@ -95,7 +95,7 @@ mod tests {
         let p = SVector::<f64, 2>::zeros(); // zero search direction
         let bend = false;
 
-        let result = lsrange(&x, &p, &xl, &xu, bend);
+        let _ = lsrange(&x, &p, &xl, &xu, bend);
     }
 
     #[test]

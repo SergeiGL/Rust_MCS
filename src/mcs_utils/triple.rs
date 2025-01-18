@@ -1,6 +1,5 @@
 use crate::feval::feval;
-use crate::hessian::hessian;
-use crate::polint::polint1;
+use crate::mcs_utils::{hessian::hessian, polint::polint1};
 use nalgebra::{SMatrix, SVector};
 
 pub fn triple<const N: usize>(

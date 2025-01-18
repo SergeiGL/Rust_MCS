@@ -1,4 +1,4 @@
-use crate::split_func::split2;
+use crate::mcs_utils::split_func::split2;
 use nalgebra::SVector;
 
 pub fn splrnk<const N: usize>(

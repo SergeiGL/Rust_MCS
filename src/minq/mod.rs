@@ -4,7 +4,7 @@ mod ldlup;
 mod ldldown;
 mod minqsub;
 
-use crate::helper_funcs::clamp_SVector_mut;
+use crate::mcs_utils::helper_funcs::clamp_SVector_mut;
 use crate::minq::{getalp::getalp, minqsub::minqsub};
 
 use nalgebra::{Const, DimMin, SMatrix, SVector};

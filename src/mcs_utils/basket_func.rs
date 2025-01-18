@@ -1,5 +1,5 @@
 use crate::feval::feval;
-use crate::helper_funcs::update_flag;
+use crate::mcs_utils::helper_funcs::update_flag;
 use crate::StopStruct;
 use itertools::Itertools;
 use nalgebra::SVector;
