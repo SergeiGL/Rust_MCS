@@ -1,4 +1,4 @@
-// In order to run write in console: cargo bench
+// In order to run benchmarks write: cargo bench (in console)
 
 use criterion::{criterion_group, criterion_main, Criterion};
 use std::time::Duration;
@@ -38,6 +38,10 @@ pub mod bench_cpu_parallel {
     use nalgebra::{SMatrix, SVector};
     use Rust_MCS::*;
 
+    fn release_func<const N: usize>(_x: &SVector<f64, N>) -> f64 {
+        1.
+    }
+    
     pub fn test_bench_0() {
         const SMAX: usize = 2_000;
         let stop = StopStruct::new(vec![200., f64::NEG_INFINITY, 2_000_000.]);
@@ -55,6 +59,6 @@ pub mod bench_cpu_parallel {
             0.6187202250393025, 0.1377423026724791, 0.8070825819627165, 0.2817037864244687, 0.5842187774516107, 0.09751501025007547
         ]);
 
-        let _ = mcs::<SMAX, 6>(&u, &v, &stop, &iinit, local, gamma, &hess);
+        let _ = mcs::<SMAX, 6>(release_func, &u, &v, &stop, &iinit, local, gamma, &hess);
     }
 }

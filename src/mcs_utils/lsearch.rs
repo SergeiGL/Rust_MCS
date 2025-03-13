@@ -1,4 +1,3 @@
-use crate::feval::feval;
 use crate::gls::gls;
 use crate::mcs_utils::{csearch::csearch, helper_funcs::*, neighbor::neighbor, triple::triple};
 use crate::minq::minq;
@@ -6,6 +5,7 @@ use crate::StopStruct;
 use nalgebra::{Const, DimMin, SMatrix, SVector};
 
 pub fn lsearch<const N: usize>(
+    func: fn(&SVector<f64, N>) -> f64,
     x: &SVector<f64, N>,
     mut f: f64,
     f0: f64,
@@ -28,7 +28,7 @@ pub fn lsearch<const N: usize>(
 
     let (mut eps0, mut ncall, nloc, small, smaxls, mut flag) = (0.001, 0_usize, 1, 0.1, 15, true);
 
-    let (mut xmin, mut fmi, mut g, mut G, nfcsearch) = csearch(x, f, u, v);
+    let (mut xmin, mut fmi, mut g, mut G, nfcsearch) = csearch(func, x, f, u, v);
     clamp_SVector_mut(&mut xmin, u, v);
 
     ncall += nfcsearch;
@@ -63,7 +63,7 @@ pub fn lsearch<const N: usize>(
     let mut flist = Vec::<f64>::with_capacity(10_000);
 
     let (mut gain, mut r) = if norm != 0.0 {
-        let f1 = feval(&x_new);
+        let f1 = func(&x_new);
         ncall += 1;
 
         alist.clear();
@@ -74,13 +74,13 @@ pub fn lsearch<const N: usize>(
 
         let fpred = fmi + g.dot(&p) + 0.5 * (p.dot(&(G * p)));
 
-        ncall += gls(&xmin, &p, &mut alist, &mut flist, u, v, nloc, small, smaxls);
+        ncall += gls(func, &xmin, &p, &mut alist, &mut flist, u, v, nloc, small, smaxls);
 
         // Find the minimum
         let (mut i, &fminew) = flist
             .iter()
             .enumerate()
-            .min_by(|(_, &a), (_, b)| a.total_cmp(b))
+            .min_by(|(_, a), (_, b)| a.total_cmp(b))
             .unwrap();
 
         if fminew == fmi {
@@ -160,7 +160,7 @@ pub fn lsearch<const N: usize>(
                 if let Some(i) = ind1[k] {
                     let mut x = xmin.clone();
                     x[i] = if xmin[i] == u[i] { x2[i] } else { x1[i] };
-                    let f1 = feval(&x);
+                    let f1 = func(&x);
                     ncall += 1;
 
                     if f1 < fmi {
@@ -171,13 +171,13 @@ pub fn lsearch<const N: usize>(
                         flist.extend([fmi, f1]);
 
                         p[i] = 1.0;
-                        ncall += gls(&xmin, &p, &mut alist, &mut flist, u, v, nloc, small, 6);
+                        ncall += gls(func, &xmin, &p, &mut alist, &mut flist, u, v, nloc, small, 6);
                         p[i] = 0.0;
 
                         let (mut j, &fminew) = flist
                             .iter()
                             .enumerate()
-                            .min_by(|(_, &a), (_, b)| a.total_cmp(b))
+                            .min_by(|(_, a), (_, b)| a.total_cmp(b))
                             .unwrap();
 
                         if fminew == fmi {
@@ -217,11 +217,11 @@ pub fn lsearch<const N: usize>(
         let nftriple;
         // println!("before triple {xmin:?}\n{fmi}\n{x1:?}\n{x2:?}\n{hess:.15}, {G:.15}");
         diag = if (r - 1.0).abs() > 0.25 || gain == 0.0 || b < gamma * (f0 - f) {
-            (xmin, fmi, g, nftriple) = triple(&xmin, fmi, &mut x1, &mut x2, u, v, hess, &mut G, true);
+            (xmin, fmi, g, nftriple) = triple(func, &xmin, fmi, &mut x1, &mut x2, u, v, hess, &mut G, true);
             ncall += nftriple;
             false
         } else {
-            (xmin, fmi, g, nftriple) = triple(&xmin, fmi, &mut x1, &mut x2, u, v, hess, &mut G, false);
+            (xmin, fmi, g, nftriple) = triple(func, &xmin, fmi, &mut x1, &mut x2, u, v, hess, &mut G, false);
             ncall += nftriple;
             true
         };
@@ -261,7 +261,7 @@ pub fn lsearch<const N: usize>(
 
         if norm != 0.0 {
             let fpred = fmi + g.dot(&p) + 0.5 * p.dot(&(G * p));
-            let f1 = feval(&(xmin + p));
+            let f1 = func(&(xmin + p));
             ncall += 1;
 
             alist.clear();
@@ -270,12 +270,12 @@ pub fn lsearch<const N: usize>(
             flist.clear();
             flist.extend([fmi, f1]);
 
-            ncall += gls(&xmin, &p, &mut alist, &mut flist, u, v, nloc, small, smaxls);
+            ncall += gls(func, &xmin, &p, &mut alist, &mut flist, u, v, nloc, small, smaxls);
 
             let (argmin, &fmi_new) = flist
                 .iter()
                 .enumerate()
-                .min_by(|(_, &a), (_, b)| a.total_cmp(b))
+                .min_by(|(_, a), (_, b)| a.total_cmp(b))
                 .unwrap();
             fmi = fmi_new;
 
@@ -323,6 +323,7 @@ pub fn lsearch<const N: usize>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_functions::hm6;
     use approx::assert_relative_eq;
 
     static TOLERANCE: f64 = 1e-5;
@@ -340,7 +341,7 @@ mod tests {
         let gamma = f64::EPSILON;
         let hess: SMatrix<f64, 6, 6> = SMatrix::repeat(1.0);
 
-        let (xmin, fmi, ncall, flag) = lsearch(&x, f, f0, &u, &v, nf_left, &stop, maxstep, gamma, &hess);
+        let (xmin, fmi, ncall, flag) = lsearch(hm6, &x, f, f0, &u, &v, nf_left, &stop, maxstep, gamma, &hess);
 
         let expected_xmin = [0.20290601266983127, 0.14223984340198792, 0.4775778674570614, 0.2700662542458104, 0.3104183680708858, 0.6594579515964624];
 
@@ -363,7 +364,7 @@ mod tests {
         let gamma = 2e-6;
         let hess: SMatrix<f64, 6, 6> = SMatrix::repeat(1.0);
 
-        let (xmin, fmi, ncall, flag) = lsearch(&x, f, f0, &u, &v, nf_left, &stop, maxstep, gamma, &hess);
+        let (xmin, fmi, ncall, flag) = lsearch(hm6, &x, f, f0, &u, &v, nf_left, &stop, maxstep, gamma, &hess);
 
         let expected_xmin = [0.20169016858295652, 0.1500100239040133, 0.4768726575742668, 0.2753321620932197, 0.31165307086540384, 0.6572993388248786];
 
@@ -386,7 +387,7 @@ mod tests {
         let gamma = 2e-6;
         let hess: SMatrix<f64, 6, 6> = SMatrix::repeat(1.0);
 
-        let (xmin, fmi, ncall, flag) = lsearch(&x, f, f0, &u, &v, nf_left, &stop, maxstep, gamma, &hess);
+        let (xmin, fmi, ncall, flag) = lsearch(hm6, &x, f, f0, &u, &v, nf_left, &stop, maxstep, gamma, &hess);
 
         let expected_xmin = [0.0, 0.0, 0.4, 0.5, 1.0, 1.0];
 
@@ -410,7 +411,7 @@ mod tests {
         let gamma = 2e-6;
         let hess: SMatrix<f64, 6, 6> = SMatrix::repeat(1.0);
 
-        let (xmin, fmi, ncall, flag) = lsearch(&x, f, f0, &u, &v, nf_left, &stop, maxstep, gamma, &hess);
+        let (xmin, fmi, ncall, flag) = lsearch(hm6, &x, f, f0, &u, &v, nf_left, &stop, maxstep, gamma, &hess);
 
         let expected_xmin = [0.40466193295801317, 0.8824636278527813, 0.8464090444977177, 0.5740213137874376, 0.13816034855820664, 0.0384741244365488];
 

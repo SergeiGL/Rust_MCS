@@ -1,4 +1,3 @@
-use crate::feval::feval;
 use crate::mcs_utils::{add_basket::add_basket, sign::sign, updtrec::updtrec};
 use nalgebra::{Matrix2xX, Matrix3xX, SMatrix, SVector};
 
@@ -49,6 +48,7 @@ fn genbox<const SMAX: usize>(
 
 
 pub fn splinit<const N: usize, const SMAX: usize>(
+    func: fn(&SVector<f64, N>) -> f64,
     i: usize,
     s: usize,
     par: usize,
@@ -80,7 +80,7 @@ pub fn splinit<const N: usize, const SMAX: usize>(
     for j in 0..3 {
         if j != 1 {
             x[i] = x0[(i, j)];
-            f0[(j, f0_col_indx)] = feval(x);
+            f0[(j, f0_col_indx)] = func(x);
             if f0[(j, f0_col_indx)] < *fbest {
                 *fbest = f0[(j, f0_col_indx)];
                 *xbest = *x;
@@ -129,6 +129,7 @@ pub fn splinit<const N: usize, const SMAX: usize>(
 
 
 pub fn split<const N: usize, const SMAX: usize>(
+    func: fn(&SVector<f64, N>) -> f64,
     i: usize,
     s: usize,
     par: usize,
@@ -154,7 +155,7 @@ pub fn split<const N: usize, const SMAX: usize>(
     nsweep: &mut usize,
 ) {
     x[i] = z1;
-    f[(1, par)] = feval(x);
+    f[(1, par)] = func(x);
 
     if f[(1, par)] < *fbest {
         *fbest = f[(1, par)];
@@ -229,6 +230,7 @@ pub fn split2(x: f64, y: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_functions::hm6;
 
     #[test]
     fn test_splinit_0() {
@@ -255,7 +257,7 @@ mod tests {
         let mut f0 = Matrix3xX::<f64>::zeros(0);
 
         // Call splinit
-        splinit(i, s, par, &x0, &u, &v, &mut x, &mut xmin,
+        splinit(hm6, i, s, par, &x0, &u, &v, &mut x, &mut xmin,
                 &mut fmi, &mut ipar, &mut level, &mut ichild, &mut vec![], &mut vec![], &mut f, &mut Matrix2xX::<f64>::zeros(0), &mut xbest,
                 &mut fbest, &mut record, &mut nboxes, &mut nbasket,
                 &mut nsweepbest, &mut nsweep, &mut f0);
@@ -301,7 +303,7 @@ mod tests {
         let mut f0 = Matrix3xX::<f64>::zeros(0);
 
         // Call splinit
-        splinit(i, s, par, &x0, &u, &v, &mut x, &mut xmin,
+        splinit(hm6, i, s, par, &x0, &u, &v, &mut x, &mut xmin,
                 &mut fmi, &mut ipar, &mut level, &mut ichild, &mut vec![], &mut vec![], &mut f, &mut Matrix2xX::<f64>::zeros(0), &mut xbest,
                 &mut fbest, &mut record, &mut nboxes, &mut nbasket,
                 &mut nsweepbest, &mut nsweep, &mut f0);
@@ -347,7 +349,7 @@ mod tests {
         let mut f0 = Matrix3xX::<f64>::zeros(0);
 
         // Call splinit
-        splinit(i, s, par, &x0, &u, &v, &mut x, &mut xmin,
+        splinit(hm6, i, s, par, &x0, &u, &v, &mut x, &mut xmin,
                 &mut fmi, &mut ipar, &mut level, &mut ichild, &mut vec![], &mut vec![], &mut f, &mut Matrix2xX::<f64>::zeros(0), &mut xbest,
                 &mut fbest, &mut record, &mut nboxes, &mut nbasket,
                 &mut nsweepbest, &mut nsweep, &mut f0);
@@ -398,7 +400,7 @@ mod tests {
         let mut f0 = Matrix3xX::<f64>::zeros(0);
 
         // Call splinit
-        splinit(i, s, par, &x0, &u, &v, &mut x, &mut xmin,
+        splinit(hm6, i, s, par, &x0, &u, &v, &mut x, &mut xmin,
                 &mut fmi, &mut ipar, &mut level, &mut ichild, &mut vec![], &mut vec![], &mut f, &mut Matrix2xX::<f64>::zeros(0), &mut xbest,
                 &mut fbest, &mut record, &mut nboxes, &mut nbasket,
                 &mut nsweepbest, &mut nsweep, &mut f0);
@@ -449,7 +451,7 @@ mod tests {
         let mut f0 = Matrix3xX::<f64>::zeros(0);
 
         // Call splinit
-        splinit(i, s, par, &x0, &u, &v, &mut x, &mut xmin,
+        splinit(hm6, i, s, par, &x0, &u, &v, &mut x, &mut xmin,
                 &mut fmi, &mut ipar, &mut level, &mut ichild, &mut vec![], &mut vec![], &mut f, &mut Matrix2xX::<f64>::zeros(0), &mut xbest,
                 &mut fbest, &mut record, &mut nboxes, &mut nbasket,
                 &mut nsweepbest, &mut nsweep, &mut f0);
@@ -497,7 +499,7 @@ mod tests {
         let mut nsweepbest = 0_usize;
         let mut nsweep = 1_usize;
 
-        split(i, s, par, &mut x, &mut y, z0, z1, &mut xmin, &mut fmi, &mut ipar, &mut level,
+        split(hm6, i, s, par, &mut x, &mut y, z0, z1, &mut xmin, &mut fmi, &mut ipar, &mut level,
               &mut ichild, &mut vec![], &mut vec![], &mut f, &mut Matrix2xX::<f64>::zeros(0), &mut xbest, &mut fbest, &mut record, &mut nboxes,
               &mut nbasket, &mut nsweepbest, &mut nsweep);
 
@@ -545,7 +547,7 @@ mod tests {
         let mut nsweepbest = 0_usize;
         let mut nsweep = 1_usize;
 
-        split(i, s, par, &mut x, &mut y, z0, z1, &mut xmin, &mut fmi, &mut ipar, &mut level,
+        split(hm6, i, s, par, &mut x, &mut y, z0, z1, &mut xmin, &mut fmi, &mut ipar, &mut level,
               &mut ichild, &mut vec![], &mut vec![], &mut f, &mut Matrix2xX::<f64>::zeros(0), &mut xbest, &mut fbest, &mut record, &mut nboxes,
               &mut nbasket, &mut nsweepbest, &mut nsweep);
 
@@ -593,7 +595,7 @@ mod tests {
         let mut nsweepbest = 3_usize;
         let mut nsweep = 1_usize;
 
-        split(i, s, par, &mut x, &mut y, z0, z1, &mut xmin, &mut fmi, &mut ipar, &mut level,
+        split(hm6, i, s, par, &mut x, &mut y, z0, z1, &mut xmin, &mut fmi, &mut ipar, &mut level,
               &mut ichild, &mut vec![], &mut vec![], &mut f, &mut Matrix2xX::<f64>::zeros(0), &mut xbest, &mut fbest, &mut record, &mut nboxes,
               &mut nbasket, &mut nsweepbest, &mut nsweep);
 

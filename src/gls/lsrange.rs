@@ -16,7 +16,7 @@ pub fn lsrange<const N: usize>(
 
     let scale = x.iter()
         .zip(p)
-        .filter(|(_, &p_i)| p_i != 0.0)
+        .filter(|(_, p_i)| **p_i != 0.0)
         .map(
             |(x_i, p_i)|
                 match x_i.abs() / p_i.abs() {

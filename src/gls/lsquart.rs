@@ -1,4 +1,3 @@
-use crate::feval::feval;
 use crate::gls::lsguard::lsguard;
 use crate::gls::lslocal::lslocal;
 use crate::gls::lssort::lssort;
@@ -6,6 +5,7 @@ use crate::gls::quartic::quartic;
 use nalgebra::{Matrix3, SVector};
 
 pub fn lsquart<const N: usize>(
+    func: fn(&SVector<f64, N>) -> f64,
     nloc: usize,
     small: f64,
     x: &SVector<f64, N>,
@@ -53,7 +53,7 @@ pub fn lsquart<const N: usize>(
 
     let mut quart = if f12345 <= 0.0 {
         (alp, abest, fbest, fmed, monotone, nmin, unitlen, s, saturated) =
-            lslocal(nloc, small, x, p, alist, flist, amin, amax, alp, abest, fbest, fmed,
+            lslocal(func, nloc, small, x, p, alist, flist, amin, amax, alp, abest, fbest, fmed,
                     up, down, monotone, minima, nmin, unitlen, s, saturated);
         false
     } else {
@@ -112,7 +112,7 @@ pub fn lsquart<const N: usize>(
         }
         if quart {
             alp = lsguard(alp, alist, amax, amin, small);
-            let falp = feval(&(x + p.scale(alp)));
+            let falp = func(&(x + p.scale(alp)));
             alist.push(alp);
             flist.push(falp);
             (abest, fbest, fmed, *up, *down,
@@ -128,7 +128,9 @@ pub fn lsquart<const N: usize>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_functions::hm6;
     use approx::assert_relative_eq;
+
     static TOLERANCE: f64 = 1e-15;
 
     #[test]
@@ -148,7 +150,7 @@ mod tests {
         let saturated = false;
 
         let (amin_res, amax_res, alp_res, abest_res, fbest_res, fmed_res, monotone_res, nmin_res, unitlen_res, s_res, saturated_res)
-            = lsquart(nloc, small, &x, &p, &mut alist, &mut flist, amin, amax, alp, abest, fbest, fmed, &mut up, &mut down, monotone, &mut minima, nmin, unitlen, s, saturated);
+            = lsquart(hm6, nloc, small, &x, &p, &mut alist, &mut flist, amin, amax, alp, abest, fbest, fmed, &mut up, &mut down, monotone, &mut minima, nmin, unitlen, s, saturated);
 
         let expected_alist = vec![-1.6, -1.1, -0.6, -0.40767007775845987, -0.30750741391479824, 0.0];
         let expected_flist = vec![-0.00033007085742366247, -0.005222762849281021, -0.019362461793975085, -0.02327501776110989, -0.023740401281451082, -0.01523227097945881];
@@ -182,7 +184,7 @@ mod tests {
         let saturated = false;
 
         let (amin_res, amax_res, alp_res, abest_res, fbest_res, fmed_res, monotone_res, nmin_res, unitlen_res, s_res, saturated_res)
-            = lsquart(nloc, small, &x, &p, &mut alist, &mut flist, amin, amax, alp, abest, fbest, fmed, &mut up, &mut down, monotone, &mut minima, nmin, unitlen, s, saturated);
+            = lsquart(hm6, nloc, small, &x, &p, &mut alist, &mut flist, amin, amax, alp, abest, fbest, fmed, &mut up, &mut down, monotone, &mut minima, nmin, unitlen, s, saturated);
 
         let expected_alist = vec![-1.0, 0.0, 0.01, 1.0, 2.0, 3.0, 5.0];
         let expected_flist = vec![-6.455214899134537e-154, 1.0, 1.01, 2.0, 3.0, 4.0, 23.0];
@@ -221,7 +223,7 @@ mod tests {
         let saturated = false;
 
         let (amin_res, amax_res, alp_res, abest_res, fbest_res, fmed_res, monotone_res, nmin_res, unitlen_res, s_res, saturated_res)
-            = lsquart(nloc, small, &x, &p, &mut alist, &mut flist, amin, amax, alp, abest, fbest, fmed, &mut up, &mut down, monotone, &mut minima, nmin, unitlen, s, saturated);
+            = lsquart(hm6, nloc, small, &x, &p, &mut alist, &mut flist, amin, amax, alp, abest, fbest, fmed, &mut up, &mut down, monotone, &mut minima, nmin, unitlen, s, saturated);
 
         let expected_alist = vec![-1.0, 0.0, 2.0, 3.0, 4.0, 5.0];
         let expected_flist = vec![1.0, 2.0, 3.0, 4.0, 5.0, 0.0];
@@ -256,7 +258,7 @@ mod tests {
         let saturated = true;
 
         let (amin_res, amax_res, alp_res, abest_res, fbest_res, fmed_res, monotone_res, nmin_res, unitlen_res, s_res, saturated_res)
-            = lsquart(nloc, small, &x, &p, &mut alist, &mut flist, amin, amax, alp, abest, fbest, fmed, &mut up, &mut down, monotone, &mut minima, nmin, unitlen, s, saturated);
+            = lsquart(hm6, nloc, small, &x, &p, &mut alist, &mut flist, amin, amax, alp, abest, fbest, fmed, &mut up, &mut down, monotone, &mut minima, nmin, unitlen, s, saturated);
 
         let expected_alist = vec![-2.0, 0.0, 1.0, 1.00001, 1.0002, 1.0003, 3.00004];
         let expected_flist = vec![1.0, -7.70489595691683e-12, 1.1, 1.2, 1.3, 1.4, -2.0];
@@ -289,7 +291,7 @@ mod tests {
         let saturated = false;
 
         let (amin_res, amax_res, alp_res, abest_res, fbest_res, fmed_res, monotone_res, nmin_res, unitlen_res, s_res, saturated_res)
-            = lsquart(nloc, small, &x, &p, &mut alist, &mut flist, amin, amax, alp, abest, fbest, fmed, &mut up, &mut down, monotone, &mut minima, nmin, unitlen, s, saturated);
+            = lsquart(hm6, nloc, small, &x, &p, &mut alist, &mut flist, amin, amax, alp, abest, fbest, fmed, &mut up, &mut down, monotone, &mut minima, nmin, unitlen, s, saturated);
 
         let expected_alist = vec![1.0, 1.4, 2.0, 2.21, 3.0, 5.0, 10.101];
         let expected_flist = vec![0.5, 1.5, 2.0, 1.01, 1.5, -4.018396477612926e-236, 1.0];

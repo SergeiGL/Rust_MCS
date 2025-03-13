@@ -1,4 +1,3 @@
-use crate::feval::feval;
 use crate::gls::lsnew::lsnew;
 use crate::gls::lssort::lssort;
 use itertools::Itertools;
@@ -6,6 +5,7 @@ use nalgebra::SVector;
 
 
 pub fn lssep<const N: usize>(
+    func: fn(&SVector<f64, N>) -> f64,
     nloc: usize,
     small: f64,
     sinit: usize,
@@ -139,7 +139,7 @@ pub fn lssep<const N: usize>(
         for &alp_elem in &aa {
             alp = alp_elem;
             x_alp_p = x + p.scale(alp);
-            let falp = feval(&x_alp_p);
+            let falp = func(&x_alp_p);
             alist.push(alp_elem);
             flist.push(falp);
             nsep += 1;
@@ -154,7 +154,7 @@ pub fn lssep<const N: usize>(
 
     // To account for missing separations, add points globally using lsnew
     for _ in 0..(nmin - nsep) {
-        alp = lsnew(nloc, small, sinit, short, x, p, s, alist, flist, amin, amax, abest, fmed, unitlen);
+        alp = lsnew(func, nloc, small, sinit, short, x, p, s, alist, flist, amin, amax, abest, fmed, unitlen);
         (abest, fbest, fmed, *up, *down, monotone, *minima, nmin, unitlen, s) = lssort(alist, flist);
     }
 
@@ -165,6 +165,7 @@ pub fn lssep<const N: usize>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_functions::hm6;
 
     #[test]
     fn test_0() {
@@ -191,7 +192,7 @@ mod tests {
         let s = 2;
 
         let output = lssep(
-            nloc, small, sinit, short, &x, &p, &mut alist, &mut flist, amin, amax, alp, abest, fbest, fmed, &mut up, &mut down, monotone, &mut minima, nmin, unitlen, s,
+            hm6, nloc, small, sinit, short, &x, &p, &mut alist, &mut flist, amin, amax, alp, abest, fbest, fmed, &mut up, &mut down, monotone, &mut minima, nmin, unitlen, s,
         );
 
         assert_eq!(alist, vec![2.0, 2.5, 3.0]);
@@ -227,7 +228,7 @@ mod tests {
         let s = 1;
 
         let output = lssep(
-            nloc, small, sinit, short, &x, &p, &mut alist, &mut flist, amin, amax, alp, abest, fbest, fmed, &mut up, &mut down, monotone, &mut minima, nmin, unitlen, s,
+            hm6, nloc, small, sinit, short, &x, &p, &mut alist, &mut flist, amin, amax, alp, abest, fbest, fmed, &mut up, &mut down, monotone, &mut minima, nmin, unitlen, s,
         );
 
         assert_eq!(alist, vec![2000.0, 2500.0, 3000.0]);
@@ -264,7 +265,7 @@ mod tests {
         let s = 1;
 
         let output = lssep(
-            nloc, small, sinit, short, &x, &p, &mut alist, &mut flist, amin, amax, alp, abest, fbest, fmed, &mut up, &mut down, monotone, &mut minima, nmin, unitlen, s,
+            hm6, nloc, small, sinit, short, &x, &p, &mut alist, &mut flist, amin, amax, alp, abest, fbest, fmed, &mut up, &mut down, monotone, &mut minima, nmin, unitlen, s,
         );
 
         assert_eq!(alist, vec![0.0, 0.0]);

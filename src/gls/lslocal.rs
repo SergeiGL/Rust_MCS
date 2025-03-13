@@ -1,10 +1,10 @@
-use crate::feval::feval;
 use crate::gls::lsguard::lsguard;
 use crate::gls::lssort::lssort;
 use nalgebra::SVector;
 
 
 pub fn lslocal<const N: usize>(
+    func: fn(&SVector<f64, N>) -> f64,
     nloc: usize,
     small: f64,
     x: &SVector<f64, N>,
@@ -218,7 +218,7 @@ pub fn lslocal<const N: usize>(
         if cas >= 0 && (final_check || !close) {
             nadd += 1;
             x_alp_p = x + p.scale(alp);
-            let falp = feval(&x_alp_p);
+            let falp = func(&x_alp_p);
             alist.push(alp);
             flist.push(falp);
         }
@@ -235,6 +235,7 @@ pub fn lslocal<const N: usize>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_functions::hm6;
 
     #[test]
     fn test_basic_minimum() {
@@ -266,7 +267,7 @@ mod tests {
         let expected_minima = vec![false, false, false, true, false, false];
 
         let (alp_out, abest_out, fbest_out, fmed_out, monotone_out, nmin_out, unitlen_out, s_out, saturated_out) =
-            lslocal(nloc, small, &x, &p, &mut alist, &mut flist, amin, amax, alp, abest, fbest, fmed,
+            lslocal(hm6, nloc, small, &x, &p, &mut alist, &mut flist, amin, amax, alp, abest, fbest, fmed,
                     &mut up, &mut down, monotone, &mut minima, nmin, unitlen, s, saturated);
 
         assert_eq!(alp_out, 1.05);
@@ -315,7 +316,7 @@ mod tests {
         let expected_minima = vec![false, false, true, false, false, false, true, false, false];
 
         let (alp_out, abest_out, fbest_out, fmed_out, monotone_out, nmin_out, unitlen_out, s_out, saturated_out) =
-            lslocal(nloc, small, &x, &p, &mut alist, &mut flist, amin, amax, alp, abest, fbest, fmed,
+            lslocal(hm6, nloc, small, &x, &p, &mut alist, &mut flist, amin, amax, alp, abest, fbest, fmed,
                     &mut up, &mut down, monotone, &mut minima, nmin, unitlen, s, saturated);
 
         assert_eq!(alp_out, 2.019230769230769);
@@ -361,7 +362,7 @@ mod tests {
         let expected_down = vec![false; 4];
 
         let (alp_out, abest_out, fbest_out, fmed_out, monotone_out, nmin_out, unitlen_out, s_out, saturated_out) =
-            lslocal(nloc, small, &x, &p, &mut alist, &mut flist, amin, amax, alp, abest, fbest, fmed,
+            lslocal(hm6, nloc, small, &x, &p, &mut alist, &mut flist, amin, amax, alp, abest, fbest, fmed,
                     &mut up, &mut down, monotone, &mut minima, nmin, unitlen, s, saturated);
 
         assert_eq!(alp_out, 0.16666666666666666);
@@ -407,7 +408,7 @@ mod tests {
         let expected_down = vec![true; 4];
 
         let (alp_out, abest_out, fbest_out, fmed_out, monotone_out, nmin_out, unitlen_out, s_out, saturated_out) =
-            lslocal(nloc, small, &x, &p, &mut alist, &mut flist, amin, amax, alp, abest, fbest, fmed,
+            lslocal(hm6, nloc, small, &x, &p, &mut alist, &mut flist, amin, amax, alp, abest, fbest, fmed,
                     &mut up, &mut down, monotone, &mut minima, nmin, unitlen, s, saturated);
 
         assert_eq!(alp_out, 1.8333333333333333);
@@ -456,7 +457,7 @@ mod tests {
         let expected_minima = vec![false, false, false, true, false, false];
 
         let (alp_out, abest_out, fbest_out, fmed_out, monotone_out, nmin_out, unitlen_out, s_out, saturated_out) =
-            lslocal(nloc, small, &x, &p, &mut alist, &mut flist, amin, amax, alp, abest, fbest, fmed,
+            lslocal(hm6, nloc, small, &x, &p, &mut alist, &mut flist, amin, amax, alp, abest, fbest, fmed,
                     &mut up, &mut down, monotone, &mut minima, nmin, unitlen, s, saturated);
 
         assert_eq!(alp_out, 0.525);

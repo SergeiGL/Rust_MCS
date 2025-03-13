@@ -1,9 +1,9 @@
-use crate::feval::feval;
 use crate::gls::gls;
 use crate::mcs_utils::{helper_funcs::clamp_SVector, hessian::hessian, polint::polint1};
 use nalgebra::{SMatrix, SVector};
 
 pub fn csearch<const N: usize>(
+    func: fn(&SVector<f64, N>) -> f64,
     x: &SVector<f64, N>,
     f: f64,
     u: &SVector<f64, N>,
@@ -41,11 +41,11 @@ pub fn csearch<const N: usize>(
         let mut linesearch = true;
 
         if xmin[i] <= u[i] {
-            f1 = feval(&(xmin + delta * p));
+            f1 = func(&(xmin + delta * p));
 
             nfcsearch += 1;
             if f1 >= fmi {
-                f2 = feval(&(xmin + 2.0 * delta * p));
+                f2 = func(&(xmin + 2.0 * delta * p));
                 nfcsearch += 1;
                 x1[i] = xmin[i] + delta;
                 x2[i] = xmin[i] + 2.0 * delta;
@@ -62,10 +62,10 @@ pub fn csearch<const N: usize>(
                 flist = vec![fmi, f1];
             }
         } else if xmin[i] >= v[i] {
-            f1 = feval(&(xmin - delta * p));
+            f1 = func(&(xmin - delta * p));
             nfcsearch += 1;
             if f1 >= fmi {
-                f2 = feval(&(xmin - 2.0 * delta * p));
+                f2 = func(&(xmin - 2.0 * delta * p));
                 nfcsearch += 1;
                 x1[i] = xmin[i] - delta;
                 x2[i] = xmin[i] - 2.0 * delta;
@@ -87,7 +87,7 @@ pub fn csearch<const N: usize>(
         }
 
         if linesearch {
-            nfcsearch += gls(&xmin, &p, &mut alist, &mut flist, u, v, 1, small, smaxls);
+            nfcsearch += gls(func, &xmin, &p, &mut alist, &mut flist, u, v, 1, small, smaxls);
 
             // Find the index of the minimum in flist
             let (mut j, min_f) = flist
@@ -122,7 +122,7 @@ pub fn csearch<const N: usize>(
             // Find the new index of the minimum in flist
             let (j, min_f) = flist.iter()
                 .enumerate()
-                .min_by(|(_, &val_1), (_, val_2)| val_1.total_cmp(val_2))
+                .min_by(|(_, val_1), (_, val_2)| val_1.total_cmp(val_2))
                 .unwrap();
             fminew = *min_f;
 
@@ -199,7 +199,7 @@ pub fn csearch<const N: usize>(
             } else {
                 x[k] = x2[k];
             }
-            let f12 = feval(&x);
+            let f12 = func(&x);
             nfcsearch += 1;
             G[(i, k)] = hessian(i, k, &x, &xmin, f12, fmi, &g, &G);
             G[(k, i)] = G[(i, k)];
@@ -244,6 +244,8 @@ pub fn csearch<const N: usize>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_functions::hm6;
+
     use approx::assert_relative_eq;
 
     static TOLERANCE: f64 = 1e-10;
@@ -255,7 +257,7 @@ mod tests {
         let u = SVector::<f64, 6>::from_row_slice(&[1.5692744390150857, 3.4940496081522063, 5.747100035185964, 5.58384046504999, 2.793673436034129, 1.5739936351217687]);
         let v = SVector::<f64, 6>::from_row_slice(&[2.5692744390150857, 4.494049608152206, 6.747100035185964, 6.58384046504999, 3.793673436034129, 2.5739936351217687]);
 
-        let (xmin, fmi, g, G, nfcsearch) = csearch(&x, f, &u, &v);
+        let (xmin, fmi, g, G, nfcsearch) = csearch(hm6, &x, f, &u, &v);
 
         assert_relative_eq!(xmin.as_slice(), [1.5692744390150857, 3.4940496081522063, 5.747100035185964, 5.58384046504999, 2.793673436034129, 1.5739936351217687].as_slice(), epsilon = TOLERANCE);
         assert_relative_eq!(fmi, -4.382690949216887e-158, epsilon = TOLERANCE);
@@ -271,7 +273,7 @@ mod tests {
         let u = SVector::<f64, 6>::from_row_slice(&[10.0; 6]);
         let v = SVector::<f64, 6>::from_row_slice(&[20.0; 6]);
 
-        let (xmin, fmi, g, G, nfcsearch) = csearch(&x, f, &u, &v);
+        let (xmin, fmi, g, G, nfcsearch) = csearch(hm6, &x, f, &u, &v);
 
         assert_eq!(xmin.as_slice(), [10.000020184848175, 10., 10., 10., 10., 10.]);
         assert_eq!(fmi, 0.0);
@@ -287,7 +289,7 @@ mod tests {
         let u = SVector::<f64, 6>::from_row_slice(&[-10.0; 6]);
         let v = SVector::<f64, 6>::from_row_slice(&[12.0; 6]);
 
-        let (xmin, fmi, g, G, nfcsearch) = csearch(&x, f, &u, &v);
+        let (xmin, fmi, g, G, nfcsearch) = csearch(hm6, &x, f, &u, &v);
 
         let expected_g = SVector::<f64, 6>::from_row_slice(&[-0.02105800978773433, 0.0049572412272171455, 0.018418190128533754, -0.016036235142429266, -0.04441832232932502, 0.010042152909065433]);
         let expected_G = SMatrix::<f64, 6, 6>::from_row_slice(&[
@@ -308,7 +310,7 @@ mod tests {
         let u = SVector::<f64, 6>::from_row_slice(&[-10.0; 6]);
         let v = SVector::<f64, 6>::from_row_slice(&[12.0; 6]);
 
-        let (xmin, fmi, g, G, nfcsearch) = csearch(&x, f, &u, &v);
+        let (xmin, fmi, g, G, nfcsearch) = csearch(hm6, &x, f, &u, &v);
 
         let expected_g = SVector::<f64, 6>::from_row_slice(&[2.6151445640718367, 12.442396312277596, 25.2100840332843, 2.470830473949214, 0.8571428572094838, 25.714285713952464]);
         let expected_G = SMatrix::<f64, 6, 6>::from_row_slice(&[
@@ -329,7 +331,7 @@ mod tests {
         let u = SVector::<f64, 6>::from_row_slice(&[-10.0; 6]);
         let v = SVector::<f64, 6>::from_row_slice(&[12.0; 6]);
 
-        let (xmin, fmi, g, G, nfcsearch) = csearch(&x, f, &u, &v);
+        let (xmin, fmi, g, G, nfcsearch) = csearch(hm6, &x, f, &u, &v);
 
         let expected_g = SVector::<f64, 6>::from_row_slice(&[2.2643593519882197, 8.294930875576037, -41285.09296299202, 0.816696914394655, 5.142857142857147, 17.14285714285715]);
         let expected_G = SMatrix::<f64, 6, 6>::from_row_slice(&[
@@ -350,7 +352,7 @@ mod tests {
         let u = SVector::<f64, 6>::from_row_slice(&[-10.0; 6]);
         let v = SVector::<f64, 6>::from_row_slice(&[12.0; 6]);
 
-        let (xmin, fmi, g, G, nfcsearch) = csearch(&x, f, &u, &v);
+        let (xmin, fmi, g, G, nfcsearch) = csearch(hm6, &x, f, &u, &v);
 
         let expected_g = SVector::<f64, 6>::from_row_slice(&[2.2643593519882197, 8.294930875576037, 49542.11155583264, 0.8166969142962373, 5.142857142857147, 17.14285714285715]);
         let expected_G = SMatrix::<f64, 6, 6>::from_row_slice(&[
@@ -371,7 +373,7 @@ mod tests {
         let u = SVector::<f64, 6>::from_row_slice(&[-10.0; 6]);
         let v = SVector::<f64, 6>::from_row_slice(&[12.0; 6]);
 
-        let (xmin, fmi, g, G, nfcsearch) = csearch(&x, f, &u, &v);
+        let (xmin, fmi, g, G, nfcsearch) = csearch(hm6, &x, f, &u, &v);
 
         let expected_g = SVector::<f64, 6>::from_row_slice(&[-0.35653650254668956, -0.6493506493506492, -1.9999999999999987, -0.45714285714285685, -0.05847953216374191, -1.575757575757576]);
         let expected_G = SMatrix::<f64, 6, 6>::from_row_slice(&[
@@ -392,7 +394,7 @@ mod tests {
         let u = SVector::<f64, 6>::from_row_slice(&[0.0; 6]);
         let v = SVector::<f64, 6>::from_row_slice(&[1.0; 6]);
 
-        let (xmin, fmi, g, G, nfcsearch) = csearch(&x, f, &u, &v);
+        let (xmin, fmi, g, G, nfcsearch) = csearch(hm6, &x, f, &u, &v);
 
         let expected_G = SMatrix::<f64, 6, 6>::from_row_slice(&[
             33610.72860793838, -31917.574765584413, 7276.950901772966, -5657.831243106884, -9877.962761593055, -6656.034760465145, -31917.574765584413, 33735.973427798126, 7454.000105222104, -5795.584485949894, -10120.79020418948, -6818.460877403494, 7276.950901772966, 7454.000105222104, 7139.373385105945, 1323.7423396357972, 2306.156662939039, 1555.4803515240671, -5657.831243106884, -5795.584485949894, 1323.7423396357972, 4012.286818921415, -1803.2451971949533, -1210.5123749494508, -9877.962761593055, -10120.79020418948, 2306.156662939039, -1803.2451971949533, 9625.122952165366, -2110.9690207169406, -6656.034760465145, -6818.460877403494, 1555.4803515240671, -1210.5123749494508, -2110.9690207169406, 7427.872886675865
@@ -412,7 +414,7 @@ mod tests {
         let u = SVector::<f64, 6>::from_row_slice(&[0.0; 6]);
         let v = SVector::<f64, 6>::from_row_slice(&[2.1, 2.2, 2.3, 2.4, 2.5, 2.6]);
 
-        let (xmin, fmi, g, G, nfcsearch) = csearch(&x, f, &u, &v);
+        let (xmin, fmi, g, G, nfcsearch) = csearch(hm6, &x, f, &u, &v);
 
         let expected_G = SMatrix::<f64, 6, 6>::from_row_slice(&[
             -36815402316.54175, -9203850579.135637, -9203850579.13714, 668801.9766471039, 2668385.501245511, 2674890.8722308264, -9203850579.135637, -36815402316.542015, -9203850579.136158, 668801.9760468211, 2668385.5011991933, 2674890.871860553, -9203850579.13714, -9203850579.136158, -36815402316.55257, 668801.9825047515, 2668385.5015069894, 2674890.8759595747, 668801.9766471039, 668801.9760468211, 668801.9825047515, 64.81480786627557, -193.9018085234481, -194.37504360388937, 2668385.501245511, 2668385.5011991933, 2668385.5015069894, -193.9018085234481, 776.5949442178951, -775.5062594158967, 2674890.8722308264, 2674890.871860553, 2674890.8759595747, -194.37504360388937, -775.5062594158967, 777.5345833891469
@@ -432,7 +434,7 @@ mod tests {
         let u = SVector::<f64, 6>::from_row_slice(&[-1.0; 6]);
         let v = SVector::<f64, 6>::from_row_slice(&[1.0; 6]);
 
-        let (xmin, fmi, g, G, nfcsearch) = csearch(&x, f, &u, &v);
+        let (xmin, fmi, g, G, nfcsearch) = csearch(hm6, &x, f, &u, &v);
 
         let expected_g = SVector::<f64, 6>::from_row_slice(&[-1.553577178019332, 1.6277375974962205, 1.5623144452891058, 1.1146776795991615, -2.5576875518394755, 1.0365978929648942]);
 
@@ -454,7 +456,7 @@ mod tests {
         let u = SVector::<f64, 6>::from_row_slice(&[0.0; 6]);
         let v = SVector::<f64, 6>::from_row_slice(&[1.0; 6]);
 
-        let (xmin, fmi, g, G, nfcsearch) = csearch(&x, f, &u, &v);
+        let (xmin, fmi, g, G, nfcsearch) = csearch(hm6, &x, f, &u, &v);
 
         let expected_G = SMatrix::<f64, 6, 6>::from_row_slice(&[
             1617.141765629833, -239.60638966090045, 2413.746317004152, 354.3488495459659, -1060.9751839203611, 542.3729072815653, -239.60638966090045, 364.2341178708943, 1093.9148531450705, 161.5036714685619, -480.46362460362, 249.26445612335806, 2413.746317004152, 1093.9148531450705, 10473.469754959657, -1639.8005196209724, 4930.317367115214, -2504.700458062508, 354.3488495459659, 161.5036714685619, -1639.8005196209724, 546.5174982652572, 723.530373324211, -365.5301863497862, -1060.9751839203611, -480.46362460362, 4930.317367115214, 723.530373324211, 6606.16130771491, 1099.8765899392931, 542.3729072815653, 249.26445612335806, -2504.700458062508, -365.5301863497862, 1099.8765899392931, 734.8681806295466
@@ -474,7 +476,7 @@ mod tests {
         let u = SVector::<f64, 6>::from_row_slice(&[0.0, 0.0, 0.0, 0.0, 0.5, 0.5]);
         let v = SVector::<f64, 6>::from_row_slice(&[1.0, 1.0, 1.0, 1.0, 0.5, 0.5]);
 
-        let (xmin, fmi, g, G, nfcsearch) = csearch(&x, f, &u, &v);
+        let (xmin, fmi, g, G, nfcsearch) = csearch(hm6, &x, f, &u, &v);
 
         let expected_G = SMatrix::<f64, 6, 6>::from_row_slice(&[
             -5321411539.7519655, -1330352884.950399, 1330352884.9861374, 1330352885.0233428, -5321411539.816137, -2660705769.886557, -1330352884.950399, -5321411539.804666, 1330352885.018136, 1330352884.9994442, -5321411539.765417, -2660705770.007373, 1330352884.9861374, 1330352885.018136, -5321411539.906169, -1330352885.124455, 5321411539.7908, 2660705770.0038385, 1330352885.0233428, 1330352884.9994442, -1330352885.124455, -5321411540.356289, 5321411539.578128, 2660705770.007158, -5321411539.816137, -5321411539.765417, 5321411539.7908, 5321411539.578128, -21285646159.31742, -10642823079.480272, -2660705769.886557, -2660705770.007373, 2660705770.0038385, 2660705770.007158, -10642823079.480272, -21285646159.405983
@@ -494,7 +496,7 @@ mod tests {
         let u = SVector::<f64, 6>::from_row_slice(&[0.0; 6]);
         let v = SVector::<f64, 6>::from_row_slice(&[1.0; 6]);
 
-        let (xmin, fmi, g, G, nfcsearch) = csearch(&x, f, &u, &v);
+        let (xmin, fmi, g, G, nfcsearch) = csearch(hm6, &x, f, &u, &v);
 
         assert_relative_eq!(xmin.as_slice(), [0.20094711239564478, 0.1495167421889697, 0.45913871, 0.2559626362565819, 0.33160230910548794, 0.6275210838397162].as_slice(), epsilon = TOLERANCE);
         assert_relative_eq!(fmi, -3.2661659570240427, epsilon = TOLERANCE);

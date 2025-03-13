@@ -1,8 +1,8 @@
-use crate::feval::feval;
 use crate::gls::lssplit::lssplit;
 use nalgebra::SVector;
 
 pub fn lsnew<const N: usize>(
+    func: fn(&SVector<f64, N>) -> f64,
     nloc: usize,
     small: f64,
     sinit: usize,
@@ -69,7 +69,7 @@ pub fn lsnew<const N: usize>(
         lssplit(alist[i_max], alist[i_max + 1], flist[i_max], flist[i_max + 1], short).0
     };
 
-    let falp = feval(&(x + p.scale(alp)));
+    let falp = func(&(x + p.scale(alp)));
 
     alist.push(alp);
     flist.push(falp);
@@ -80,6 +80,7 @@ pub fn lsnew<const N: usize>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_functions::hm6;
 
     #[test]
     fn test_lsnew_basic() {
@@ -98,7 +99,7 @@ mod tests {
         let fmed = 2.5;
         let unitlen = 1.0;
 
-        let result_alp = lsnew(nloc, small, sinit, short, &x, &p, s,
+        let result_alp = lsnew(hm6, nloc, small, sinit, short, &x, &p, s,
                                &mut alist, &mut flist, amin, amax, abest, fmed, unitlen);
 
         assert_eq!(result_alp, 2.0);
@@ -123,7 +124,7 @@ mod tests {
         let fmed = 3.5;
         let unitlen = 1.0;
 
-        let result_alp = lsnew(nloc, small, sinit, short, &x, &p, s,
+        let result_alp = lsnew(hm6, nloc, small, sinit, short, &x, &p, s,
                                &mut alist, &mut flist, amin, amax, abest, fmed, unitlen);
 
         assert_eq!(result_alp, 2.0);
@@ -148,7 +149,7 @@ mod tests {
         let fmed = 0.75;
         let unitlen = 1.0;
 
-        let result_alp = lsnew(nloc, small, sinit, short, &x, &p, s,
+        let result_alp = lsnew(hm6, nloc, small, sinit, short, &x, &p, s,
                                &mut alist, &mut flist, amin, amax, abest, fmed, unitlen);
 
         assert_eq!(result_alp, 0.0);
@@ -173,7 +174,7 @@ mod tests {
         let fmed = 1.9;
         let unitlen = 1.0;
 
-        let result_alp = lsnew(nloc, small, sinit, short, &x, &p, s,
+        let result_alp = lsnew(hm6, nloc, small, sinit, short, &x, &p, s,
                                &mut alist, &mut flist, amin, amax, abest, fmed, unitlen);
 
         assert_eq!(result_alp, -5.5200000000000005);
@@ -198,7 +199,7 @@ mod tests {
         let fmed = 1.5;
         let unitlen = 1.0;
 
-        let result_alp = lsnew(nloc, small, sinit, short, &x, &p, s,
+        let result_alp = lsnew(hm6, nloc, small, sinit, short, &x, &p, s,
                                &mut alist, &mut flist, amin, amax, abest, fmed, unitlen);
 
         assert_eq!(result_alp, 0.66);
@@ -224,7 +225,7 @@ mod tests {
         let fmed = 0.75;
         let unitlen = 1.0;
 
-        let result_alp = lsnew(nloc, small, sinit, short, &x, &p, s,
+        let result_alp = lsnew(hm6, nloc, small, sinit, short, &x, &p, s,
                                &mut alist, &mut flist, amin, amax, abest, fmed, unitlen);
 
         assert_eq!(result_alp, 1.0);

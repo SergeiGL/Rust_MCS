@@ -1,8 +1,8 @@
-use crate::feval::feval;
 use crate::gls::lssort::lssort;
 use nalgebra::SVector;
 
 pub fn lsdescent<const N: usize>(
+    func: fn(&SVector<f64, N>) -> f64,
     x: &SVector<f64, N>,
     p: &SVector<f64, N>,
     alist: &mut Vec<f64>,
@@ -33,7 +33,7 @@ pub fn lsdescent<const N: usize>(
 
         (i, fbest) = flist.iter()
             .enumerate()
-            .min_by(|(_, &a), (_, &b)| a.total_cmp(&b))
+            .min_by(|(_, a), (_, b)| a.total_cmp(b))
             .map(|(i, &val)| (i, val))
             .unwrap();
 
@@ -62,7 +62,7 @@ pub fn lsdescent<const N: usize>(
             }
         }
 
-        let falp = feval(&(x + p.scale(alp)));
+        let falp = func(&(x + p.scale(alp)));
 
         // Insert the new alp and falp into the lists.
         alist.push(alp);
@@ -78,6 +78,7 @@ pub fn lsdescent<const N: usize>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_functions::hm6;
 
     #[test]
     fn test_case_0() {
@@ -99,7 +100,7 @@ mod tests {
 
         let (new_alp, new_abest, new_fbest, new_fmed, new_monotone, new_nmin, new_unitlen, new_s) =
             lsdescent(
-                &x, &p, &mut alist, &mut flist, alp, abest, fbest, fmed,
+                hm6, &x, &p, &mut alist, &mut flist, alp, abest, fbest, fmed,
                 &mut up, &mut down, monotone, &mut minima, nmin, unitlen, s,
             );
 
@@ -138,7 +139,7 @@ mod tests {
 
         let (new_alp, new_abest, new_fbest, new_fmed, new_monotone, new_nmin, new_unitlen, new_s) =
             lsdescent(
-                &x, &p, &mut alist, &mut flist, alp, abest, fbest, fmed,
+                hm6, &x, &p, &mut alist, &mut flist, alp, abest, fbest, fmed,
                 &mut up, &mut down, monotone, &mut minima, nmin, unitlen, s,
             );
 
@@ -177,7 +178,7 @@ mod tests {
 
         let (new_alp, new_abest, new_fbest, new_fmed, new_monotone, new_nmin, new_unitlen, new_s) =
             lsdescent(
-                &x, &p, &mut alist, &mut flist, alp, abest, fbest, fmed,
+                hm6, &x, &p, &mut alist, &mut flist, alp, abest, fbest, fmed,
                 &mut up, &mut down, monotone, &mut minima, nmin, unitlen, s,
             );
 
@@ -217,7 +218,7 @@ mod tests {
 
         let (new_alp, new_abest, new_fbest, new_fmed, new_monotone, new_nmin, new_unitlen, new_s) =
             lsdescent(
-                &x, &p, &mut alist, &mut flist, alp, abest, fbest, fmed,
+                hm6, &x, &p, &mut alist, &mut flist, alp, abest, fbest, fmed,
                 &mut up, &mut down, monotone, &mut minima, nmin, unitlen, s,
             );
 

@@ -1,8 +1,8 @@
-use crate::feval::feval;
 use crate::mcs_utils::{hessian::hessian, polint::polint1};
 use nalgebra::{SMatrix, SVector};
 
 pub fn triple<const N: usize>(
+    func: fn(&SVector<f64, N>) -> f64,
     x: &SVector<f64, N>,
     mut f: f64,
     x1: &mut SVector<f64, N>,
@@ -61,10 +61,10 @@ pub fn triple<const N: usize>(
         f = ftrip;
 
         x[i] = x1[i];
-        let f1 = feval(&x);
+        let f1 = func(&x);
 
         x[i] = x2[i];
-        let f2 = feval(&x);
+        let f2 = func(&x);
         nf += 2;
 
         (g[i], G[(i, i)]) = polint1(
@@ -108,7 +108,7 @@ pub fn triple<const N: usize>(
                             x[k] = x2[k];
                         }
 
-                        let f12 = feval(&x);
+                        let f12 = func(&x);
                         nf += 1;
 
                         // println!("{}\n{i} {k}, {x:?}, {xtrip:?}, {f12}, {ftrip}, {g}, {G:?}", G[(1, 4)]);
@@ -166,6 +166,7 @@ pub fn triple<const N: usize>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_functions::hm6;
 
     #[test]
     fn test_cover() {
@@ -179,7 +180,7 @@ mod tests {
         let mut G = SMatrix::<f64, 6, 6>::repeat(5.);
         let setG = true;
 
-        let (xtrip, ftrip, g, nf) = triple(&x, f, &mut x1, &mut x2, &u, &v, &hess, &mut G, setG);
+        let (xtrip, ftrip, g, nf) = triple(hm6, &x, f, &mut x1, &mut x2, &u, &v, &hess, &mut G, setG);
 
         let expected_xtrip = [0.4336535629633933, 0.8420919980334169, 0.7176915876351339, 0.4916640711647772, 0.18103716080657348, 0.028904813816976117];
         let expected_ftrip = -2.908187629699183;
@@ -214,7 +215,7 @@ mod tests {
         let mut G = SMatrix::<f64, 6, 6>::repeat(154765865.);
         let setG = true;
 
-        let (xtrip, ftrip, g, nf) = triple(&x, f, &mut x1, &mut x2, &u, &v, &hess, &mut G, setG);
+        let (xtrip, ftrip, g, nf) = triple(hm6, &x, f, &mut x1, &mut x2, &u, &v, &hess, &mut G, setG);
 
         let expected_xtrip = [0.43365356296339325, 0.8420919980334169, 0.7176915876351337, 0.4916640711647772, 0.1810371608065735, 0.028904813816976235];
         let expected_ftrip = -2.908187629699183;
@@ -250,7 +251,7 @@ mod tests {
         let setG = true;
 
 
-        let (xtrip, ftrip, g, nf) = triple(&x, f, &mut x1, &mut x2, &u, &v, &hess, &mut G, setG);
+        let (xtrip, ftrip, g, nf) = triple(hm6, &x, f, &mut x1, &mut x2, &u, &v, &hess, &mut G, setG);
 
         let expected_xtrip = [0.4336535629633933, 0.8420919980334169, 0.7176915876351339, 0.4916640711647772, 0.18103716080657348, 0.028904813816976117];
         let expected_ftrip = -2.908187629699183;
@@ -300,7 +301,7 @@ mod tests {
         ]);
         let setG = false;
 
-        let (xtrip, ftrip, g, nf) = triple(&x, f, &mut x1, &mut x2, &u, &v, &hess, &mut G, setG);
+        let (xtrip, ftrip, g, nf) = triple(hm6, &x, f, &mut x1, &mut x2, &u, &v, &hess, &mut G, setG);
 
         let expected_xtrip = [0.1, 0.2, 0.4, 0.4, 0.3, 0.6];
         let expected_ftrip = -2.630060151483446;
@@ -359,7 +360,7 @@ mod tests {
         ]);
         let setG = false;
 
-        let (xtrip, ftrip, g, nf) = triple(&x, f, &mut x1, &mut x2, &u, &v, &hess, &mut G, setG);
+        let (xtrip, ftrip, g, nf) = triple(hm6, &x, f, &mut x1, &mut x2, &u, &v, &hess, &mut G, setG);
 
         let expected_xtrip = [-0.2, 0.15, 1.023, 0.0, 3.0, -10.0];
         let expected_ftrip = -0.4;
@@ -418,7 +419,7 @@ mod tests {
         ]);
         let setG = false;
 
-        let (xtrip, ftrip, g, nf) = triple(&x, f, &mut x1, &mut x2, &u, &v, &hess, &mut G, setG);
+        let (xtrip, ftrip, g, nf) = triple(hm6, &x, f, &mut x1, &mut x2, &u, &v, &hess, &mut G, setG);
 
         let expected_xtrip = [0.1, 0.15, -0.02, 0.1, 0.0, -0.4];
         let expected_ftrip = -1.2;
@@ -477,7 +478,7 @@ mod tests {
         ]);
         let setG = true;
 
-        let (xtrip, ftrip, g, nf) = triple(&x, f, &mut x1, &mut x2, &u, &v, &hess, &mut G, setG);
+        let (xtrip, ftrip, g, nf) = triple(hm6, &x, f, &mut x1, &mut x2, &u, &v, &hess, &mut G, setG);
 
         let expected_xtrip = [0.112, -0.1, -0.32, 0.0, 10.0, -0.4];
         let expected_ftrip = -4.5;
@@ -536,7 +537,7 @@ mod tests {
         ]);
         let setG = false;
 
-        let (xtrip, ftrip, g, nf) = triple(&x, f, &mut x1, &mut x2, &u, &v, &hess, &mut G, setG);
+        let (xtrip, ftrip, g, nf) = triple(hm6, &x, f, &mut x1, &mut x2, &u, &v, &hess, &mut G, setG);
 
         let expected_xtrip = [0.202, 0.15, 0.476, 0.273, 0.31, 0.656];
         let expected_ftrip = -3.3220115127770096;
@@ -595,7 +596,7 @@ mod tests {
         ]);
         let setG = false;
 
-        let (xtrip, ftrip, g, nf) = triple(&x, f, &mut x1, &mut x2, &u, &v, &hess, &mut G, setG);
+        let (xtrip, ftrip, g, nf) = triple(hm6, &x, f, &mut x1, &mut x2, &u, &v, &hess, &mut G, setG);
 
         let expected_xtrip = [0.0, 1.0, 0.0, 1.0, 0.0, 1.0];
         let expected_ftrip = -3.32;
@@ -649,7 +650,7 @@ mod tests {
         ]);
         let setG = true;
 
-        let (xtrip, ftrip, g, nf) = triple(&x, f, &mut x1, &mut x2, &u, &v, &hess, &mut G, setG);
+        let (xtrip, ftrip, g, nf) = triple(hm6, &x, f, &mut x1, &mut x2, &u, &v, &hess, &mut G, setG);
 
         let expected_xtrip = [-0.1, 1.1, -0.1, 1.1, -0.1, 1.1];
         let expected_ftrip = -3.32;

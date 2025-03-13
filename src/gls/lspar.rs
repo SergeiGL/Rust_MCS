@@ -1,10 +1,10 @@
-use crate::feval::feval;
 use crate::gls::lsguard::lsguard;
 use crate::gls::lsnew::lsnew;
 use crate::gls::lssort::lssort;
 use nalgebra::SVector;
 
 pub fn lspar<const N: usize>(
+    func: fn(&SVector<f64, N>) -> f64,
     nloc: usize,
     small: f64,
     sinit: usize,
@@ -29,7 +29,7 @@ pub fn lspar<const N: usize>(
     usize,       // nmin
 ) {
     if *s < 3 {
-        *alp = lsnew(nloc, small, sinit, short, x, p, *s, alist, flist, amin, amax, *abest, *fmed, *unitlen);
+        *alp = lsnew(func, nloc, small, sinit, short, x, p, *s, alist, flist, amin, amax, *abest, *fmed, *unitlen);
     } else {
         // Select three points for parabolic interpolation
         let i = flist
@@ -60,7 +60,7 @@ pub fn lspar<const N: usize>(
         let f123 = (f23 - f12) / (aa2 - aa0);
 
         if !(f123 > 0.0) {
-            *alp = lsnew(nloc, small, sinit, short, x, p, *s, alist, flist, amin, amax, *abest, *fmed, *unitlen);
+            *alp = lsnew(func, nloc, small, sinit, short, x, p, *s, alist, flist, amin, amax, *abest, *fmed, *unitlen);
         } else {
             // Parabolic minimizer
             let alp0 = 0.5 * (aa1 + aa2 - f23 / f123);
@@ -78,7 +78,7 @@ pub fn lspar<const N: usize>(
             }
 
             // Evaluate the function at the new alpha
-            let falp = feval(&(x + p.scale(*alp)));
+            let falp = func(&(x + p.scale(*alp)));
 
             // Add the new point to alist and flist
             alist.push(*alp);
@@ -96,6 +96,7 @@ pub fn lspar<const N: usize>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_functions::hm6;
 
     #[test]
     fn test_0() {
@@ -115,7 +116,7 @@ mod tests {
         let mut unitlen = 1.0;
         let mut s = 3;
 
-        let (fbest, up, down, monotone, minima, nmin) = lspar(nloc, small, sinit, short, &x, &p, &mut alist, &mut flist, amin, amax,
+        let (fbest, up, down, monotone, minima, nmin) = lspar(hm6, nloc, small, sinit, short, &x, &p, &mut alist, &mut flist, amin, amax,
                                                               &mut alp, &mut abest, &mut fmed, &mut unitlen, &mut s);
 
         assert_eq!(alist, vec![0.0, 0.03333333333333333, 0.1, 0.2, 0.4, 0.4, 0.5]);
@@ -151,7 +152,7 @@ mod tests {
         let mut unitlen = 1.0;
         let mut s = 2;
 
-        let (fbest, up, down, monotone, minima, nmin) = lspar(nloc, small, sinit, short, &x, &p, &mut alist, &mut flist, amin, amax,
+        let (fbest, up, down, monotone, minima, nmin) = lspar(hm6, nloc, small, sinit, short, &x, &p, &mut alist, &mut flist, amin, amax,
                                                               &mut alp, &mut abest, &mut fmed, &mut unitlen, &mut s);
 
         assert_eq!(alist, vec![-10.0, 0.0, 0.1, 0.11, 0.13, 0.2, 0.4]);
@@ -187,7 +188,7 @@ mod tests {
         let mut unitlen = 5.0;
         let mut s = 3;
 
-        let (fbest, up, down, monotone, minima, nmin) = lspar(nloc, small, sinit, short, &x, &p, &mut alist, &mut flist, amin, amax,
+        let (fbest, up, down, monotone, minima, nmin) = lspar(hm6, nloc, small, sinit, short, &x, &p, &mut alist, &mut flist, amin, amax,
                                                               &mut alp, &mut abest, &mut fmed, &mut unitlen, &mut s);
 
 
@@ -224,7 +225,7 @@ mod tests {
         let mut unitlen = 1.0;
         let mut s = 3;
 
-        let (fbest, up, down, monotone, minima, nmin) = lspar(nloc, small, sinit, short, &x, &p, &mut alist, &mut flist, amin, amax,
+        let (fbest, up, down, monotone, minima, nmin) = lspar(hm6, nloc, small, sinit, short, &x, &p, &mut alist, &mut flist, amin, amax,
                                                               &mut alp, &mut abest, &mut fmed, &mut unitlen, &mut s);
 
         assert_eq!(alist, vec![-10.0, 0.0, 1.0, 2.0, 3.0]);

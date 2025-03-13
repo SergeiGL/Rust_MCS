@@ -1,7 +1,7 @@
-use crate::feval::feval;
 use nalgebra::SVector;
 
 pub fn lsinit<const N: usize>(
+    func: fn(&SVector<f64, N>) -> f64,
     x: &SVector<f64, N>,
     p: &SVector<f64, N>,
     alist: &mut Vec<f64>,
@@ -24,7 +24,7 @@ pub fn lsinit<const N: usize>(
             alp = amax;
         }
         // New function value
-        let falp = feval(&(x + p.scale(alp)));
+        let falp = func(&(x + p.scale(alp)));
         alist.push(alp);
         flist.push(falp);
     } else if alist.len() == 1 {
@@ -38,7 +38,7 @@ pub fn lsinit<const N: usize>(
         }
         if (alist[0] - alp).abs() > f64::EPSILON {
             // New function value
-            let falp = feval(&(x + p.scale(alp)));
+            let falp = func(&(x + p.scale(alp)));
             alist.push(alp);
             flist.push(falp);
         }
@@ -64,7 +64,7 @@ pub fn lsinit<const N: usize>(
         }
         if alp < aamin || alp > aamax {
             // New function value
-            let falp = feval(&(x + p.scale(alp)));
+            let falp = func(&(x + p.scale(alp)));
             alist.push(alp);
             flist.push(falp);
         }
@@ -78,6 +78,7 @@ pub fn lsinit<const N: usize>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_functions::hm6;
 
     #[test]
     fn test_1() {
@@ -89,7 +90,7 @@ mod tests {
         let amax = 1.0;
         let scale = 0.1;
 
-        let alp = lsinit(&x, &p, &mut alist, &mut flist, amin, amax, scale);
+        let alp = lsinit(hm6, &x, &p, &mut alist, &mut flist, amin, amax, scale);
 
         let alist_expected = Vec::from([0.0, 0.1]);
         let flist_expected = Vec::from([-1.4069105761385299, -1.4664312887853619]);
@@ -110,7 +111,7 @@ mod tests {
         let amax = 1.0;
         let scale = 0.1;
 
-        let alp = lsinit(&x, &p, &mut alist, &mut flist, amin, amax, scale);
+        let alp = lsinit(hm6, &x, &p, &mut alist, &mut flist, amin, amax, scale);
 
         let alist_expected = Vec::from([0.0, 0.1, -0.1]);
         let flist_expected = Vec::from([0.0, 0.1, -1.4091800887102848]);

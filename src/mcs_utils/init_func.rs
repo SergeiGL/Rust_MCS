@@ -1,4 +1,3 @@
-use crate::feval::feval;
 use crate::mcs_utils::{polint::polint, quadratic_func::quadmin, quadratic_func::quadpol, sign::sign};
 use itertools::Itertools;
 use nalgebra::{Matrix2xX, Matrix3xX, SMatrix, SVector};
@@ -22,7 +21,10 @@ pub fn subint(mut x1: f64, mut x2: f64) ->
 
 // l is always full of 1;
 // L is always full of 2
-pub fn init<const N: usize>(x0: &SMatrix<f64, N, 3>) -> (
+pub fn init<const N: usize>(
+    func: fn(&SVector<f64, N>) -> f64,
+    x0: &SMatrix<f64, N, 3>,
+) -> (
     Matrix3xX<f64>, // f0 = [[f64; N];3]
     [usize; N],    //  istar
     usize          //  ncall
@@ -31,7 +33,7 @@ pub fn init<const N: usize>(x0: &SMatrix<f64, N, 3>) -> (
 
     let mut x: SVector<f64, N> = x0.column(1).into_owned();
 
-    let mut f1 = feval(&x);
+    let mut f1 = func(&x);
     ncall += 1;
 
     let mut f0 = Matrix3xX::<f64>::repeat(N, 0.0); // L[0] is always = 3
@@ -45,7 +47,7 @@ pub fn init<const N: usize>(x0: &SMatrix<f64, N, 3>) -> (
                 if i != 0 { f0[(j, i)] = f0[(istar[i - 1], i - 1)]; }
             } else {
                 x[i] = x0[(i, j)];
-                f0[(j, i)] = feval(&x);
+                f0[(j, i)] = func(&x);
                 ncall += 1;
 
                 if f0[(j, i)] < f1 {
@@ -227,6 +229,7 @@ pub fn initbox<const N: usize>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_functions::hm6;
     use nalgebra::Matrix2xX;
 
     #[test]
@@ -422,7 +425,7 @@ mod tests {
             0.0, 0.5, 1.0,
         ]);
 
-        let (f0, istar, ncall) = init(&x0);
+        let (f0, istar, ncall) = init(hm6, &x0);
 
         let expected_f0 = Matrix3xX::<f64>::from_row_slice(&[-0.6232314675898112, -0.8603825505022568, -0.5152637963551447, -0.9883412202327723, -0.3791401895175917, -0.05313547352279423, -0.5053149917022333, -0.6232314675898112, -0.8603825505022568, -0.8603825505022568, -0.9883412202327723, -0.9883412202327723, -0.08793206431638863, -0.09355142624190396, -0.3213921800858628, -0.025134295008083094, -0.6527318901582629, -0.37750674173452126]);
         let expected_istar = [0, 0, 1, 0, 1, 1];
@@ -443,7 +446,7 @@ mod tests {
             1.0, 1.0, 1.0,
         ]);
 
-        let (f0, istar, ncall) = init(&x0);
+        let (f0, istar, ncall) = init(hm6, &x0);
 
         let expected_f0 = Matrix3xX::<f64>::from_row_slice(&[-3.408539273427753e-05; 18]);
         let expected_istar = [1, 1, 1, 1, 1, 1];
