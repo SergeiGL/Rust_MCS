@@ -28,9 +28,9 @@ use nalgebra::{Const, DimMin, Matrix2xX, SMatrix, SVector};
 
 
 pub struct StopStruct {
-    nsweeps: usize,
-    freach: f64,
-    nf: usize,
+    pub nsweeps: usize,
+    pub freach: f64,
+    pub nf: usize,
 }
 impl StopStruct {
     pub fn new<T>(data: T) -> StopStruct
@@ -317,7 +317,7 @@ mod tests {
             freach: f64::NEG_INFINITY,  // target function value
             nf: 1_000_000,              // maximum number of function evaluations
         };
-        
+
         // Additional parameters
         const SMAX: usize = 1_000;                      // number of levels used
         let iinit = IinitEnum::Zero;                    // choice of init procedure
