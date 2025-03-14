@@ -54,6 +54,7 @@ pub enum IinitEnum {
     Two,    // Not implemented
     Three,  // (WTF it is doing?)
 }
+#[derive(Debug)]
 pub enum ExitFlagEnum {
     NormalShutdown,         // flag 1: True
     StopNfExceeded,         // flag 2: ncall >= nf
