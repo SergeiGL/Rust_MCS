@@ -24,7 +24,7 @@ use mcs_utils::strtsw::strtsw;
 use mcs_utils::updtrec::updtrec;
 use mcs_utils::vertex::vertex;
 
-use nalgebra::{Const, DimMin, Matrix2xX, SMatrix, SVector};
+use nalgebra::{Matrix2xX, SMatrix, SVector};
 
 
 pub struct StopStruct {
@@ -82,11 +82,9 @@ pub fn mcs<const SMAX: usize, const N: usize>(
     usize,                 // ncall
     usize,                 // ncloc
     ExitFlagEnum,          // flag
-) where
-    Const<N>: DimMin<Const<N>, Output=Const<N>>,
-{
+) {
     if u >= v {
-        panic!("Error MCS main: v should be > u.\nu = {u:?}\nv = {v:?}");
+        panic!("Error MCS main: v should be > u:\nv = {v:?}\nu = {u:?}");
     }
 
     // l is always 1; L is always 2
@@ -306,6 +304,7 @@ mod tests {
 
 
     // cargo flamegraph --unit-test -- tests::test_for_flamegraph_0
+    #[cfg(not(debug_assertions))]
     #[test]
     fn test_for_flamegraph_0() {
         // Define your optimization bounds

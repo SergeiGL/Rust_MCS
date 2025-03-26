@@ -2,25 +2,54 @@ use crate::mcs_utils::{polint::polint, quadratic_func::quadmin, quadratic_func::
 use itertools::Itertools;
 use nalgebra::{Matrix2xX, Matrix3xX, SMatrix, SVector};
 
-
-pub fn subint(mut x1: f64, mut x2: f64) ->
+/// Computes for real x and real or infinite y two points x1 and x2 in
+/// \[min(x,y),max(x,y)\] that are neither too close nor too far away from x
+/// # Arguments
+/// * `const F: usize` - controls the threshold for when values are considered "too far" from each other.
+/// A multiplier that helps to determine when the algorithm should adjust the second point to avoid points being too far apart
+/// * `x` - Real number
+/// * `y` - Real or infinite number
+///
+/// # Returns
+///
+/// * `x1` - First point in \[min(x,y),max(x,y)\] that is neither too close nor too far away from x
+/// * `x2` - Second point in \[min(x,y),max(x,y)\] that is neither too close nor too far away from x
+pub fn subint<const F: usize>(x: f64, y: f64) ->
 (
     f64, // x1 new
     f64  // x2 new
 ) {
-    let f: f64 = 1000_f64;
-    if f * x1.abs() < 1.0 && x2.abs() > f {
-        x2 = sign(x2)
-    } else if x2.abs() > f {
-        x2 = 10.0 * sign(x2) * x1.abs();
+    let F_64 = F as f64;
+    let mut x2 = y;
+
+    if F_64 * x.abs() < 1.0 {
+        if y.abs() > F_64 { x2 = sign(y) } // very important that this if is nested ( && will not work)
+    } else if y.abs() > F_64 * x.abs() { // TODO: python version has a mistake here
+        x2 = 10.0 * sign(y) * x.abs();
     }
-    x1 += (x2 - x1) / 10.0;
-    (x1, x2)
+
+    (x + (x2 - x) / 10.0, x2)
 }
 
 
-// l is always full of 1;
-// L is always full of 2
+/// Computes the function values corresponding to the initialization list
+/// and the pointer istar to the final best point x^* of the init. list
+///
+/// # Arguments
+///
+/// * `fcn` - The target function to optimize
+/// * `x0` - Coordinates used in the initialization list
+///
+/// # Returns
+///
+/// * `f0` - Function values appertaining to the initialization list;
+/// * `istar` - Best point x^* of the init. list x^* = (x0(1,istar(1)),...,x0(n,istar(n)))
+/// * `ncall` - Number of function calls used in the program
+///
+/// # Note
+///
+/// * `l` is always full of 1
+/// * `L` is always full of 2
 pub fn init<const N: usize>(
     func: fn(&SVector<f64, N>) -> f64,
     x0: &SMatrix<f64, N, 3>,
@@ -65,8 +94,64 @@ pub fn init<const N: usize>(
 }
 
 
-// l is always full of 1;
-// L is always full of 2
+/// Generates the boxes in the initialization procedure
+///
+/// For each coordinate `i`, this function computes the quadratic interpolant to any three consecutive
+/// points `(x0[i,j], f0[j,i])`.
+///
+/// The values `xl` and `xu` represent the minimum and maximum of the
+/// quadratic interpolant, respectively.
+///
+/// If the best point `x0[i,istar[i]]` belongs to two boxes,
+/// the one containing the minimizer of the quadratic model in coordinate `i` is taken as the current
+/// box for the next coordinate.
+///
+/// All boxes generated in the initialization procedure get the level of
+/// their parent box increased by one.
+///
+/// # Arguments
+///
+/// * `x0` - A matrix of size `N×3` containing coordinates used in the initialization list
+/// * `f0` - A matrix of size `3×N` containing function values corresponding to the initialization list;
+///          `f0[j,i]` = function value at `x` = `(x0[0,istar[0]], ..., x0[i-1,istar[i-1]], x0[i,j],
+///          x0[i+1,l[i+1]], ..., x0[n-1,l[n-1]])`
+/// * `istar` - An array of size `N` pointing to the final best point x* of the initialization list
+///             x* = `(x0[0,istar[0]], ..., x0[N-1,istar[N-1]])`
+/// * `u` - Lower bounds vector of size `N` defining the initial box
+/// * `v` - Upper bounds vector of size `N` defining the initial box
+/// * `isplit` - A mutable vector containing the splitting indices of the boxes that have already been split
+/// * `level` - A mutable vector containing the levels of the newly created boxes
+/// * `ipar` - A mutable vector containing the labels of the parents of the newly created boxes
+/// * `ichild` - A mutable vector where the absolute values specify which child each box is;
+///              negative values indicate boxes generated in the initialization procedure
+/// * `f` - A mutable matrix of size `2×N` where `f[0,j]` contains the base vertex function value of box j
+/// * `nboxes` - A mutable number of boxes, which will be updated during execution
+///
+/// # Returns
+///
+/// A tuple containing:
+/// * `p` - A vector of size `N` representing the ranking of variability; the ith component has the `p[i]`th
+///         highest estimated variability
+/// * `xbest` - The best vertex after the initialization procedure
+/// * `fbest` - The best function value after the initialization procedure
+///
+/// # Implementation Details
+///
+/// The function performs the following steps:
+/// 1. Initializes the root box (box 0)
+/// 2. For each dimension i:
+///    a. Marks the parent box as split along dimension i
+///    b. Creates child boxes based on the values in x0
+///    c. Performs polynomial interpolation and quadratic minimization
+///    d. Tracks which box contains the best point for the current dimension
+///    e. Calculates variability across the dimension
+/// 3. Finds the best function value and corresponding point
+/// 4. Returns the variability ranking, best point, and best function value
+///
+/// # Note
+///
+/// * `l` is always full of 1
+/// * `L` is always full of 2
 pub fn initbox<const N: usize>(
     x0: &SMatrix<f64, N, 3>,
     f0: &Matrix3xX<f64>,
@@ -120,7 +205,6 @@ pub fn initbox<const N: usize>(
         let mut d = polint(&x0_arr, (&f0.column(i)).as_ref());
         let mut xl = quadmin(u[i], v1, &d, &x0_arr); // left bound minimization
         let mut fl = quadpol(xl, &d, &x0_arr); // compute function value
-
         let mut xu = quadmin(u[i], v1, &[-d[0], -d[1], -d[2]], &x0_arr); // right bound minimization
         let mut fu = quadpol(xu, &d, &x0_arr);  // compute function value
 
@@ -162,11 +246,10 @@ pub fn initbox<const N: usize>(
                         x0[(i, j + 2)], // Third column
                     ];
                     d = polint(&x0_arr, (&f0.column(i)).as_ref());
-                    let u1 = v[i]; // j is always < 0
+                    let u1 = v[i]; // j is always == 0
 
                     xl = quadmin(x0[(i, j)], u1, &d, &x0_arr);
                     fl = fl.min(quadpol(xl, &d, &x0_arr));
-
                     xu = quadmin(x0[(i, j)], u1, &[-d[0], -d[1], -d[2]], &x0_arr);
                     fu = fu.max(quadpol(xu, &d, &x0_arr));
                 }
@@ -175,7 +258,7 @@ pub fn initbox<const N: usize>(
             *nboxes += 1;
             nchild += 1;
             ipar[*nboxes] = Some(par);
-            level[*nboxes] = level[par] + 3 - s;
+            level[*nboxes] = level[par] + 3 - s; // s is either 1 or 2
             ichild[*nboxes] = -nchild;
             f[(0, *nboxes)] = f0[(j + 1, i)]; // update function value for the next box
         }
@@ -380,7 +463,7 @@ mod tests {
     fn subint_test_0() {
         let x1 = 1.0;
         let x2 = 2.0;
-        let (x1_new, x2_new) = subint(x1, x2);
+        let (x1_new, x2_new) = subint::<1000>(x1, x2);
         assert_eq!(x1_new, 1.1);
         assert_eq!(x2_new, 2.0);
     }
@@ -389,7 +472,7 @@ mod tests {
     fn subint_test_1() {
         let x1 = 0.0000001;
         let x2 = 2000.0;
-        let (x1_new, x2_new) = subint(x1, x2);
+        let (x1_new, x2_new) = subint::<1000>(x1, x2);
         assert_eq!(x1_new, 0.10000009000000001);
         assert_eq!(x2_new, 1.0);
     }
@@ -399,7 +482,7 @@ mod tests {
     fn subint_test_2() {
         let x1 = -1.0;
         let x2 = 50.0;
-        let (x1_new, x2_new) = subint(x1, x2);
+        let (x1_new, x2_new) = subint::<1000>(x1, x2);
         assert_eq!(x1_new, 4.1);
         assert_eq!(x2_new, 50.0);
     }
@@ -408,9 +491,18 @@ mod tests {
     fn subint_test_3() {
         let x1 = -0.00000001;
         let x2 = 132455.0;
-        let (x1_new, x2_new) = subint(x1, x2);
+        let (x1_new, x2_new) = subint::<1000>(x1, x2);
         assert_eq!(x1_new, 0.099999991);
         assert_eq!(x2_new, 1.0);
+    }
+
+    #[test]
+    fn subint_test_real_mistake_1() {
+        let x1 = -0.0002;
+        let x2 = -20.0;
+        let (x1_new, x2_new) = subint::<1000>(x1, x2);
+        assert_eq!(x1_new, -2.0001800000000003);
+        assert_eq!(x2_new, -20.0);
     }
 
     //---------------------------------------------------

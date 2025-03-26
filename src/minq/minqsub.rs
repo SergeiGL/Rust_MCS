@@ -2,7 +2,7 @@ use crate::minq::getalp::getalp;
 use crate::minq::ldldown::ldldown;
 use crate::minq::ldlup::ldlup;
 use crate::minq::IerEnum;
-use nalgebra::{Const, DimMin, SMatrix, SVector};
+use nalgebra::{SMatrix, SVector};
 
 
 pub fn minqsub<const N: usize>(
@@ -24,10 +24,8 @@ pub fn minqsub<const N: usize>(
     lba: &mut bool,
     uba: &mut bool,
     ier: &mut IerEnum,
-    subdone: &mut bool,
-)
-where
-    Const<N>: DimMin<Const<N>, Output=Const<N>>,
+) ->
+    bool // subdone
 {
     let mut definite = true;
     let mut has_nonzero_p;
@@ -100,8 +98,7 @@ where
 
     if !has_nonzero_p {
         *unfix = true;
-        *subdone = false;
-        return;
+        return false;
     }
 
     debug_assert!(!(*alpo <= 0.0 || *alpu >= 0.0)); // minqsub error: no alp
@@ -128,7 +125,7 @@ where
 
     if *ier != IerEnum::LocalMinimizerFound {
         *x = if *lba { -p } else { p };
-        return;
+        return false;
     }
 
     *unfix = !(*lba || *uba);
@@ -164,7 +161,7 @@ where
     }
 
     *nfree = free_count;
-    *subdone = true;
+    return true;
 }
 
 #[cfg(test)]
@@ -216,9 +213,8 @@ mod tests {
         let mut lba = false;
         let mut uba = false;
         let mut ier = IerEnum::LocalMinimizerFound;
-        let mut subdone = false;
 
-        minqsub(&mut nsub, &mut free, &mut L, &mut d, &mut K, &G, &mut g, &mut x, &xo, &xu, &mut nfree, &mut unfix, &mut alp, &mut alpu, &mut alpo, &mut lba, &mut uba, &mut ier, &mut subdone);
+        let subdone = minqsub(&mut nsub, &mut free, &mut L, &mut d, &mut K, &G, &mut g, &mut x, &xo, &xu, &mut nfree, &mut unfix, &mut alp, &mut alpu, &mut alpo, &mut lba, &mut uba, &mut ier);
 
         let expected_L = SMatrix::<f64, N, N>::from_row_slice(&[
             1.0, 0.0, 0.0, 0.0, 0.0, 0.0,
@@ -300,9 +296,8 @@ mod tests {
         let mut lba = false;
         let mut uba = false;
         let mut ier = IerEnum::LocalMinimizerFound;
-        let mut subdone = false;
 
-        minqsub(&mut nsub, &mut free, &mut L, &mut d, &mut K, &G, &mut g, &mut x, &xo, &xu, &mut nfree, &mut unfix, &mut alp, &mut alpu, &mut alpo, &mut lba, &mut uba, &mut ier, &mut subdone);
+        let subdone = minqsub(&mut nsub, &mut free, &mut L, &mut d, &mut K, &G, &mut g, &mut x, &xo, &xu, &mut nfree, &mut unfix, &mut alp, &mut alpu, &mut alpo, &mut lba, &mut uba, &mut ier);
 
         let expected_L = SMatrix::<f64, N, N>::from_row_slice(&[
             1.0, 0.0, 0.0, 0.0, 0.0, 0.0,
@@ -379,9 +374,8 @@ mod tests {
         let mut lba = false;
         let mut uba = false;
         let mut ier = IerEnum::LocalMinimizerFound;
-        let mut subdone = false;
 
-        minqsub(&mut nsub, &mut free, &mut L, &mut d, &mut K, &G, &mut g, &mut x, &xo, &xu, &mut nfree, &mut unfix, &mut alp, &mut alpu, &mut alpo, &mut lba, &mut uba, &mut ier, &mut subdone);
+        let subdone = minqsub(&mut nsub, &mut free, &mut L, &mut d, &mut K, &G, &mut g, &mut x, &xo, &xu, &mut nfree, &mut unfix, &mut alp, &mut alpu, &mut alpo, &mut lba, &mut uba, &mut ier);
 
         let expected_L = SMatrix::<f64, N, N>::from_row_slice(&[
             1.0, 0.0, 0.0, 0.0, 0.0, 0.0,
@@ -461,9 +455,8 @@ mod tests {
         let mut lba = false;
         let mut uba = false;
         let mut ier = IerEnum::LocalMinimizerFound;
-        let mut subdone = false;
 
-        minqsub(&mut nsub, &mut free, &mut L, &mut d, &mut K, &G, &mut g, &mut x, &xo, &xu, &mut nfree, &mut unfix, &mut alp, &mut alpu, &mut alpo, &mut lba, &mut uba, &mut ier, &mut subdone);
+        let subdone = minqsub(&mut nsub, &mut free, &mut L, &mut d, &mut K, &G, &mut g, &mut x, &xo, &xu, &mut nfree, &mut unfix, &mut alp, &mut alpu, &mut alpo, &mut lba, &mut uba, &mut ier);
 
         let expected_L = SMatrix::<f64, N, N>::from_row_slice(&[
             1.0, 0.0, 0.0, 0.0, 0.0, 0.0,
@@ -549,9 +542,8 @@ mod tests {
         let mut lba = false;
         let mut uba = false;
         let mut ier = IerEnum::LocalMinimizerFound;
-        let mut subdone = false;
 
-        minqsub(&mut nsub, &mut free, &mut L, &mut d, &mut K, &G, &mut g, &mut x, &xo, &xu, &mut nfree, &mut unfix, &mut alp, &mut alpu, &mut alpo, &mut lba, &mut uba, &mut ier, &mut subdone);
+        let subdone = minqsub(&mut nsub, &mut free, &mut L, &mut d, &mut K, &G, &mut g, &mut x, &xo, &xu, &mut nfree, &mut unfix, &mut alp, &mut alpu, &mut alpo, &mut lba, &mut uba, &mut ier);
 
         let expected_L = SMatrix::<f64, N, N>::from_row_slice(&[
             1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
@@ -593,7 +585,7 @@ mod tests {
         assert_eq!(alpo, f64::INFINITY);
         assert_eq!(lba, true);
         assert_eq!(uba, true);
-        assert_eq!(ier, IerEnum::UnboundedBelow);
+        assert_eq!(ier, IerEnum::Unbounded);
         assert_eq!(unfix, false);
         assert_eq!(subdone, false);
     }

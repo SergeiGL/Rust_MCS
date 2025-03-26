@@ -1,7 +1,24 @@
 use crate::minq::ldlrk1::ldlrk1;
 use nalgebra::{SMatrix, SVector};
 
-
+/// Downdates an LDL^T factorization by replacing the j-th row and column with the j-th unit vector
+///
+/// This function modifies the LDL^T factorization of a matrix when the j-th row and column
+/// are replaced by the j-th unit vector. This is a key operation in active-set methods for
+/// quadratic programming.
+///
+/// # Arguments
+/// * `L` - Lower triangular matrix with unit diagonal from the LDL^T factorization
+/// * `d` - Vector containing the diagonal elements of D (must be positive)
+/// * `j` - Index of the row/column to be replaced (0-based indexing)
+///
+/// # Mathematical Background
+/// If A = LDL^T is the original factorization, this function computes the factorization
+/// of a matrix A' which is identical to A except that the j-th row and column are replaced
+/// by the j-th unit vector.
+///
+/// # Note
+/// The function modifies both L and d in-place.
 pub fn ldldown<const N: usize>(
     L: &mut SMatrix<f64, N, N>,
     d: &mut SVector<f64, N>,
@@ -11,13 +28,13 @@ pub fn ldldown<const N: usize>(
 
     let mut LKj = L.view_range((j + 1)..N, j).into_owned();
 
-    // Saves LKI allocation; but due to this there is a code duplication
+    // Saves LKI allocation; but creates a code duplication
     match j {
         0 => {
             let mut LKK = L.view_range_mut((j + 1)..N, (j + 1)..N);
             let mut dK = d.view_range_mut((j + 1)..N, 0);
 
-            ldlrk1(&mut LKK.as_view_mut(), &mut dK.as_view_mut(), dj, &mut LKj);
+            ldlrk1(&mut LKK, &mut dK, dj, &mut LKj);
 
             L.fill_row(j, 0.0);
             L.fill_column(j, 0.0)
@@ -28,7 +45,7 @@ pub fn ldldown<const N: usize>(
             let mut LKK = L.view_range_mut((j + 1)..N, (j + 1)..N);
             let mut dK = d.view_range_mut((j + 1)..N, 0);
 
-            ldlrk1(&mut LKK.as_view_mut(), &mut dK.as_view_mut(), dj, &mut LKj);
+            ldlrk1(&mut LKK, &mut dK, dj, &mut LKj);
 
             L.fill_row(j, 0.0);
             L.view_range_mut(j.., j).fill(0.0);
@@ -45,6 +62,9 @@ pub fn ldldown<const N: usize>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use approx::assert_relative_eq;
+
+    static TOLERANCE: f64 = 1e-15;
 
     #[test]
     fn test_real_mistake() {
@@ -187,6 +207,192 @@ mod tests {
             0.0, 1.0
         ]);
         let expected_d = SVector::<f64, 2>::from_row_slice(&[0.2, 1.0]);
+
+        ldldown(&mut L, &mut d, j);
+        assert_eq!(L, expected_L);
+        assert_eq!(d, expected_d);
+    }
+
+
+    #[test]
+    fn test_ldldown_j_zero() {
+        // Test case for j = 0
+        let mut L = SMatrix::<f64, 3, 3>::new(
+            1.0, 0.0, 0.0,
+            0.5, 1.0, 0.0,
+            0.3, 0.2, 1.0,
+        );
+        let mut d = SVector::<f64, 3>::new(2.0, 1.5, 1.0);
+
+        let j = 0;
+
+        let expected_L = SMatrix::<f64, 3, 3>::new(
+            1.0, 0.0, 0.0,
+            0.0, 1.0, 0.0,
+            0.0, 0.30000000000000004, 1.0,
+        );
+        let expected_d = SVector::<f64, 3>::new(1.0, 2.0, 1.06);
+
+        ldldown(&mut L, &mut d, j);
+        assert_eq!(L, expected_L);
+        assert_eq!(d, expected_d);
+    }
+
+    #[test]
+    fn test_ldldown_j_middle() {
+        // Test case for j = 1 (middle of matrix)
+        let mut L = SMatrix::<f64, 3, 3>::new(
+            1.0, 0.01, 0.02,
+            0.5, 1.0, 0.03,
+            0.3, 0.2, 1.0,
+        );
+        let mut d = SVector::<f64, 3>::new(2.0, 1.5, 1.01);
+
+        let j = 1;
+
+        let expected_L = SMatrix::<f64, 3, 3>::new(
+            1.0, 0.01, 0.02,
+            0.0, 1.0, 0.0,
+            0.3, 0.0, 1.0,
+        );
+        let expected_d = SVector::<f64, 3>::new(2.0, 1.0, 1.07);
+
+        ldldown(&mut L, &mut d, j);
+        assert_eq!(L, expected_L);
+        assert_eq!(d, expected_d);
+    }
+
+    #[test]
+    fn test_ldldown_j_last() {
+        // Test case for j = n-1 (last element)
+        let mut L = SMatrix::<f64, 3, 3>::new(
+            1.0, 0.01, 0.02,
+            0.5, 1.0, 0.03,
+            0.3, 0.2, 1.0,
+        );
+        let mut d = SVector::<f64, 3>::new(2.0, 1.5, 1.01);
+
+        let j = 2;
+
+        let expected_L = SMatrix::<f64, 3, 3>::new(
+            1.0, 0.01, 0.02,
+            0.5, 1.0, 0.03,
+            0.0, 0.0, 1.0,
+        );
+        let expected_d = SVector::<f64, 3>::new(2.0, 1.5, 1.);
+
+        ldldown(&mut L, &mut d, j);
+        assert_eq!(L, expected_L);
+        assert_eq!(d, expected_d);
+    }
+
+    #[test]
+    fn test_ldldown_2() {
+        // Test with a larger matrix (5x5)
+        let mut L = SMatrix::<f64, 5, 5>::new(
+            1.0, 0.0, 0.0, 0.0, 0.0,
+            0.5, 1.0, 0.0, 0.0, 0.0,
+            0.3, 0.2, 1.0, 0.0, 0.0,
+            0.4, 0.3, 0.2, 1.0, 0.0,
+            0.1, 0.2, 0.3, 0.4, 1.0,
+        );
+        let mut d = SVector::<f64, 5>::new(2.0, 1.5, 1.0, 0.8, 0.5);
+
+        let j = 0;
+
+        let expected_L = SMatrix::<f64, 5, 5>::new(
+            1., 0., 0., 0., 0.,
+            0., 1., 0., 0., 0.,
+            0., 0.30000000000000004, 1., 0., 0.,
+            0., 0.425, 0.25943396226415094, 1., 0.,
+            0., 0.2, 0.28301886792452824, 0.3503801345512224, 1.,
+        );
+        let expected_d = SVector::<f64, 5>::new(1., 2., 1.06, 0.8624056603773586, 0.527220040474758);
+
+        ldldown(&mut L, &mut d, j);
+        assert_relative_eq!(L, expected_L, epsilon = TOLERANCE);
+        assert_relative_eq!(d, expected_d, epsilon = TOLERANCE);
+    }
+
+    #[test]
+    fn test_ldldown_3() {
+        // Test with a larger matrix (5x5)
+        let mut L = SMatrix::<f64, 5, 5>::new(
+            1.0, 0.0, 0.0, 0.0, 0.0,
+            0.5, 1.0, 0.0, 0.0, 0.0,
+            0.3, 0.2, 1.0, 0.0, 0.0,
+            0.4, 0.3, 0.2, 1.0, 0.0,
+            0.1, 0.2, 0.3, 0.4, 1.0,
+        );
+        let mut d = SVector::<f64, 5>::new(2.0, 1.5, 1.0, 0.8, 0.5);
+
+        let j = 1;
+
+        let expected_L = SMatrix::<f64, 5, 5>::new(
+            1., 0., 0., 0., 0.,
+            0., 1., 0., 0., 0.,
+            0.3, 0., 1., 0., 0.,
+            0.4, 0., 0.27358490566037735, 1., 0.,
+            0.1, 0., 0.3396226415094339, 0.4147882873393723, 1.,
+        );
+        let expected_d = SVector::<f64, 5>::new(2., 1., 1.06, 0.8956603773584906, 0.5016380872129766);
+
+        ldldown(&mut L, &mut d, j);
+        assert_eq!(L, expected_L);
+        assert_eq!(d, expected_d);
+    }
+
+
+    #[test]
+    fn test_ldldown_larger_matrix() {
+        // Test with a larger matrix (5x5)
+        let mut L = SMatrix::<f64, 5, 5>::new(
+            1.0, 0.0, 0.0, 0.0, 0.0,
+            0.5, 1.0, 0.0, 0.0, 0.0,
+            0.3, 0.2, 1.0, 0.0, 0.0,
+            0.4, 0.3, 0.2, 1.0, 0.0,
+            0.1, 0.2, 0.3, 0.4, 1.0,
+        );
+        let mut d = SVector::<f64, 5>::new(2.0, 1.5, 1.0, 0.8, 0.5);
+
+        let j = 2;
+
+        let expected_L = SMatrix::<f64, 5, 5>::new(
+            1., 0., 0., 0., 0.,
+            0.5, 1., 0., 0., 0.,
+            0., 0., 1., 0., 0.,
+            0.4, 0.3, 0., 1., 0.,
+            0.1, 0.2, 0., 0.45238095238095244, 1.,
+        );
+        let expected_d = SVector::<f64, 5>::new(2., 1.5, 1., 0.8400000000000001, 0.5460952380952381);
+
+        ldldown(&mut L, &mut d, j);
+        assert_relative_eq!(L, expected_L, epsilon = TOLERANCE);
+        assert_relative_eq!(d, expected_d, epsilon = TOLERANCE);
+    }
+
+    #[test]
+    fn test_ldldown_larger_last() {
+        // Test with a larger matrix (5x5)
+        let mut L = SMatrix::<f64, 5, 5>::new(
+            1.0, 0.0, 0.0, 0.0, 0.0,
+            0.5, 1.0, 0.0, 0.0, 0.0,
+            0.3, 0.2, 1.0, 0.0, 0.0,
+            0.4, 0.3, 0.2, 1.0, 0.0,
+            0.1, 0.2, 0.3, 0.4, 1.0,
+        );
+        let mut d = SVector::<f64, 5>::new(2.0, 1.5, 1.0, 0.8, 0.5);
+
+        let j = 4;
+
+        let expected_L = SMatrix::<f64, 5, 5>::new(
+            1., 0., 0., 0., 0.,
+            0.5, 1., 0., 0., 0.,
+            0.3, 0.2, 1., 0., 0.,
+            0.4, 0.3, 0.2, 1., 0.,
+            0., 0., 0., 0., 1.,
+        );
+        let expected_d = SVector::<f64, 5>::new(2., 1.5, 1., 0.8, 1.);
 
         ldldown(&mut L, &mut d, j);
         assert_eq!(L, expected_L);

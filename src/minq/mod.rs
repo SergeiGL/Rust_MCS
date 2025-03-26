@@ -7,16 +7,45 @@ mod minqsub;
 use crate::mcs_utils::helper_funcs::clamp_SVector_mut;
 use crate::minq::{getalp::getalp, minqsub::minqsub};
 
-use nalgebra::{Const, DimMin, SMatrix, SVector};
+use nalgebra::{SMatrix, SVector};
 
 #[derive(Debug, PartialOrd, PartialEq, Clone, Copy)]
 pub enum IerEnum {
     LocalMinimizerFound, // 0
-    UnboundedBelow,      // 1
+    Unbounded,           // 1
     MaxitExceeded,       // 99
     InputError,          // -1
 }
 
+/// Minimizes an affine quadratic form subject to simple bounds,
+/// using coordinate searches and reduced subspace minimizations
+/// using LDL^T factorization updates
+///
+///    min    `fct = gam + c^T x + 0.5 x^T G x`
+///
+///    s.t.   `x in [xu,xo]`    `xu<=xo` is assumed
+///
+/// # Arguments
+/// * `gam` - number, representing `gam` term of fct
+///
+/// * `c` - 1 x N matrix, representing `c` term of fct
+///
+/// * `G` - Symmetric N x N matrix, not necessarily definite
+/// (if G is indefinite, only a local minimum is found).
+/// If G is sparse, it is assumed that the ordering is such that
+/// a sparse modified Cholesky factorization is feasible
+///
+/// * `xu` - Lower bounds vector of size `N` defining the initial box
+/// * `xo` - Upper bounds vector of size `N` defining the initial box
+///
+/// # Returns
+/// * `x` - Minimizer (but unbounded direction if ier=1)
+/// * `fct`	- Function value
+/// * `ier` - IerEnum:
+///     0  (local minimizer found);
+/// 	1  (unbounded);
+/// 	99 (maxit exceeded);
+/// 	-1 (input error)
 pub fn minq<const N: usize>(
     gam: f64,
     c: &SVector<f64, N>,
@@ -27,40 +56,42 @@ pub fn minq<const N: usize>(
     SVector<f64, N>,  // x
     f64,              // fct
     IerEnum           // ier
-) where
-    Const<N>: DimMin<Const<N>, Output=Const<N>>,
-{
-    let mut g: SVector::<f64, N>;
+) {
+    let mut g: SVector<f64, N>;
     let mut x = SVector::<f64, N>::zeros();
     let mut K = SVector::<bool, N>::repeat(false);
     let mut free = SVector::<bool, N>::repeat(false);
     let mut L = SMatrix::<f64, N, N>::identity();
     let mut d = SVector::<f64, N>::repeat(1.0);
 
-    clamp_SVector_mut(&mut x, &xu, &xo);
-
     // Regularization for low rank problems // TODO: WTF
-    let hpeps = 2.2204e-14;
+    let hpeps = f64::EPSILON * 100.0;
     for i in 0..N {
         G[(i, i)] += hpeps * G[(i, i)];
     }
 
-    let (nitrefmax, maxit) = (3, 3 * N);
+    let nitrefmax: usize = 3;
+    let maxit = 3 * N;
     let mut nfree: usize = 0;
     let mut nfree_old_option: Option<usize> = None;
     let mut fct = f64::INFINITY;
     let (mut nsub, mut nitref) = (0_usize, 0_usize);
     let (mut unfix, mut improvement) = (true, true);
     let mut ier = IerEnum::LocalMinimizerFound;
+    let (mut alp, mut lba, mut uba);
+
+    clamp_SVector_mut(&mut x, &xu, &xo);
+
 
     'main: loop {
         debug_assert!(!x.iter().any(|&val| val.is_infinite()));
 
         g = *G * x + c;
 
-        let fctnew = gam + 0.5 * x.dot(&(c + g));
+        let fctnew = gam + 0.5 * x.dot(&(c + g)); // .dot() does transpose first (i.e self.transpose() * rhs)
 
-        if !improvement || nitref > nitrefmax ||
+        if !improvement ||
+            nitref > nitrefmax ||
             (nitref > 0 && nfree_old_option.map_or(false, |nfree_old| nfree_old == nfree) && fctnew >= fct) {
             break 'main;
         }
@@ -72,19 +103,18 @@ pub fn minq<const N: usize>(
             break 'main;
         }
 
-        // Optimized coordinate search
+        // Coordinate search
         let mut count = 0_usize;
-        let mut k = 0_usize;
-        let mut k_init = true;
+        let (mut k, mut set_k) = (0, true); // set_k is a trick to avoid k=-1 initialization. set_k maps 0 -> 0 once, so the effect of incrementing k is the same
 
-        'coord: loop {
+        'coord_search: loop {
             // Combined loop for coordinate search
             while count <= N {
                 count += 1;
-                k = if !k_init && k + 1 == N {
+                k = if set_k {
+                    set_k = false;
                     0
-                } else if k_init {
-                    k_init = false;
+                } else if k + 1 == N {
                     0
                 } else {
                     k + 1
@@ -96,7 +126,7 @@ pub fn minq<const N: usize>(
             }
 
             if count > N {
-                break 'coord;
+                break 'coord_search;
             }
 
             // Get column view once
@@ -104,11 +134,11 @@ pub fn minq<const N: usize>(
             let (alpu, alpo) = (xu[k] - x[k], xo[k] - x[k]);
 
             // Find step size
-            let (alp, lba, uba, step_ier) = getalp(alpu, alpo, g[k], q[k]);
-            if step_ier != IerEnum::LocalMinimizerFound {
+            (alp, lba, uba, ier) = getalp(alpu, alpo, g[k], q[k]);
+            if ier != IerEnum::LocalMinimizerFound {
                 x = SVector::zeros();
                 x[k] = if lba { -1.0 } else { 1.0 };
-                return (x, fct, step_ier);
+                return (x, fct, ier);
             }
 
             let xnew = x[k] + alp;
@@ -149,14 +179,13 @@ pub fn minq<const N: usize>(
         let gain_cs = fct - gam - 0.5 * x.dot(&(c + g));
         improvement = gain_cs > 0.0 || !unfix;
 
-        if !(!improvement || nitref > nitrefmax) && nfree == 0 {
+        if !improvement || nitref > nitrefmax {} else if nfree == 0 {
             unfix = true;
-        } else if !(!improvement || nitref > nitrefmax) && nfree > 0 {
-            let mut subdone = false;
-            minqsub(&mut nsub, &mut free, &mut L, &mut d, &mut K, G, &mut g,
-                    &mut x, xo, xu, &mut nfree, &mut unfix,
-                    &mut 0.0, &mut 0.0, &mut 0.0, &mut true, &mut true,
-                    &mut ier, &mut subdone);
+        } else {
+            let subdone = minqsub(&mut nsub, &mut free, &mut L, &mut d, &mut K, G, &mut g,
+                                  &mut x, xo, xu, &mut nfree, &mut unfix,
+                                  &mut 0.0, &mut 0.0, &mut 0.0, &mut true, &mut true,
+                                  &mut ier, );
 
             if !subdone || ier != IerEnum::LocalMinimizerFound {
                 return (x, fct, ier);
@@ -425,7 +454,7 @@ mod tests {
 
         assert_eq!(x, SVector::<f64, 1>::from_row_slice(&[1.0]));
         assert_eq!(fct, 1.0);
-        assert_eq!(ier, IerEnum::UnboundedBelow);
+        assert_eq!(ier, IerEnum::Unbounded);
     }
 
     #[test]

@@ -2,7 +2,7 @@ use crate::gls::gls;
 use crate::mcs_utils::{csearch::csearch, helper_funcs::*, neighbor::neighbor, triple::triple};
 use crate::minq::minq;
 use crate::StopStruct;
-use nalgebra::{Const, DimMin, SMatrix, SVector};
+use nalgebra::{SMatrix, SVector};
 
 pub fn lsearch<const N: usize>(
     func: fn(&SVector<f64, N>) -> f64,
@@ -21,9 +21,7 @@ pub fn lsearch<const N: usize>(
     f64,             // fmi
     usize,           // ncall
     bool,            // flag
-) where
-    Const<N>: DimMin<Const<N>, Output=Const<N>>,
-{
+) {
     let EPS_POW_1_3 = f64::EPSILON.powf(1.0 / 3.0);
 
     let (mut eps0, mut ncall, nloc, small, smaxls, mut flag) = (0.001, 0_usize, 1, 0.1, 15, true);
