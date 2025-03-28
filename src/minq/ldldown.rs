@@ -26,31 +26,22 @@ pub fn ldldown<const N: usize>(
 ) {
     let dj = d[j];
 
-    let mut LKj = L.view_range((j + 1)..N, j).into_owned();
+    // as L's region ((j + 1)..N, 0..j) has no chance to be modified, no need to SAVE it (like let LKI = L.view_range((j + 1)..N, 0..j).into_owned();)
+    let LKj = L.view_range((j + 1)..N, j).into_owned();
+    let mut LKK = L.view_range_mut((j + 1)..N, (j + 1)..N);
+    let mut dK = d.view_range_mut((j + 1)..N, 0);
 
-    // Saves LKI allocation; but creates a code duplication
+    ldlrk1(&mut LKK, &mut dK, dj, LKj);
+
     match j {
         0 => {
-            let mut LKK = L.view_range_mut((j + 1)..N, (j + 1)..N);
-            let mut dK = d.view_range_mut((j + 1)..N, 0);
-
-            ldlrk1(&mut LKK, &mut dK, dj, &mut LKj);
-
             L.fill_row(j, 0.0);
             L.fill_column(j, 0.0)
         }
         _ => {
-            let LKI = L.view_range((j + 1)..N, 0..j).into_owned();
-
-            let mut LKK = L.view_range_mut((j + 1)..N, (j + 1)..N);
-            let mut dK = d.view_range_mut((j + 1)..N, 0);
-
-            ldlrk1(&mut LKK, &mut dK, dj, &mut LKj);
-
             L.fill_row(j, 0.0);
             L.view_range_mut(j.., j).fill(0.0);
-
-            L.view_range_mut((j + 1)..N, 0..j).copy_from(&LKI);
+            // as L's region ((j + 1)..N, 0..j) has no chance to be modified, no need to RESTORE it (like L.view_range_mut((j + 1)..N, 0..j).copy_from(&LKI);)
         }
     }
 

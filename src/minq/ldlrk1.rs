@@ -31,7 +31,7 @@ pub fn ldlrk1<const N: usize>(
     L: &mut MatrixViewMut<f64, Dyn, Dyn, Const<1>, Const<{ N }>>,
     d: &mut MatrixViewMut<f64, Dyn, U1, Const<1>, Const<{ N }>>,
     mut alp: f64,
-    u: &mut DVector<f64>,
+    mut u: DVector<f64>,
 ) ->
     DVector<f64> // p
 {
@@ -51,25 +51,22 @@ pub fn ldlrk1<const N: usize>(
         .filter_map(|(idx, &val)| (val != 0.0).then_some(idx))
         .collect();
 
-    for &k in u_non_zero_indices.iter() {
+    for k in u_non_zero_indices {
         let delta: f64 = d[k] + alp * u[k].powi(2);
 
         if alp < 0.0 && delta <= neps {
             let mut p = DVector::zeros(n);
             p[k] = 1.0;
 
-            // Solve the system for the first k+1 elements
-            // Note: In Matlab, p(1:k) refers to the first k elements
-            // In Rust with 0-indexing, we need to use ..=k for the same range
-            let p_slice = p.rows_mut(0, k + 1);
 
-            // This is equivalent to the Matlab L(1:k,1:k)'\p(1:k)
-            let solution = L.view_range(0..k + 1, 0..k + 1).transpose().lu().solve(&p_slice).unwrap(); // TODO: not sure about .transpose() here. No such in Python version
+            // p(1:k)=L(1:k,1:k)'\p(1:k);
+            // this solution variable is needed for the borrow checker as p here is borrowed as immut and later will be borrowed as mut
+            let solution = L.view_range(0..k + 1, 0..k + 1).transpose().lu().solve(
+                &p.rows(0, k + 1)
+            ).unwrap(); // TODO: not sure about .transpose() here. No such in Python version
 
-            // Update the first k+1 elements of p with the solution
             p.rows_mut(0, k + 1).copy_from(&solution);
 
-            // Note: The original code has "restore original factorization"
             L.copy_from(&L0); // This will copy the data from L0 back to L
             d.copy_from(&d0);
 
@@ -117,13 +114,13 @@ mod tests {
         ]);
         let mut d = DVector::from_row_slice(&[0.1, 0.2, 0.3]);
         let alp = 4.4;
-        let mut u = DVector::from_row_slice(&[1.23, -1.0, 1.0]);
+        let u = DVector::from_row_slice(&[1.23, -1.0, 1.0]);
 
         // Create mutable views for L and d
         let mut L_view = MatrixViewMut::from(&mut L);
         let mut d_view = MatrixViewMut::from(&mut d);
 
-        let p = ldlrk1::<3>(&mut L_view, &mut d_view, alp, &mut u);
+        let p = ldlrk1::<3>(&mut L_view, &mut d_view, alp, u);
 
         assert_eq!(L, DMatrix::<f64>::from_row_slice(3, 3, &[1.0, -2.0, 3.0, -0.7417756439476909, -5.0, 6.0, 0.6973756652596808, -0.8479315955240974, 9.0]));
 
@@ -131,7 +128,6 @@ mod tests {
         assert_eq!(p, DVector::<f64>::from_row_slice(&[]));
 
         assert_eq!(alp, 4.4);
-        assert_eq!(u, DVector::from_row_slice(&[1.23, -5.92, 56.97]));
     }
 
     #[test]
@@ -143,12 +139,12 @@ mod tests {
         ]);
         let mut d = DVector::from_row_slice(&[0.1, 0.2, 0.3]);
         let alp = -0.4;
-        let mut u = DVector::from_row_slice(&[1.23, -1.0, 1.0]);
+        let u = DVector::from_row_slice(&[1.23, -1.0, 1.0]);
 
         let mut L_view = MatrixViewMut::from(&mut L);
         let mut d_view = MatrixViewMut::from(&mut d);
 
-        let p = ldlrk1::<3>(&mut L_view, &mut d_view, alp, &mut u);
+        let p = ldlrk1::<3>(&mut L_view, &mut d_view, alp, u);
 
         assert_eq!(L, DMatrix::<f64>::from_row_slice(3, 3, &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0]));
 
@@ -156,7 +152,6 @@ mod tests {
         assert_eq!(p, DVector::from_row_slice(&[1., 0., 0.]));
 
         assert_eq!(alp, -0.4);
-        assert_eq!(u, DVector::from_row_slice(&[1.23, -1., 1.]));
     }
 
 
@@ -169,12 +164,12 @@ mod tests {
         ]);
         let mut d = DVector::from_row_slice(&[0.0, 0.0, 0.0]);
         let alp = 0.01;
-        let mut u = DVector::from_row_slice(&[1.23, -1.0, 1.0]);
+        let u = DVector::from_row_slice(&[1.23, -1.0, 1.0]);
 
         let mut L_view = MatrixViewMut::from(&mut L);
         let mut d_view = MatrixViewMut::from(&mut d);
 
-        let p = ldlrk1::<3>(&mut L_view, &mut d_view, alp, &mut u);
+        let p = ldlrk1::<3>(&mut L_view, &mut d_view, alp, u);
 
         assert_relative_eq!(L, DMatrix::<f64>::from_row_slice(3, 3, &[1.0, -2.0, 3.0, -0.8130081300813009, -5.0, 6.0, 0.8130081300813009, 8.0, 9.0]), epsilon = TOLERANCE);
 
@@ -182,7 +177,6 @@ mod tests {
         assert_eq!(p, DVector::<f64>::from_row_slice(&[]));
 
         assert_eq!(alp, 0.01);
-        assert_eq!(u, DVector::from_row_slice(&[1.23, -5.92, 9.61]));
     }
 
     #[test]
@@ -194,12 +188,12 @@ mod tests {
         ]);
         let mut d = DVector::from_row_slice(&[0.01, 0.002, 0.03]);
         let alp = -10.0;
-        let mut u = DVector::from_row_slice(&[1.23, -10.0, 5.0]);
+        let u = DVector::from_row_slice(&[1.23, -10.0, 5.0]);
 
         let mut L_view = MatrixViewMut::from(&mut L);
         let mut d_view = MatrixViewMut::from(&mut d);
 
-        let p = ldlrk1::<3>(&mut L_view, &mut d_view, alp, &mut u);
+        let p = ldlrk1::<3>(&mut L_view, &mut d_view, alp, u);
 
         assert_eq!(L, DMatrix::<f64>::from_row_slice(3, 3, &[
             1.0, 0.0, -1.45,
@@ -222,12 +216,12 @@ mod tests {
         ]);
         let mut d = DVector::from_row_slice(&[2.0, 3.0]);
         let alp = 1.0;
-        let mut u = DVector::from_row_slice(&[1.0, 1.0]);
+        let u = DVector::from_row_slice(&[1.0, 1.0]);
 
         let mut L_view = MatrixViewMut::from(&mut L);
         let mut d_view = MatrixViewMut::from(&mut d);
 
-        let p = ldlrk1::<2>(&mut L_view, &mut d_view, alp, &mut u);
+        let p = ldlrk1::<2>(&mut L_view, &mut d_view, alp, u);
 
         assert_eq!(L, DMatrix::<f64>::from_row_slice(2, 2, &[
             1.0, 0.0,
@@ -244,12 +238,12 @@ mod tests {
         let mut L = DMatrix::<f64>::from_row_slice(1, 1, &[1.0]);
         let mut d = DVector::from_row_slice(&[2.0]);
         let alp = 0.0;
-        let mut u = DVector::from_row_slice(&[1.0]);
+        let u = DVector::from_row_slice(&[1.0]);
 
         let mut L_view = MatrixViewMut::from(&mut L);
         let mut d_view = MatrixViewMut::from(&mut d);
 
-        let p = ldlrk1::<1>(&mut L_view, &mut d_view, alp, &mut u);
+        let p = ldlrk1::<1>(&mut L_view, &mut d_view, alp, u);
 
         assert_eq!(L, DMatrix::<f64>::from_row_slice(1, 1, &[1.0]));
         assert_eq!(d, DVector::from_row_slice(&[2.0]));
@@ -264,12 +258,12 @@ mod tests {
         ]);
         let mut d = DVector::from_row_slice(&[1.0, 1.0]);
         let alp = -0.5;
-        let mut u = DVector::from_row_slice(&[1.0, 1.0]);
+        let u = DVector::from_row_slice(&[1.0, 1.0]);
 
         let mut L_view = MatrixViewMut::from(&mut L);
         let mut d_view = MatrixViewMut::from(&mut d);
 
-        let p = ldlrk1::<2>(&mut L_view, &mut d_view, alp, &mut u);
+        let p = ldlrk1::<2>(&mut L_view, &mut d_view, alp, u);
 
         assert_eq!(L, DMatrix::<f64>::from_row_slice(2, 2, &[
             1.0, 0.0,
@@ -285,12 +279,12 @@ mod tests {
         let mut L = DMatrix::<f64>::from_row_slice(1, 1, &[1.0]);
         let mut d = DVector::from_row_slice(&[2.0]);
         let alp = 1.0;
-        let mut u = DVector::from_row_slice(&[2.0]);
+        let u = DVector::from_row_slice(&[2.0]);
 
         let mut L_view = MatrixViewMut::from(&mut L);
         let mut d_view = MatrixViewMut::from(&mut d);
 
-        let p = ldlrk1::<1>(&mut L_view, &mut d_view, alp, &mut u);
+        let p = ldlrk1::<1>(&mut L_view, &mut d_view, alp, u);
 
 
         assert_eq!(L, DMatrix::<f64>::from_row_slice(1, 1, &[1.0]));
@@ -303,12 +297,12 @@ mod tests {
         let mut L = DMatrix::<f64>::from_row_slice(1, 1, &[1.0]);
         let mut d = DVector::from_row_slice(&[2.0]);
         let alp = -1.0;
-        let mut u = DVector::from_row_slice(&[2.0]);
+        let u = DVector::from_row_slice(&[2.0]);
 
         let mut L_view = MatrixViewMut::from(&mut L);
         let mut d_view = MatrixViewMut::from(&mut d);
 
-        let p = ldlrk1::<1>(&mut L_view, &mut d_view, alp, &mut u);
+        let p = ldlrk1::<1>(&mut L_view, &mut d_view, alp, u);
 
         assert_eq!(L, DMatrix::<f64>::from_row_slice(1, 1, &[1.0]));
         assert_eq!(d, DVector::from_row_slice(&[2.0]));
@@ -320,12 +314,12 @@ mod tests {
         let mut L = DMatrix::<f64>::from_row_slice(2, 2, &[0.0132305353535357669842, -0.4234767083209478906, 0.5000000000001, 1.50000034343434340000001]);
         let mut d = DVector::from_row_slice(&[2.3133333333334354666, 3.77777777909802358971908208]);
         let alp = 1.131313131313131313131313133146024;
-        let mut u = DVector::from_row_slice(&[1., 1.]);
+        let u = DVector::from_row_slice(&[1., 1.]);
 
         let mut L_view = MatrixViewMut::from(&mut L);
         let mut d_view = MatrixViewMut::from(&mut d);
 
-        let p = ldlrk1::<2>(&mut L_view, &mut d_view, alp, &mut u);
+        let p = ldlrk1::<2>(&mut L_view, &mut d_view, alp, u);
 
         assert_eq!(L, DMatrix::<f64>::from_row_slice(2, 2, &[0.013230535353535766, -0.4234767083209479, 0.6642132426251283, 1.5000003434343434]));
         assert_eq!(d, DVector::from_row_slice(&[3.444646464646567, 3.96771776306761]));
@@ -341,17 +335,16 @@ mod tests {
         ]);
         let mut d = DVector::from_row_slice(&[2.0, 3.0, 1.0]);
         let alp = 1.5;
-        let mut u = DVector::from_row_slice(&[1.0, 0.0, 2.0]);
+        let u = DVector::from_row_slice(&[1.0, 0.0, 2.0]);
 
         let mut L_view = MatrixViewMut::from(&mut L);
         let mut d_view = MatrixViewMut::from(&mut d);
 
-        let p = ldlrk1::<3>(&mut L_view, &mut d_view, alp, &mut u);
+        let p = ldlrk1::<3>(&mut L_view, &mut d_view, alp, u);
 
         assert_eq!(L, DMatrix::<f64>::from_row_slice(3, 3, &[1.0, 0.0, 0.0, 0.2857142857142857, 1.0, 0.0, 1.0285714285714285, 0.2, 1.0]));
         assert_eq!(d, DVector::from_row_slice(&[3.5, 3.0, 3.477142857142857]));
         assert_eq!(p, DVector::<f64>::from_row_slice(&[]));
-        assert_eq!(u, DVector::from_row_slice(&[1., -0.5, 1.7]))
     }
 
     #[test]
@@ -363,17 +356,16 @@ mod tests {
         ]);
         let mut d = DVector::from_row_slice(&[2.0, 3.0, 1.0]);
         let alp = 0.0;
-        let mut u = DVector::from_row_slice(&[1.0, 0.0, 2.0]);
+        let u = DVector::from_row_slice(&[1.0, 0.0, 2.0]);
 
         let mut L_view = MatrixViewMut::from(&mut L);
         let mut d_view = MatrixViewMut::from(&mut d);
 
-        let p = ldlrk1::<3>(&mut L_view, &mut d_view, alp, &mut u);
+        let p = ldlrk1::<3>(&mut L_view, &mut d_view, alp, u);
 
         assert_eq!(L, DMatrix::<f64>::from_row_slice(3, 3, &[1.0, 0.0, 0.0, 0.5, 1.0, 0.0, 0.3, 0.2, 1.0, ]));
         assert_eq!(d, DVector::from_row_slice(&[2.0, 3.0, 1.0]));
         assert_eq!(p, DVector::<f64>::from_row_slice(&[]));
-        assert_eq!(u, DVector::from_row_slice(&[1.0, 0.0, 2.0]))
     }
 
     #[test]
@@ -386,17 +378,16 @@ mod tests {
         ]);
         let mut d = DVector::from_row_slice(&[1.0, 1e-16, 1.0]);
         let alp = 1e-16;
-        let mut u = DVector::from_row_slice(&[1.0, 1.0, 1.0]);
+        let u = DVector::from_row_slice(&[1.0, 1.0, 1.0]);
 
         let mut L_view = MatrixViewMut::from(&mut L);
         let mut d_view = MatrixViewMut::from(&mut d);
 
-        let p = ldlrk1::<3>(&mut L_view, &mut d_view, alp, &mut u);
+        let p = ldlrk1::<3>(&mut L_view, &mut d_view, alp, u);
 
         assert_eq!(L, DMatrix::<f64>::from_row_slice(3, 3, &[1., 0., 0., 0.5000000000000001, 1., 0., 0.3000000000000001, 0.43999999999999995, 1.]));
         assert_eq!(d, DVector::from_row_slice(&[1.00, 1.25e-16, 1.00]));
         assert_eq!(p, DVector::<f64>::from_row_slice(&[]));
-        assert_eq!(u, DVector::from_row_slice(&[1., 0.5, 0.6]))
     }
 
     #[test]
@@ -406,17 +397,16 @@ mod tests {
         let mut L = DMatrix::<f64>::identity(n, n);
         let mut d = DVector::from_element(n, 1.0);
         let alp = 2.0;
-        let mut u = DVector::from_element(n, 1.0);
+        let u = DVector::from_element(n, 1.0);
 
         let mut L_view = MatrixViewMut::from(&mut L);
         let mut d_view = MatrixViewMut::from(&mut d);
 
-        let p = ldlrk1::<5>(&mut L_view, &mut d_view, alp, &mut u);
+        let p = ldlrk1::<5>(&mut L_view, &mut d_view, alp, u);
 
         assert_eq!(L, DMatrix::<f64>::from_row_slice(5, 5, &[1., 0., 0., 0., 0., 0.6666666666666666, 1., 0., 0., 0., 0.6666666666666666, 0.4, 1., 0., 0., 0.6666666666666666, 0.4, 0.28571428571428575, 1., 0., 0.6666666666666666, 0.4, 0.28571428571428575, 0.22222222222222224, 1.]));
         assert_eq!(d, DVector::from_row_slice(&[3., 1.6666666666666665, 1.4, 1.2857142857142858, 1.2222222222222223]));
         assert_eq!(p, DVector::<f64>::from_row_slice(&[]));
-        assert_eq!(u, DVector::from_row_slice(&[1., 1., 1., 1., 1.]))
     }
 
     #[test]
@@ -428,17 +418,16 @@ mod tests {
         ]);
         let mut d = DVector::from_row_slice(&[2.0, 1e-10, 1.0]);
         let alp = -1.0;
-        let mut u = DVector::from_row_slice(&[0.1, 1.0, 0.1]);
+        let u = DVector::from_row_slice(&[0.1, 1.0, 0.1]);
 
         let mut L_view = MatrixViewMut::from(&mut L);
         let mut d_view = MatrixViewMut::from(&mut d);
 
-        let p = ldlrk1::<3>(&mut L_view, &mut d_view, alp, &mut u);
+        let p = ldlrk1::<3>(&mut L_view, &mut d_view, alp, u);
 
         assert_eq!(L, DMatrix::<f64>::from_row_slice(3, 3, &[1.0000, 0., 0., 0.5100, 1.0000, 0., 0.3200, 0.2300, 1.0000]));
         assert_eq!(d, DVector::from_row_slice(&[2.0, 1.00e-10, 1.00]));
         assert_eq!(p, DVector::<f64>::from_row_slice(&[-0.4623115577889447, 1.0000, 0.]));
-        assert_eq!(u, DVector::from_row_slice(&[0.1, 0.949, 0.068]))
     }
 
     #[test]
@@ -452,17 +441,16 @@ mod tests {
         ]);
         let mut d = DVector::from_row_slice(&[2.0, 3.0, 1.0, 4.0]);
         let alp = 2.5;
-        let mut u = DVector::from_row_slice(&[1.0, -2.0, 3.0, -4.0]);
+        let u = DVector::from_row_slice(&[1.0, -2.0, 3.0, -4.0]);
 
         let mut L_view = MatrixViewMut::from(&mut L);
         let mut d_view = MatrixViewMut::from(&mut d);
 
-        let p = ldlrk1::<4>(&mut L_view, &mut d_view, alp, &mut u);
+        let p = ldlrk1::<4>(&mut L_view, &mut d_view, alp, u);
 
         assert_eq!(L, DMatrix::<f64>::from_row_slice(4, 4, &[1.0, 0.0, 0.0, 0.0, -0.888888888888889, 1.0, 0.0, 0.0, 1.8, -0.693854748603352, 1.0, 0.0, -2.177777777777778, 1.265921787709497, -0.6148222838416939, 1.0]));
         assert_eq!(d, DVector::from_row_slice(&[4.5, 9.944444444444445, 4.432402234636872, 5.905752457776657]));
         assert_eq!(p, DVector::<f64>::from_row_slice(&[]));
-        assert_eq!(u, DVector::from_row_slice(&[1., -2.5, 3.2, -5.02]))
     }
 
     #[test]
@@ -471,7 +459,7 @@ mod tests {
         let mut L = DMatrix::<f64>::identity(n, n);
         let mut d = DVector::from_element(n, 1.0);
         let alp = -1.0;
-        let mut u = DVector::<f64>::from_row_slice(&[1.0, 1.0, 1.0]);
+        let u = DVector::<f64>::from_row_slice(&[1.0, 1.0, 1.0]);
 
         // Set d[1] to a value that will make delta exactly at the threshold
         let neps = n as f64 * f64::EPSILON;
@@ -480,12 +468,11 @@ mod tests {
         let mut L_view = MatrixViewMut::from(&mut L);
         let mut d_view = MatrixViewMut::from(&mut d);
 
-        let p = ldlrk1::<3>(&mut L_view, &mut d_view, alp, &mut u);
+        let p = ldlrk1::<3>(&mut L_view, &mut d_view, alp, u);
 
         assert_eq!(L, DMatrix::<f64>::from_row_slice(3, 3, &[1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]));
         assert_eq!(d, DVector::from_row_slice(&[1., 1.0000000000000007, 1.]));
         assert_eq!(p, DVector::<f64>::from_row_slice(&[1., 0., 0.]));
-        assert_eq!(u, DVector::from_row_slice(&[1., 1., 1.]))
     }
 
     #[test]
@@ -498,17 +485,16 @@ mod tests {
         ]);
         let mut d = DVector::from_row_slice(&[2.0, 3.0, 1.0, 4.0]);
         let alp = -2.5;
-        let mut u = DVector::from_row_slice(&[1.0, -2.0, 3.0, -4.0]);
+        let u = DVector::from_row_slice(&[1.0, -2.0, 3.0, -4.0]);
 
         let mut L_view = MatrixViewMut::from(&mut L);
         let mut d_view = MatrixViewMut::from(&mut d);
 
-        let p = ldlrk1::<4>(&mut L_view, &mut d_view, alp, &mut u);
+        let p = ldlrk1::<4>(&mut L_view, &mut d_view, alp, u);
 
         assert_eq!(L, DMatrix::<f64>::from_row_slice(4, 4, &[1.0, 0.0, 0.0, 0.0, 0.5, 1.0, 0.0, 0.0, 0.3, 0.2, 1.0, 0.0, 0.1, 0.4, 0.6, 1.0]));
         assert_eq!(d, DVector::from_row_slice(&[2., 3., 1., 4.]));
         assert_eq!(p, DVector::<f64>::from_row_slice(&[1., 0., 0., 0.]));
-        assert_eq!(u, DVector::from_row_slice(&[1., -2., 3., -4.]))
     }
 
     #[test]
@@ -521,16 +507,15 @@ mod tests {
         ]);
         let mut d = DVector::from_row_slice(&[1.1, -3.0, -1.0, -4.0]);
         let alp = -1.7;
-        let mut u = DVector::from_row_slice(&[0.0, -2.0, -3.0, -4.0]);
+        let u = DVector::from_row_slice(&[0.0, -2.0, -3.0, -4.0]);
 
         let mut L_view = MatrixViewMut::from(&mut L);
         let mut d_view = MatrixViewMut::from(&mut d);
 
-        let p = ldlrk1::<4>(&mut L_view, &mut d_view, alp, &mut u);
+        let p = ldlrk1::<4>(&mut L_view, &mut d_view, alp, u);
 
         assert_eq!(L, DMatrix::<f64>::from_row_slice(4, 4, &[1.1, 0.0, 0.0, 0.0, -0.3, 1.0, 0.0, 0.0, 0.4, 0.2, 1.0, 0.0, -0.5, 0.23, 0.12, 1.43, ]));
         assert_eq!(d, DVector::from_row_slice(&[1.1, -3.0, -1.0, -4.0]));
         assert_eq!(p, DVector::<f64>::from_row_slice(&[0.2727272727272727, 1.0000, 0., 0.]));
-        assert_eq!(u, DVector::from_row_slice(&[0.0, -2.0, -3.0, -4.0]))
     }
 }

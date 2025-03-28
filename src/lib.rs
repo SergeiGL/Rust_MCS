@@ -24,7 +24,7 @@ use mcs_utils::strtsw::strtsw;
 use mcs_utils::updtrec::updtrec;
 use mcs_utils::vertex::vertex;
 
-use nalgebra::{Matrix2xX, SMatrix, SVector};
+use nalgebra::{Const, DimMin, Matrix2xX, SMatrix, SVector};
 
 
 pub struct StopStruct {
@@ -82,7 +82,10 @@ pub fn mcs<const SMAX: usize, const N: usize>(
     usize,                 // ncall
     usize,                 // ncloc
     ExitFlagEnum,          // flag
-) {
+)
+where
+    Const<N>: DimMin<Const<N>, Output=Const<N>>,
+{
     if u >= v {
         panic!("Error MCS main: v should be > u:\nv = {v:?}\nu = {u:?}");
     }

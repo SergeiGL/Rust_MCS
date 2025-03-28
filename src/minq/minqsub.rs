@@ -2,9 +2,58 @@ use crate::minq::getalp::getalp;
 use crate::minq::ldldown::ldldown;
 use crate::minq::ldlup::ldlup;
 use crate::minq::IerEnum;
-use nalgebra::{SMatrix, SVector};
+use nalgebra::{Const, DimMin, SMatrix, SVector};
 
-
+/// Performs a single iteration of the MINQ algorithm for bound-constrained quadratic minimization
+///
+/// This function executes one iteration of the MINQ algorithm, which solves quadratic programming problems
+/// with simple bounds. It updates the current solution by computing a search direction, determining a step size,
+/// and updating the active set of constraints.
+///
+/// The algorithm maintains an LDL^T factorization of the reduced Hessian matrix corresponding to free variables.
+/// It updates this factorization when variables change status (from fixed to free or vice versa) and computes
+/// a search direction by solving a linear system. The step size is determined to maintain feasibility with respect
+/// to the bounds and to minimize the objective function along the search direction.
+///
+/// # Arguments
+/// * `nsub` - A mutable reference to the iteration counter, incremented by this function.
+/// * `free` - A mutable boolean vector indicating which variables are free (true) or fixed at bounds (false).
+/// * `L` - A mutable lower triangular matrix with unit diagonal from the LDL^T factorization of the reduced Hessian.
+/// * `d` - A mutable vector containing the diagonal elements of D in the LDL^T factorization.
+/// * `K` - A mutable boolean vector tracking which variables are included in the current factorization.
+/// * `G` - The Hessian matrix of the quadratic objective function.
+/// * `g` - A mutable vector containing the gradient of the objective function at the current point.
+/// * `x` - A mutable vector containing the current solution, updated in-place.
+/// * `xo` - A vector containing the lower bounds for each variable.
+/// * `xu` - A vector containing the upper bounds for each variable.
+/// * `nfree` - A mutable reference to the number of free variables, updated by this function.
+/// * `unfix` - A mutable reference to a boolean flag indicating whether to unfix a variable in the next iteration.
+/// * `alp` - A mutable reference to the step size used in the current iteration.
+/// * `alpu` - A mutable reference to the maximum feasible step size in the negative direction.
+/// * `alpo` - A mutable reference to the maximum feasible step size in the positive direction.
+/// * `lba` - A mutable reference to a boolean flag indicating if a lower bound is active after the step.
+/// * `uba` - A mutable reference to a boolean flag indicating if an upper bound is active after the step.
+/// * `ier` - A mutable reference to an error code indicating the status of the optimization.
+///
+/// # Returns
+/// * `bool` - Returns `true` if the iteration was successful and the algorithm should continue,
+///           or `false` if the algorithm should terminate (either because a solution was found
+///           or because of an error condition).
+///
+/// # Mathematical Background
+/// The MINQ algorithm solves problems of the form:
+///   minimize    (1/2)x^T G x + g^T x
+///   subject to  xo ≤ x ≤ xu
+///
+/// It uses an active-set strategy, where variables at their bounds are fixed and a reduced problem
+/// is solved for the free variables. The search direction is computed by solving the system
+/// (L D L^T) p = -g for the free variables, where L D L^T is the factorization of the reduced Hessian.
+/// If the reduced Hessian is not positive definite, a direction of negative curvature is used instead.
+///
+/// # Note
+/// This function is part of an iterative process and should be called repeatedly until convergence
+/// is achieved or an error condition is detected. The caller is responsible for checking the return
+/// value and the error code to determine when to stop the iterations.
 pub fn minqsub<const N: usize>(
     nsub: &mut usize,
     free: &mut SVector<bool, N>,
@@ -26,62 +75,71 @@ pub fn minqsub<const N: usize>(
     ier: &mut IerEnum,
 ) ->
     bool // subdone
+where
+    Const<N>: DimMin<Const<N>, Output=Const<N>>,
 {
-    let mut definite = true;
-    let mut has_nonzero_p;
-
     let mut p = SVector::<f64, N>::zeros();
 
     *nsub += 1;
 
-    // First phase: Update L and d matrices
-    for i in 0..N {
-        if !free[i] && K[i] {
-            ldldown(L, d, i);
-            K[i] = false;
-            continue;
+    // Downdate factorization
+    // for j=find(free<K)'      % list of newly active indices
+    for j in 0..N { // filter() does not work as K[j] should be used both in condition and later modified
+        if !free[j] && K[j] { // free is exactly false, K is exactly True
+            ldldown(L, d, j);
+            K[j] = false;
         }
+    }
 
-        if !(free[i] && !K[i]) {
-            continue;
-        }
+    let mut definite = true;
 
-        // Optimize G access for N > 1 case
-        if N > 1 {
-            for (k_ind, &ki) in K.iter().enumerate() {
-                p[k_ind] = if ki { G[(k_ind, i)] } else { 0.0 };
+    // for j=find(free>K)'     % list of newly freed indices
+    for j in 0..N { // filter() does not work as K[j] should be used both in condition and later modified
+        if free[j] && !K[j] { // free is exactly True; K is exactly false
+            // % later: speed up the following by passing K to ldlup.m!
+            //   if n>1, p(K)=G(find(K),j); end;
+            if N > 1 {
+                for i in 0..N {
+                    p[i] = if K[i] { G[(i, j)] } else { 0.0 };
+                }
             }
-        }
-        p[i] = G[(i, i)];
+            p[j] = G[(j, j)];
 
-        if let Some(p_new) = ldlup(L, d, i, &p) {
-            p = p_new;
-            definite = false;
-            break;
+            match ldlup(L, d, j, &p) {
+                Some(p_new) => {
+                    definite = false;
+                    p = p_new;
+                    break;
+                }
+                None => {
+                    definite = true;
+                }
+            }
+
+            K[j] = true;
         }
-        K[i] = true;
     }
 
     if definite {
-        for ((&ki, p_i), &g_i) in K.iter().zip(p.iter_mut()).zip(g.iter()) {
-            *p_i = if ki { g_i } else { 0.0 };
+        for (i, p_i) in p.iter_mut().enumerate() {
+            *p_i = if K[i] { g[i] } else { 0.0 };
         }
 
-        p = -L.transpose()
-            .solve_upper_triangular(&L.solve_lower_triangular(&p).unwrap().component_div(d))
-            .unwrap();
+        // p=-L'\((L\p)./dd);
+        let rhs = L.lu().solve(&p).unwrap().component_div(d);
+        p = -L.transpose().lu().solve(&rhs).unwrap();
     }
 
-    (*alpo, *alpu) = (f64::INFINITY, f64::NEG_INFINITY);
 
-    // Optimize step size computation
-    has_nonzero_p = false;
-    for (i, p_i) in p.iter().enumerate() {
-        if p_i.abs() <= f64::EPSILON {
-            continue;
-        }
-        has_nonzero_p = true;
+    let p_nonzero_ind_vec = p.iter().enumerate().filter(|&(_, p_i)| p_i.abs() > f64::EPSILON).map(|(ind, _)| ind).collect::<Vec<_>>();
 
+    if p_nonzero_ind_vec.is_empty() {
+        *unfix = true;
+        return false;
+    }
+
+    (*alpu, *alpo) = (f64::NEG_INFINITY, f64::INFINITY);
+    for &i in &p_nonzero_ind_vec {
         let (p_i, o_i, u_i) = (p[i], (xo[i] - x[i]) / p[i], (xu[i] - x[i]) / p[i]);
         match p_i.partial_cmp(&0.0).unwrap() {
             std::cmp::Ordering::Less => {
@@ -96,32 +154,26 @@ pub fn minqsub<const N: usize>(
         }
     }
 
-    if !has_nonzero_p {
-        *unfix = true;
-        return false;
-    }
-
     debug_assert!(!(*alpo <= 0.0 || *alpu >= 0.0)); // minqsub error: no alp
 
     // Find STEP size
-    let g_mul_p = g.component_mul(&p);
-    let gTp = g_mul_p.sum();
-    let agTp = g_mul_p.iter().fold(0.0, |acc, &x| acc + x.abs());
+    // gTp=g'*p;
+    let mut gTp = g.dot(&p); // .dot() does self.transpose() * rhs
+    // agTp=abs(g)'*abs(p);
+    let agTp = g.abs().dot(&p.abs());
 
-    let gTp_corr = if gTp.abs() < 100.0 * f64::EPSILON * agTp {
-        0.0
-    } else {
-        gTp
-    };
+    if gTp.abs() < 100.0 * f64::EPSILON * agTp {
+        gTp = 0.0;
+    }
 
-    // Compute pTGp
+    // pTGp=p'*(G*p);
     let mut pTGp = p.dot(&(G * p));
 
     if !definite && pTGp > 0.0 {
         pTGp = 0.0;
     }
 
-    (*alp, *lba, *uba, *ier) = getalp(*alpu, *alpo, gTp_corr, pTGp);
+    (*alp, *lba, *uba, *ier) = getalp(*alpu, *alpo, gTp, pTGp);
 
     if *ier != IerEnum::LocalMinimizerFound {
         *x = if *lba { -p } else { p };
@@ -130,34 +182,27 @@ pub fn minqsub<const N: usize>(
 
     *unfix = !(*lba || *uba);
 
-    // Update x values efficiently
+    // Note that xo, xu, x and p does not change since they "should be computed" according to Matlab
+    // => everything needed to compute uu and oo is still valid
     let mut free_count = 0;
-    for i in 0..N {
-        let p_i = p[i];
-        if p_i.abs() <= f64::EPSILON {
-            if free[i] {
-                free_count += 1;
-            }
-            continue;
-        }
+    for &ik in &p_nonzero_ind_vec {
+        let uu = (xu[ik] - x[ik]) / p[ik];
+        let oo = (xo[ik] - x[ik]) / p[ik];
 
-        let o_i = (xo[i] - x[i]) / p_i;
-        let u_i = (xu[i] - x[i]) / p_i;
-
-        if *alp == u_i {
-            x[i] = xu[i];
-            free[i] = false;
-        } else if *alp == o_i {
-            x[i] = xo[i];
-            free[i] = false;
+        if *alp == uu {
+            x[ik] = xu[ik];
+            free[ik] = false;
+        } else if *alp == oo {
+            x[ik] = xo[ik];
+            free[ik] = false;
         } else {
-            x[i] += *alp * p_i;
-            if free[i] {
+            x[ik] += *alp * p[ik];
+            if free[ik] {
                 free_count += 1;
             }
         }
 
-        debug_assert!(!x[i].is_infinite());
+        debug_assert!(!x[ik].is_infinite());
     }
 
     *nfree = free_count;
@@ -336,6 +381,13 @@ mod tests {
         assert_eq!(subdone, true);
     }
 
+
+    // In this example p vec has each element < e-18;
+    // in particular, Rust: p = [[-1.3807064243624084e-19, -2.10685198112674e-20, -4.224961958462343e-18, 3.408245063687863e-19, 2.3341614798427975e-18, -1.9445286828850753e-19]]
+    // but for some reason python does not count the vector as 0
+    // in particular, Python: p = array([-4.336808689942018e-19,  0.000000000000000e+00, 0.000000000000000e+00,  0.000000000000000e+00,  3.469446951953614e-18,  0.000000000000000e+00])
+    // but in Python after this we have that indexes of non-zero p elements are [0, 4].
+    // I will consider this as NOT A BUG, but a floating point issue
     #[test]
     fn test_real_miskake_1() {
         const N: usize = 6;
@@ -408,13 +460,13 @@ mod tests {
         assert_eq!(xo.as_slice(), [0.20094711239564478, 0.1495167421889697, 0.3647846775, 0.2559626362565812, 0.331602309105488, 0.3724789161602837, ]);
         assert_eq!(xu.as_slice(), [-0.20094711239564478, -0.1495167421889697, -0.3647846775, -0.2559626362565812, -0.331602309105488, -0.3724789161602837, ]);
         assert_eq!(nfree, 6);
-        // assert_relative_eq!(alp, 0.7938353009736487, epsilon=TOLERANCE);
-        // assert_relative_eq!(alpu, -8.934536499651395e+16, epsilon=TOLERANCE);
-        // assert_relative_eq!(alpo, 1.0181035157598803e+17, epsilon=TOLERANCE);
         assert_eq!(lba, false);
         assert_eq!(uba, false);
         assert_eq!(ier, IerEnum::LocalMinimizerFound);
         assert_eq!(unfix, true);
+        // assert_relative_eq!(alp, 0.7938353009736487, epsilon=TOLERANCE);
+        // assert_relative_eq!(alpu, -8.934536499651395e+16, epsilon=TOLERANCE);
+        // assert_relative_eq!(alpo, 1.0181035157598803e+17, epsilon=TOLERANCE);
         // assert_eq!(subdone, true);
     }
 

@@ -7,7 +7,7 @@ mod minqsub;
 use crate::mcs_utils::helper_funcs::clamp_SVector_mut;
 use crate::minq::{getalp::getalp, minqsub::minqsub};
 
-use nalgebra::{SMatrix, SVector};
+use nalgebra::{Const, DimMin, SMatrix, SVector};
 
 #[derive(Debug, PartialOrd, PartialEq, Clone, Copy)]
 pub enum IerEnum {
@@ -56,7 +56,10 @@ pub fn minq<const N: usize>(
     SVector<f64, N>,  // x
     f64,              // fct
     IerEnum           // ier
-) {
+)
+where
+    Const<N>: DimMin<Const<N>, Output=Const<N>>,
+{
     let mut g: SVector<f64, N>;
     let mut x = SVector::<f64, N>::zeros();
     let mut K = SVector::<bool, N>::repeat(false);
@@ -78,10 +81,9 @@ pub fn minq<const N: usize>(
     let (mut nsub, mut nitref) = (0_usize, 0_usize);
     let (mut unfix, mut improvement) = (true, true);
     let mut ier = IerEnum::LocalMinimizerFound;
-    let (mut alp, mut lba, mut uba);
+    let (mut alp, mut alpu, mut alpo, mut lba, mut uba) = (0.0, 0.0, 0.0, true, true);
 
     clamp_SVector_mut(&mut x, &xu, &xo);
-
 
     'main: loop {
         debug_assert!(!x.iter().any(|&val| val.is_infinite()));
@@ -131,7 +133,7 @@ pub fn minq<const N: usize>(
 
             // Get column view once
             let q = G.column(k);
-            let (alpu, alpo) = (xu[k] - x[k], xo[k] - x[k]);
+            (alpu, alpo) = (xu[k] - x[k], xo[k] - x[k]);
 
             // Find step size
             (alp, lba, uba, ier) = getalp(alpu, alpo, g[k], q[k]);
@@ -183,9 +185,8 @@ pub fn minq<const N: usize>(
             unfix = true;
         } else {
             let subdone = minqsub(&mut nsub, &mut free, &mut L, &mut d, &mut K, G, &mut g,
-                                  &mut x, xo, xu, &mut nfree, &mut unfix,
-                                  &mut 0.0, &mut 0.0, &mut 0.0, &mut true, &mut true,
-                                  &mut ier, );
+                                  &mut x, xo, xu, &mut nfree, &mut unfix, &mut alp, &mut alpu, &mut alpo,
+                                  &mut lba, &mut uba, &mut ier);
 
             if !subdone || ier != IerEnum::LocalMinimizerFound {
                 return (x, fct, ier);
