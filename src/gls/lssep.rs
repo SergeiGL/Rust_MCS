@@ -1,6 +1,5 @@
 use crate::gls::lsnew::lsnew;
 use crate::gls::lssort::lssort;
-use itertools::Itertools;
 use nalgebra::SVector;
 
 
@@ -52,12 +51,10 @@ pub fn lssep<const N: usize>(
     // Loop for separation points based on the differences in behavior
     while nsep < nmin {
         // Find intervals where the behavior of adjacent intervals is opposite (monotonicity behavior switches)
-        *down = flist
-            .iter()
-            .take(s)
-            .tuple_windows()  // Directly iterate over pairs
-            .map(|(a, b)| b < a)
-            .collect();
+        down.clear();
+        for i in 0..s - 1 {
+            down.push(flist[i + 1] < flist[i]);  // Using strict < comparison
+        }
 
         let down_len = down.len();
         let up_len = up.len();
@@ -128,11 +125,15 @@ pub fn lssep<const N: usize>(
         };
 
         if aa.len() > nloc {
-            aa = ff.iter()
+            let mut indices_with_values: Vec<(usize, f64)> = ff.iter().cloned()
                 .enumerate()
-                .sorted_unstable_by(|(_, f_i), &(_, f_j)| f_i.total_cmp(&f_j))  // sort by f values
-                .take(nloc)
-                .map(|(i, _)| aa[i]).collect();
+                .collect();
+            indices_with_values.sort_unstable_by(|(_, f_i), (_, f_j)| f_i.total_cmp(f_j));
+
+            aa.clear();
+            for &(i, _) in indices_with_values.iter().take(nloc) {
+                aa.push(aa[i]);
+            }
         }
 
         // For each midpoint alp, evaluate the function and update lists

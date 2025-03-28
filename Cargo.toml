@@ -6,7 +6,6 @@ edition = "2024"
 [dependencies]
 nalgebra = "*"
 approx = "*"
-itertools = "*"
 
 [profile.release]
 debug = true

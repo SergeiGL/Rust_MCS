@@ -1,6 +1,5 @@
 use crate::mcs_utils::helper_funcs::update_flag;
 use crate::StopStruct;
-use itertools::Itertools;
 use nalgebra::SVector;
 use std::cmp::Ordering;
 
@@ -17,6 +16,21 @@ fn distance_squared<const N: usize>(a: &SVector<f64, N>, b: &SVector<f64, N>) ->
     diff.component_mul(&diff).sum() // we do not take sqrt as later there will be sort and
 }
 
+// Helper function
+fn get_sorted_indices<const N: usize>(nbasket_plus_1: usize, x: &SVector<f64, N>, xmin: &Vec<SVector<f64, N>>) -> Vec<usize> {
+    let xmin_len = xmin.len();
+
+    let mut indices: Vec<usize> = (0..nbasket_plus_1).collect();
+    indices.sort_unstable_by(|&i, &j| {
+        match (i >= xmin_len, j >= xmin_len) {
+            (true, true) => Ordering::Equal,
+            (true, false) => Ordering::Greater,
+            (false, true) => Ordering::Less,
+            (false, false) => distance_squared(&x, &xmin[i]).total_cmp(&distance_squared(&x, &xmin[j])),
+        }
+    });
+    indices
+}
 
 pub fn basket<const N: usize>(
     func: fn(&SVector<f64, N>) -> f64,
@@ -44,16 +58,7 @@ pub fn basket<const N: usize>(
         Some(n) => n + 1,
     };
 
-
-    let xmin_len = xmin.len();
-    for i in (0..nbasket_plus_1).sorted_unstable_by(|&i, &j| {
-        match (i >= xmin_len, j >= xmin_len) {
-            (true, true) => Ordering::Equal,
-            (true, false) => Ordering::Greater,
-            (false, true) => Ordering::Less,
-            (false, false) => distance_squared(&x, &xmin[i]).total_cmp(&distance_squared(&x, &xmin[j])),
-        }
-    }) {
+    for i in get_sorted_indices(nbasket_plus_1, x, xmin) {
         if fmi[i] <= *f {
             p = xmin[i] - *x;
 
@@ -136,17 +141,9 @@ pub fn basket1<const N: usize>(
         None => 0,
         Some(n) => n + 1,
     };
-    let xmin_len = xmin.len();
 
     let (mut p, mut y1, mut y2): (SVector<f64, N>, SVector<f64, N>, SVector<f64, N>);
-    for i in (0..nbasket_plus_1).sorted_unstable_by(|&i, &j| {
-        match (i >= xmin_len, j >= xmin_len) {
-            (true, true) => Ordering::Equal,
-            (true, false) => Ordering::Greater,
-            (false, true) => Ordering::Less,
-            (false, false) => distance_squared(&x, &xmin[i]).total_cmp(&distance_squared(&x, &xmin[j])),
-        }
-    }) {
+    for i in get_sorted_indices(nbasket_plus_1, x, xmin) {
         // Compute p = xmin[i] - x
         p = xmin[i] - x;
 

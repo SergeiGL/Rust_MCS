@@ -1,5 +1,3 @@
-use itertools::Itertools;
-
 pub fn lssat(
     small: f64,
     alist: &[f64],
@@ -17,10 +15,11 @@ pub fn lssat(
         return (alp, saturated);
     }
 
-    // Find the index of the minimum element directly without iterating twice
-    let i = flist
+    // Find the index of the minimum element
+    let (i, _) = flist
         .iter()
-        .position_min_by(|x, y| x.total_cmp(y))
+        .enumerate()
+        .min_by(|&(_, f_i), (_, f_j)| f_i.total_cmp(f_j))
         .unwrap();
 
     if !(i == 0 || i == s - 1) {
