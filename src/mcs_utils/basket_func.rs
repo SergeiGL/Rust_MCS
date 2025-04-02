@@ -225,7 +225,11 @@ mod tests {
         let mut fmi = vec![-300.0, -300.0, -300.0, -300.0, -300.0, -300.0];
         let mut xbest = SVector::<f64, 6>::from_row_slice(&[1.2, 0.15, 0.47, 0.27, 0.31, 0.65]);
         let mut fbest = 100_000.0;
-        let stop = StopStruct::new(vec![18.0, f64::NEG_INFINITY, 0.0]);
+        let stop = StopStruct {
+            nsweeps: 18,                // maximum number of sweeps
+            freach: f64::NEG_INFINITY,  // target function value
+            nf: 0,              // maximum number of function evaluations
+        };
         let nbasket: Option<usize> = Some(3);
         let nsweep = 15;
         let mut nsweepbest = 1;
@@ -256,7 +260,11 @@ mod tests {
         let mut fmi = vec![-3.3, -3.3, -3.1];
         let mut xbest = SVector::<f64, 6>::from_row_slice(&[0.2, 0.15, 0.47, 0.27, 0.31, 0.65]);
         let mut fbest = -3.3;
-        let stop = StopStruct::new(vec![18.0, f64::NEG_INFINITY, 0.0]);
+        let stop = StopStruct {
+            nsweeps: 18,                // maximum number of sweeps
+            freach: f64::NEG_INFINITY,  // target function value
+            nf: 0,              // maximum number of function evaluations
+        };
         let nbasket = Some(0);
         let nsweep = 15;
         let mut nsweepbest = 1;
@@ -289,7 +297,11 @@ mod tests {
         let mut fmi = vec![-3.3, -3.2, -3.1];
         let mut xbest = SVector::<f64, 6>::from_row_slice(&[0.2, 0.15, 0.47, 0.27, 0.31, 0.65]);
         let mut fbest = -3.3;
-        let stop = StopStruct::new(vec![1.0, f64::NEG_INFINITY, 0.0]);
+        let stop = StopStruct {
+            nsweeps: 1,                // maximum number of sweeps
+            freach: f64::NEG_INFINITY,  // target function value
+            nf: 0,              // maximum number of function evaluations
+        };
         let nbasket = Some(2);
         let nsweep = 20;
         let mut nsweepbest = 2;
@@ -319,7 +331,11 @@ mod tests {
         let mut fmi = vec![-2.9, -2.8, -2.7];
         let mut xbest = SVector::<f64, 6>::from_row_slice(&[0.15, 0.1, 0.3, 0.2, 0.25, 0.55]);
         let mut fbest = -2.9;
-        let stop = StopStruct::new(vec![0.1, f64::NEG_INFINITY, 0.0]);
+        let stop = StopStruct {
+            nsweeps: 0,                // maximum number of sweeps
+            freach: f64::NEG_INFINITY,  // target function value
+            nf: 0,              // maximum number of function evaluations
+        };
         let nbasket = Some(1);
         let nsweep = 10;
         let mut nsweepbest = 1;
@@ -349,7 +365,11 @@ mod tests {
         let mut fmi = vec![-1., -2., -35.5];
         let mut xbest = SVector::<f64, 6>::from_row_slice(&[-1.0, 0.15, 0.47, -0.27, 0.31, 0.65]);
         let mut fbest = -2.3;
-        let stop = StopStruct::new(vec![18.0, f64::NEG_INFINITY, 0.0]);
+        let stop = StopStruct {
+            nsweeps: 18,                // maximum number of sweeps
+            freach: f64::NEG_INFINITY,  // target function value
+            nf: 0,              // maximum number of function evaluations
+        };
         let nbasket = Some(2);
         let nsweep = 20;
         let mut nsweepbest = 20;
@@ -382,7 +402,11 @@ mod tests {
         let mut fmi = vec![100.; 3];
         let mut xbest = SVector::<f64, 6>::from_row_slice(&[-1.0, 0.15, 0.47, -0.27, 0.31, 0.65]);
         let mut fbest = 100.;
-        let stop = StopStruct::new(vec![18.0, f64::NEG_INFINITY, 0.0]);
+        let stop = StopStruct {
+            nsweeps: 18,                // maximum number of sweeps
+            freach: f64::NEG_INFINITY,  // target function value
+            nf: 0,              // maximum number of function evaluations
+        };
         let nbasket = Some(2);
         let nsweep = 20;
         let mut nsweepbest = 20;
@@ -415,7 +439,11 @@ mod tests {
         let mut fmi = vec![100.; 3];
         let mut xbest = SVector::<f64, 6>::from_row_slice(&[-1.0, 0.15, 0.47, -0.27, 0.31, 0.65]);
         let mut fbest = 100.;
-        let stop = StopStruct::new(vec![18.0, f64::NEG_INFINITY, 0.0]);
+        let stop = StopStruct {
+            nsweeps: 18,                // maximum number of sweeps
+            freach: f64::NEG_INFINITY,  // target function value
+            nf: 0,              // maximum number of function evaluations
+        };
         let nbasket = Some(2);
         let nsweep = 20;
         let mut nsweepbest = 20;
@@ -444,7 +472,11 @@ mod tests {
         let mut fmi = vec![-3.3, -3.3, -3.1];
         let mut xbest = SVector::<f64, 6>::from_row_slice(&[0.2, 0.15, 0.47, 0.27, 0.31, 0.65]);
         let mut fbest = -3.3;
-        let stop = StopStruct::new(vec![18.0, f64::NEG_INFINITY, 0.0]);
+        let stop = StopStruct {
+            nsweeps: 18,                // maximum number of sweeps
+            freach: f64::NEG_INFINITY,  // target function value
+            nf: 0,              // maximum number of function evaluations
+        };
         let nbasket = Some(0);
         let nsweep = 15;
         let mut nsweepbest = 1;
@@ -474,7 +506,11 @@ mod tests {
         let mut fmi = vec![-3.3, -3.2, -3.1];
         let mut xbest = SVector::<f64, 6>::from_row_slice(&[0.2, 0.15, 0.47, 0.27, 0.31, 0.65]);
         let mut fbest = -3.3;
-        let stop = StopStruct::new(vec![1.0, f64::NEG_INFINITY, 0.0]);
+        let stop = StopStruct {
+            nsweeps: 1,                // maximum number of sweeps
+            freach: f64::NEG_INFINITY,  // target function value
+            nf: 0,              // maximum number of function evaluations
+        };
         let nbasket = Some(2);
         let nsweep = 20;
         let mut nsweepbest = 2;
@@ -501,7 +537,11 @@ mod tests {
         let mut fmi = vec![-2.9, -2.8, -2.7];
         let mut xbest = SVector::<f64, 6>::from_row_slice(&[0.15, 0.1, 0.3, 0.2, 0.25, 0.55]);
         let mut fbest = -2.9;
-        let stop = StopStruct::new(vec![0.1, f64::NEG_INFINITY, 0.0]);
+        let stop = StopStruct {
+            nsweeps: 0,                // maximum number of sweeps
+            freach: f64::NEG_INFINITY,  // target function value
+            nf: 0,              // maximum number of function evaluations
+        };
         let nbasket = Some(1);
         let nsweep = 10;
         let mut nsweepbest = 1;
@@ -527,7 +567,11 @@ mod tests {
         let mut fmi = vec![-1., -2., -35.5];
         let mut xbest = SVector::<f64, 6>::from_row_slice(&[-1.0, 0.15, 0.47, -0.27, 0.31, 0.65]);
         let mut fbest = -2.3;
-        let stop = StopStruct::new(vec![18.0, f64::NEG_INFINITY, 0.0]);
+        let stop = StopStruct {
+            nsweeps: 18,                // maximum number of sweeps
+            freach: f64::NEG_INFINITY,  // target function value
+            nf: 0,              // maximum number of function evaluations
+        };
         let nbasket = Some(2);
         let nsweep = 20;
         let mut nsweepbest = 20;
@@ -558,7 +602,11 @@ mod tests {
         let mut fmi = vec![100.; 3];
         let mut xbest = SVector::<f64, 6>::from_row_slice(&[-1.0, 0.15, 0.47, -0.27, 0.31, 0.65]);
         let mut fbest = -2.3;
-        let stop = StopStruct::new(vec![18.0, f64::NEG_INFINITY, 0.0]);
+        let stop = StopStruct {
+            nsweeps: 18,                // maximum number of sweeps
+            freach: f64::NEG_INFINITY,  // target function value
+            nf: 0,              // maximum number of function evaluations
+        };
         let nbasket = Some(2);
         let nsweep = 20;
         let mut nsweepbest = 20;
@@ -591,7 +639,11 @@ mod tests {
         let mut fmi = vec![-300.0, -300.0, -300.0, -300.0, -300.0, -300.0];
         let mut xbest = SVector::<f64, 6>::from_row_slice(&[1.2, 0.15, 0.47, 0.27, 0.31, 0.65]);
         let mut fbest = 100_000.0;
-        let stop = StopStruct::new(vec![18.0, f64::NEG_INFINITY, 0.0]);
+        let stop = StopStruct {
+            nsweeps: 18,                // maximum number of sweeps
+            freach: f64::NEG_INFINITY,  // target function value
+            nf: 0,              // maximum number of function evaluations
+        };
         let nbasket = Some(3);
         let nsweep = 15;
         let mut nsweepbest = 1;

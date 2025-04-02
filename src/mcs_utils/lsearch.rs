@@ -337,7 +337,11 @@ mod tests {
         let u = SVector::<f64, 6>::from_row_slice(&[0.0; 6]);
         let v = SVector::<f64, 6>::from_row_slice(&[1.0; 6]);
         let nf_left = None;
-        let stop = StopStruct::new(vec![18.0, f64::NEG_INFINITY, 0.0]);
+        let stop = StopStruct {
+            nsweeps: 18,                // maximum number of sweeps
+            freach: f64::NEG_INFINITY,  // target function value
+            nf: 0,              // maximum number of function evaluations
+        };
         let maxstep = 50;
         let gamma = f64::EPSILON;
         let hess: SMatrix<f64, 6, 6> = SMatrix::repeat(1.0);
@@ -360,7 +364,11 @@ mod tests {
         let u = SVector::<f64, 6>::from_row_slice(&[0.0; 6]);
         let v = SVector::<f64, 6>::from_row_slice(&[1.0; 6]);
         let nf_left = Some(95);
-        let stop = StopStruct::new(vec![18.0, f64::NEG_INFINITY, 0.0]);
+        let stop = StopStruct {
+            nsweeps: 18,                // maximum number of sweeps
+            freach: f64::NEG_INFINITY,  // target function value
+            nf: 0,              // maximum number of function evaluations
+        };
         let maxstep = 50;
         let gamma = 2e-6;
         let hess: SMatrix<f64, 6, 6> = SMatrix::repeat(1.0);
@@ -383,7 +391,11 @@ mod tests {
         let u = SVector::<f64, 6>::from_row_slice(&[0.0; 6]);
         let v = SVector::<f64, 6>::from_row_slice(&[1.0; 6]);
         let nf_left = Some(95);
-        let stop = StopStruct::new(vec![18.0, f64::NEG_INFINITY, 0.0]);
+        let stop = StopStruct {
+            nsweeps: 18,                // maximum number of sweeps
+            freach: f64::NEG_INFINITY,  // target function value
+            nf: 0,              // maximum number of function evaluations
+        };
         let maxstep = 50;
         let gamma = 2e-6;
         let hess: SMatrix<f64, 6, 6> = SMatrix::repeat(1.0);
@@ -407,7 +419,11 @@ mod tests {
         let u = SVector::<f64, 6>::from_row_slice(&[0.0; 6]);
         let v = SVector::<f64, 6>::from_row_slice(&[1.0; 6]);
         let nf_left = Some(90);
-        let stop = StopStruct::new(vec![20.0, f64::NEG_INFINITY, 0.0]);
+        let stop = StopStruct {
+            nsweeps: 20,                // maximum number of sweeps
+            freach: f64::NEG_INFINITY,  // target function value
+            nf: 0,              // maximum number of function evaluations
+        };
         let maxstep = 100;
         let gamma = 2e-6;
         let hess: SMatrix<f64, 6, 6> = SMatrix::repeat(1.0);

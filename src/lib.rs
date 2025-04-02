@@ -32,21 +32,6 @@ pub struct StopStruct {
     pub freach: f64,
     pub nf: usize,
 }
-impl StopStruct {
-    pub fn new<T>(data: T) -> StopStruct
-    where
-        T: std::ops::Index<usize> + AsRef<[<T as std::ops::Index<usize>>::Output]>,
-        <T as std::ops::Index<usize>>::Output: Into<f64> + Copy,
-    {
-        let data_ref = data.as_ref();
-        debug_assert!(data_ref.len() == 3);
-        StopStruct {
-            nsweeps: data[0].into() as usize,
-            freach: data[1].into(),
-            nf: data[2].into() as usize,
-        }
-    }
-}
 
 pub enum IinitEnum {
     Zero,   // Simple initialization list
@@ -335,7 +320,11 @@ mod tests {
     #[test]
     fn test_0() {
         const SMAX: usize = 20;
-        let stop = StopStruct::new(vec![18., f64::NEG_INFINITY, 1000.]);
+        let stop = StopStruct {
+            nsweeps: 18,                // maximum number of sweeps
+            freach: f64::NEG_INFINITY,  // target function value
+            nf: 1000,              // maximum number of function evaluations
+        };
         let iinit = IinitEnum::Zero;
         let local = 50;
         let gamma = 2e-6;
@@ -360,7 +349,11 @@ mod tests {
     #[test]
     fn test_1() {
         const SMAX: usize = 30;
-        let stop = StopStruct::new(vec![100., f64::NEG_INFINITY, 1000.]);
+        let stop = StopStruct {
+            nsweeps: 100,                // maximum number of sweeps
+            freach: f64::NEG_INFINITY,  // target function value
+            nf: 1000,              // maximum number of function evaluations
+        };
         let iinit = IinitEnum::Zero;
         let local = 0;
         let gamma = 2e-9;
@@ -380,7 +373,11 @@ mod tests {
     #[test]
     fn test_2() {
         const SMAX: usize = 50;
-        let stop = StopStruct::new(vec![11., f64::NEG_INFINITY, 100.]);
+        let stop = StopStruct {
+            nsweeps: 11,                // maximum number of sweeps
+            freach: f64::NEG_INFINITY,  // target function value
+            nf: 100,              // maximum number of function evaluations
+        };
         let iinit = IinitEnum::Zero;
         let local = 0;
         let gamma = 2e-10;
@@ -410,7 +407,11 @@ mod tests {
     #[test]
     fn test_3() {
         const SMAX: usize = 100;
-        let stop = StopStruct::new(vec![11., f64::NEG_INFINITY, 100.]);
+        let stop = StopStruct {
+            nsweeps: 11,                // maximum number of sweeps
+            freach: f64::NEG_INFINITY,  // target function value
+            nf: 100,              // maximum number of function evaluations
+        };
         let iinit = IinitEnum::Zero;
         let local = 50;
         let gamma = 2e-10;
@@ -437,7 +438,11 @@ mod tests {
     #[test]
     fn test_random_1() {
         const SMAX: usize = 101;
-        let stop = StopStruct::new(vec![14., f64::NEG_INFINITY, 101.]);
+        let stop = StopStruct {
+            nsweeps: 14,                // maximum number of sweeps
+            freach: f64::NEG_INFINITY,  // target function value
+            nf: 101,              // maximum number of function evaluations
+        };
         let iinit = IinitEnum::Zero;
         let local = 14;
         let gamma = 2e-12;
@@ -469,7 +474,11 @@ mod tests {
     #[test]
     fn test_random_2() {
         const SMAX: usize = 101;
-        let stop = StopStruct::new(vec![14., f64::NEG_INFINITY, 101.]);
+        let stop = StopStruct {
+            nsweeps: 14,                // maximum number of sweeps
+            freach: f64::NEG_INFINITY,  // target function value
+            nf: 101,              // maximum number of function evaluations
+        };
         let iinit = IinitEnum::Zero;
         let local = 14;
         let gamma = 2e-12;
@@ -502,7 +511,11 @@ mod tests {
     #[test]
     fn test_random_3() {
         const SMAX: usize = 101;
-        let stop = StopStruct::new(vec![21., f64::NEG_INFINITY, 101.]);
+        let stop = StopStruct {
+            nsweeps: 21,                // maximum number of sweeps
+            freach: f64::NEG_INFINITY,  // target function value
+            nf: 101,              // maximum number of function evaluations
+        };
         let iinit = IinitEnum::Zero;
         let local = 21;
         let gamma = 2e-12;
@@ -535,7 +548,11 @@ mod tests {
     #[test]
     fn test_random_4() {
         const SMAX: usize = 101;
-        let stop = StopStruct::new(vec![7., f64::NEG_INFINITY, 101.]);
+        let stop = StopStruct {
+            nsweeps: 7,                // maximum number of sweeps
+            freach: f64::NEG_INFINITY,  // target function value
+            nf: 101,              // maximum number of function evaluations
+        };
         let iinit = IinitEnum::Zero;
         let local = 7;
         let gamma = 2e-7;

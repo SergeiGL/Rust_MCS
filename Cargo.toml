@@ -5,13 +5,14 @@ edition = "2024"
 
 [dependencies]
 nalgebra = "*"
-approx = "*"
 
-[profile.release]
-debug = true
+#cargo flamegraph --unit-test -- tests::test_for_flamegraph_0
+#[profile.release]
+#debug = true
 
 [dev-dependencies]
 criterion = { version = "*", features = ["html_reports"] }
+approx = "*"
 
 [[bench]]
 name = "benchmarks"
