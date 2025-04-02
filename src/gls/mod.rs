@@ -63,7 +63,7 @@ pub fn gls<const N: usize>(
 
 
     // The main search loop
-    while s < std::cmp::min(5, smax) {
+    while s < smax.min(5) {
         if nloc == 1 {
             // Parabolic interpolation STEP
             (fbest, up, down, monotone, minima, nmin) = lspar(func, nloc, small, sinit, short, x, p, alist, flist, amin, amax,
@@ -87,33 +87,26 @@ pub fn gls<const N: usize>(
             return s - sinit;
         }
         if s == 5 {
-            (amin, amax, alp, abest, fbest, fmed, monotone, nmin, unitlen, s, saturated) =
-                lsquart(func, nloc, small, x, p, alist, flist, amin, amax, alp, abest, fbest,
-                        fmed, &mut up, &mut down, monotone, &mut minima, nmin, unitlen, s, saturated);
+            lsquart(func, nloc, small, x, p, alist, flist, &mut amin, &mut amax, &mut alp, &mut abest, &mut fbest,
+                    &mut fmed, &mut up, &mut down, &mut monotone, &mut minima, &mut nmin, &mut unitlen, &mut s, &mut saturated);
         }
-        // println!("2 {alist:?}");
 
         // Check the descent condition
-        (alp, abest, fbest, fmed, monotone, nmin, unitlen, s) = lsdescent(func, x, p, alist, flist, alp, abest, fbest, fmed, &mut up,
-                                                                          &mut down, monotone, &mut minima, nmin, unitlen, s);
-
-        // println!("3 {alist:?}");
+        lsdescent(func, x, p, alist, flist, &mut alp, &mut abest, &mut fbest, &mut fmed, &mut up, &mut down, &mut monotone, &mut minima, &mut nmin, &mut unitlen, &mut s);
 
         // Check convexity condition
         if lsconvex(&alist, &flist, nmin, s) {
             return s - sinit;
         }
     }
-    // println!("{alist:?}");
 
     let mut sold = 0;
     'inner: loop {
-        (alp, abest, fbest, fmed, monotone, nmin, unitlen, s) = lsdescent(
-            func, x, p, alist, flist, alp, abest, fbest, fmed, &mut up,
-            &mut down, monotone, &mut minima, nmin, unitlen, s);
+        lsdescent(func, x, p, alist, flist, &mut alp, &mut abest, &mut fbest, &mut fmed, &mut up,
+                  &mut down, &mut monotone, &mut minima, &mut nmin, &mut unitlen, &mut s);
 
         // Check saturation
-        (alp, saturated) = lssat(small, alist, flist, alp, amin, amax, s, saturated);
+        lssat(small, alist, flist, &mut alp, amin, amax, s, &mut saturated);
 
         if saturated || s == sold || s >= smax {
             break 'inner;
@@ -123,18 +116,13 @@ pub fn gls<const N: usize>(
         let nminold = nmin;
 
         if !saturated && nloc > 1 {
-            (amin, amax, alp, abest, fbest, fmed, monotone, nmin, unitlen, s) =
-                lssep(
-                    func, nloc, small, sinit, short, x, p, alist, flist, amin,
-                    amax, alp, abest, fbest, fmed, &mut up, &mut down, monotone,
-                    &mut minima, nmin, unitlen, s);
+            lssep(func, nloc, small, sinit, short, x, p, alist, flist, &mut amin,
+                  &mut amax, &mut alp, &mut abest, &mut fbest, &mut fmed, &mut up, &mut down, &mut monotone,
+                  &mut minima, &mut nmin, &mut unitlen, &mut s);
         }
 
-        (alp, abest, fbest, fmed, monotone, nmin, unitlen, s, saturated) =
-            lslocal(
-                func, nloc, small, x, p, alist, flist, amin,
-                amax, alp, abest, fbest, fmed, &mut up, &mut down, monotone,
-                &mut minima, nmin, unitlen, s, saturated);
+        lslocal(func, nloc, small, x, p, alist, flist, amin, amax, &mut alp, &mut abest, &mut fbest, &mut fmed, &mut up, &mut down,
+                &mut monotone, &mut minima, &mut nmin, &mut unitlen, &mut s, &mut saturated);
 
         if nmin > nminold { saturated = false }
     }

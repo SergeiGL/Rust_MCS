@@ -32,7 +32,10 @@
  * * `unitlen` - Characteristic length scale of the function.
  * * `s` - Size of the input lists.
  */
-pub fn lssort(alist: &mut Vec<f64>, flist: &mut Vec<f64>) -> (
+pub fn lssort(
+    alist: &mut Vec<f64>,
+    flist: &mut Vec<f64>,
+) -> (
     f64,         // abest
     f64,         // fbest
     f64,         // fmed
@@ -386,7 +389,6 @@ mod tests {
         let mut flist = vec![5.0, 3.0, 3.0, 3.0, 3.0, -10., 1.];
         let (abest, fbest, fmed, up, down, monotone, minima, nmin, unitlen, s) = lssort(&mut alist, &mut flist);
 
-        // Note: The sort is stable, so the order of equal alpha values is preserved
         assert_eq!(alist, vec![-1., 1., 2., 2.1, 2.2, 2.3, 4.]);
         assert_eq!(flist, vec![-10., 5., 1., 3., 3., 3., 3.]);
         assert_eq!(abest, -1.);
@@ -426,7 +428,6 @@ mod tests {
         let mut flist = vec![5.0, 5.0, 5.0, 5.0, 5.0];
         let (abest, fbest, fmed, up, down, monotone, minima, nmin, unitlen, s) = lssort(&mut alist, &mut flist);
 
-        // Note: The sort is stable, so the order of equal alpha values is preserved
         assert_eq!(alist, vec![2.2, 2.2, 2.2, 2.2, 2.2]);
         assert_eq!(flist, vec![5.0, 5.0, 5.0, 5.0, 5.0]);
         assert_eq!(abest, 2.2);
@@ -466,7 +467,6 @@ mod tests {
         let mut flist = vec![10., 9., 8., 7., 6.];
         let (abest, fbest, fmed, up, down, monotone, minima, nmin, unitlen, s) = lssort(&mut alist, &mut flist);
 
-        // Note: The sort is stable, so the order of equal alpha values is preserved
         assert_eq!(alist, vec![96., 97., 98., 99., 100.]);
         assert_eq!(flist, vec![6., 7., 8., 9., 10., ]);
         assert_eq!(abest, 96.);
@@ -478,6 +478,45 @@ mod tests {
         assert_eq!(minima, vec![true, false, false, false, false]);
         assert_eq!(nmin, 1);
         assert_eq!(unitlen, 4.);
+        assert_eq!(s, 5);
+    }
+
+    #[test]
+    fn test_11() {
+        // Matlab equivalent test
+        // alist = [-101., 99., -98., 97., -96.];
+        // flist = [-10., -9., 8., -7., 6.];
+        //
+        // lssort;
+        //
+        // disp(alist);
+        // disp(flist);
+        // disp(abest);
+        // disp(fbest);
+        // disp(fmed);
+        // disp(up);
+        // disp(down);
+        // disp(monotone);
+        // disp(minima);
+        // disp(nmin);
+        // disp(unitlen);
+        // disp(s);
+
+        let mut alist = vec![-101., 99., -98., 97., -96.];
+        let mut flist = vec![-10., -9., 8., -7., 6.];
+        let (abest, fbest, fmed, up, down, monotone, minima, nmin, unitlen, s) = lssort(&mut alist, &mut flist);
+
+        assert_eq!(alist, vec![-101., -98., -96., 97., 99.]);
+        assert_eq!(flist, vec![-10., 8., 6., -7., -9.]);
+        assert_eq!(abest, -101.);
+        assert_eq!(fbest, -10.);
+        assert_eq!(fmed, -7.);
+        assert_eq!(up, vec![true, false, false, false]);
+        assert_eq!(down, vec![false, true, true, true]);
+        assert!(!monotone);
+        assert_eq!(minima, vec![true, false, false, false, true]);
+        assert_eq!(nmin, 2);
+        assert_eq!(unitlen, 200.);
         assert_eq!(s, 5);
     }
 }

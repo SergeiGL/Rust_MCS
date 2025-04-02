@@ -63,8 +63,8 @@ pub fn lspar<const N: usize>(
             *alp = lsnew(func, nloc, small, sinit, short, x, p, *s, alist, flist, amin, amax, *abest, *fmed, *unitlen);
         } else {
             // Parabolic minimizer
-            let alp0 = 0.5 * (aa1 + aa2 - f23 / f123);
-            *alp = lsguard(alp0, alist, amax, amin, small);
+            *alp = 0.5 * (aa1 + aa2 - f23 / f123);
+            lsguard(alp, alist, amax, amin, small);
 
             let alptol = small * (aa2 - aa0);
 

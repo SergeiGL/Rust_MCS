@@ -73,7 +73,7 @@ pub fn lsnew<const N: usize>(
 
     alist.push(alp);
     flist.push(falp);
-
+    
     alp
 }
 

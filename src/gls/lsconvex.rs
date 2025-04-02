@@ -1,22 +1,18 @@
 pub fn lsconvex(alist: &Vec<f64>, flist: &Vec<f64>, nmin: usize, s: usize) -> bool {
-    let mut convex: bool;
-
     if nmin > 1 {
-        convex = false;
+        false
     } else {
-        convex = true;
         for i in 1..(s - 1) {
             let f12 = (flist[i] - flist[i - 1]) / (alist[i] - alist[i - 1]);
             let f13 = (flist[i] - flist[i + 1]) / (alist[i] - alist[i + 1]);
             let f123 = (f13 - f12) / (alist[i + 1] - alist[i - 1]);
 
             if f123 < 0.0 {
-                convex = false;
-                break;
+                return false;
             }
         }
+        true
     }
-    convex
 }
 
 #[cfg(test)]
