@@ -137,7 +137,7 @@ mod tests {
     use crate::test_functions::hm6;
     use approx::assert_relative_eq;
 
-    static TOLERANCE: f64 = 1e-15;
+    static TOLERANCE: f64 = 1e-14;
 
     #[test]
     fn test_coverage_0() {

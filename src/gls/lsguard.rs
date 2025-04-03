@@ -5,8 +5,8 @@ pub fn lsguard(alp: &mut f64, alist: &mut Vec<f64>, amax: f64, amin: f64, small:
     // Enforce extrapolation to be cautious
     let al: f64 = alist[0] - (alist[s - 1] - alist[0]) / small;
     let au: f64 = alist[s - 1] + (alist[s - 1] - alist[0]) / small;
-    *alp = alp.max(al).min(au);
-    *alp = alp.max(amin).min(amax);
+
+    *alp = alp.max(al).min(au).max(amin).min(amax);
 
     // Enforce some distance from endpoints
     if (*alp - alist[0]).abs() < small * (alist[1] - alist[0]) {

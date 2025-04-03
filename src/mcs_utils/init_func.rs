@@ -299,7 +299,7 @@ pub fn initbox<const N: usize>(
     let mut xbest = SVector::<f64, N>::zeros(); // best point values
 
     for i in 0..N {
-        p[i] = var.iter().enumerate().max_by(|&(_, var_i), &(_, var_j)| var_i.total_cmp(var_j)).unwrap().0; // find the maximum in var
+        (p[i], _) = var.iter().enumerate().max_by(|&(_, var_i), &(_, var_j)| var_i.total_cmp(var_j)).unwrap(); // find the maximum in var
         var[p[i]] = -1.0; // mark as used
         xbest[i] = x0[(i, istar[i])];  // store the best value of x at that index
     }

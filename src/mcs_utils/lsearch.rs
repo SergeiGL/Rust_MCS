@@ -253,7 +253,7 @@ where
         minusd = (u - xmin).zip_map(&d, |diff, d_val| diff.max(-d_val));
         mind = (v - xmin).zip_map(&d, |diff, d_val| diff.min(d_val));
 
-        p = minq(fmi, &g, &mut G, &minusd, &mind).0;
+        (p, _, _) = minq(fmi, &g, &mut G, &minusd, &mind);
         let norm = p.norm();
 
         if norm == 0.0 && !diag && ind_len == N {

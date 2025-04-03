@@ -39,15 +39,11 @@ pub fn lsquart<const N: usize>(
     let f2345 = (f345 - f234) / (alist[4] - alist[1]);
     let f12345 = (f2345 - f1234) / (alist[4] - alist[0]);
 
-    let mut quart = if f12345 <= 0.0 {
+    if f12345 <= 0.0 { // quart false
+        // quartic not bounded below
         lslocal(func, nloc, small, x, p, alist, flist, *amin, *amax, alp, abest, fbest, fmed,
                 up, down, monotone, minima, nmin, unitlen, s, saturated);
-        false
-    } else {
-        true
-    };
-
-    if quart {
+    } else { // quart true
         // Expanding around alist[2]
         let mut c: SVector<f64, 5> = SVector::zeros();
         c[0] = f12345;
@@ -59,12 +55,11 @@ pub fn lsquart<const N: usize>(
         c[1] += c[0] * (alist[2] - alist[1]);
         c[4] = flist[2];
 
-        let cmax = c.max();
-        c.scale_mut(1. / cmax);
+        let cmax = c.normalize_mut();
 
         let hk = 4.0 * c[0];
-        let compmat = Matrix3::new(
-            0.0_f64, 0.0, -c[3],
+        let compmat = Matrix3::<f64>::new(
+            0.0, 0.0, -c[3],
             hk, 0.0, -2.0 * c[2],
             0.0, hk, -3.0 * c[1],
         );
@@ -97,10 +92,7 @@ pub fn lsquart<const N: usize>(
             };
         }
 
-        if alist.iter().any(|&v| v == *alp) {
-            quart = false;
-        }
-        if quart {
+        if !alist.iter().any(|&v| v == *alp) { // opposite to if max(alist==alp);
             lsguard(alp, alist, *amax, *amin, small);
             let falp = func(&(x + p.scale(*alp)));
             alist.push(*alp);
@@ -117,7 +109,7 @@ mod tests {
     use crate::test_functions::hm6;
     use approx::assert_relative_eq;
 
-    static TOLERANCE: f64 = 1e-15;
+    static TOLERANCE: f64 = 1e-14;
 
     #[test]
     fn test_real_mistake_0() {

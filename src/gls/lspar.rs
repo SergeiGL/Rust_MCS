@@ -28,30 +28,37 @@ pub fn lspar<const N: usize>(
     Vec<bool>,   // minima
     usize,       // nmin
 ) {
+    let (fbest, up, down, monotone, minima, nmin);
+
     if *s < 3 {
         *alp = lsnew(func, nloc, small, sinit, short, x, p, *s, alist, flist, amin, amax, *abest, *fmed, *unitlen);
     } else {
         // Select three points for parabolic interpolation
-        let i = flist
+        let (i, _) = flist
             .iter()
             .enumerate()
-            .min_by(|(_, a_i), (_, b_i)| a_i.total_cmp(b_i))
-            .unwrap()
-            .0;
+            .min_by(|(_, f_i), (_, f_j)| f_i.total_cmp(f_j))
+            .unwrap();
 
-        let ((aa0, aa1, aa2), (ff0, ff1, ff2), ii) = if i <= 1 {
-            (
-                (alist[0], alist[1], alist[2]),
-                (flist[0], flist[1], flist[2]),
-                i
-            )
-        } else if i >= *s - 2 {
-            (
-                (alist[*s - 3], alist[*s - 2], alist[*s - 1]),
-                (flist[*s - 3], flist[*s - 2], flist[*s - 1]),
-                i + 3 - *s)
-        } else {
-            panic!();
+        let ((aa0, aa1, aa2), (ff0, ff1, ff2), ii) = match i {
+            i if i <= 1 =>
+                (
+                    (alist[0], alist[1], alist[2]),
+                    (flist[0], flist[1], flist[2]),
+                    i
+                ),
+            i if i >= *s - 2 =>
+                (
+                    (alist[*s - 3], alist[*s - 2], alist[*s - 1]),
+                    (flist[*s - 3], flist[*s - 2], flist[*s - 1]),
+                    i + 3 - *s
+                ),
+            i =>
+                (
+                    (alist[i - 2], alist[i - 1], alist[i]),
+                    (flist[i - 2], flist[i - 1], flist[i]),
+                    2
+                )
         };
 
         // Divided differences
@@ -60,6 +67,7 @@ pub fn lspar<const N: usize>(
         let f123 = (f23 - f12) / (aa2 - aa0);
 
         if !(f123 > 0.0) {
+            // handle concave case
             *alp = lsnew(func, nloc, small, sinit, short, x, p, *s, alist, flist, amin, amax, *abest, *fmed, *unitlen);
         } else {
             // Parabolic minimizer
@@ -69,7 +77,8 @@ pub fn lspar<const N: usize>(
             let alptol = small * (aa2 - aa0);
 
             // Handle infinities and close predictor
-            if f123 == f64::INFINITY || alist.iter().any(|&a| (a - *alp).abs() <= alptol) {
+            if f123 == f64::INFINITY || alist.iter().any(|&alist_i| (alist_i - *alp).abs() <= alptol) {
+                // split best interval
                 if ii == 0 || (ii == 1 && (aa1 >= 0.5 * (aa0 + aa2))) {
                     *alp = 0.5 * (aa0 + aa1);
                 } else {
@@ -86,7 +95,6 @@ pub fn lspar<const N: usize>(
         }
     }
 
-    let (fbest, up, down, monotone, minima, nmin);
     (*abest, fbest, *fmed, up, down, monotone, minima, nmin, *unitlen, *s) = lssort(alist, flist);
 
     (fbest, up, down, monotone, minima, nmin)

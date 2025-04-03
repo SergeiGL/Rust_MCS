@@ -1,6 +1,7 @@
 use crate::gls::lssplit::lssplit;
 use nalgebra::SVector;
 
+/// find one new point by extrapolation or split of wide interval
 pub fn lsnew<const N: usize>(
     func: fn(&SVector<f64, N>) -> f64,
     nloc: usize,
@@ -24,9 +25,8 @@ pub fn lsnew<const N: usize>(
     let condition = sinit == 1 || nloc > 1;
     let last_idx = s - 1;
 
-    // Use const generics and inline calculations for better performance
-    #[inline(always)]
-    fn check_boundary(val: bool, f: f64, fmax: f64, cond: bool) -> bool {
+    #[inline]
+    const fn check_boundary(val: bool, f: f64, fmax: f64, cond: bool) -> bool {
         val && (f < fmax || cond)
     }
 
@@ -73,7 +73,7 @@ pub fn lsnew<const N: usize>(
 
     alist.push(alp);
     flist.push(falp);
-    
+
     alp
 }
 
