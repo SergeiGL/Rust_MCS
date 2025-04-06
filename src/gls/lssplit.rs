@@ -24,13 +24,14 @@ use std::cmp::Ordering;
  * * `alp` - The interpolated point.
  * * `fac` - The interpolation factor determined by the comparison of `flist_i` and `flist_i_plus_1`.
  */
+#[inline]
 pub fn lssplit(alist_i: f64, alist_i_plus_1: f64, flist_i: f64, flist_i_plus_1: f64, short: f64) -> (f64, f64) {
     let fac = match flist_i.total_cmp(&flist_i_plus_1) {
         Ordering::Less => short,
         Ordering::Greater => 1.0 - short,
         Ordering::Equal => 0.5,
     };
-    
+
     let alp = alist_i + fac * (alist_i_plus_1 - alist_i);
     (alp, fac)
 }

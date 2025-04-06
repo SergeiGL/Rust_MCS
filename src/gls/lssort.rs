@@ -1,3 +1,5 @@
+use crate::gls::helpers::clear_and_calc_up_down;
+
 /**
  * Sorts points by increasing alpha values and analyzes the function landscape.
  *
@@ -48,6 +50,7 @@ pub fn lssort(
     usize        // s
 ) {
     debug_assert_eq!(alist.len(), flist.len());
+
     let mut pairs_to_sort: Vec<(f64, f64)> = alist.iter().copied().zip(flist.iter().copied()).collect();
     pairs_to_sort.sort_unstable_by(|(a_i, _), (a_j, _)| a_i.total_cmp(a_j));
 
@@ -63,14 +66,9 @@ pub fn lssort(
     let mut up = Vec::with_capacity(s - 1);
     let mut down = Vec::with_capacity(s - 1);
 
-    for i in 0..s - 1 {
-        let (curr, next) = (flist[i], flist[i + 1]);
-        up.push(curr < next);
-        down.push(next <= curr);
-    }
+    clear_and_calc_up_down(&mut up, &mut down, flist);
 
     down[s - 2] = flist[s - 1] < flist[s - 2]; // strict < sign
-
 
     // Check if sequence is monotone
     let monotone = up.iter().all(|&x| !x) || down.iter().all(|&x| !x);
@@ -91,14 +89,25 @@ pub fn lssort(
 
     // Compute median of flist
     let fmed = {
-        let mut sorted_flist = flist.clone();
-        sorted_flist.sort_by(|a, b| a.total_cmp(b));
-        let length = flist.len();
-        let mid = length / 2;
-        if length % 2 == 0 {
-            (sorted_flist[mid - 1] + sorted_flist[mid]) / 2.0
+        let len = flist.len();
+        let mid = len / 2;
+        let mut partial = flist.clone();
+
+        if len % 2 == 0 {
+            // Even length case - only need to partition once
+            partial.select_nth_unstable_by(mid - 1, |a, b| a.total_cmp(b));
+
+            // The element at mid-1 is now in the correct place
+            // We can find the next element by getting the minimum of the remaining elements
+            let (left, right) = partial.split_at_mut(mid);
+            let mid_left = left[mid - 1];
+            let mid_right = *right.iter().min_by(|a, b| a.total_cmp(b)).unwrap_or(&mid_left);
+
+            (mid_left + mid_right) / 2.0
         } else {
-            sorted_flist[mid]
+            // Odd length case - only need one partition
+            let (_, &mut median, _) = partial.select_nth_unstable_by(mid, |a, b| a.total_cmp(b));
+            median
         }
     };
 

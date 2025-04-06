@@ -60,18 +60,15 @@ where
 
     let norm = p.norm();
 
-    let mut alist = Vec::<f64>::with_capacity(10_000);
-    let mut flist = Vec::<f64>::with_capacity(10_000);
+    let mut alist;
+    let mut flist;
 
     let (mut gain, mut r) = if norm != 0.0 {
         let f1 = func(&x_new);
         ncall += 1;
 
-        alist.clear();
-        alist.extend([0.0, 1.0]);
-
-        flist.clear();
-        flist.extend([fmi, f1]);
+        alist = Vec::from([0.0, 1.0]);
+        flist = Vec::from([fmi, f1]);
 
         let fpred = fmi + g.dot(&p) + 0.5 * (p.dot(&(G * p)));
 
@@ -165,11 +162,8 @@ where
                     ncall += 1;
 
                     if f1 < fmi {
-                        alist.clear();
-                        alist.extend([0.0, x[i], -xmin[i]]);
-
-                        flist.clear();
-                        flist.extend([fmi, f1]);
+                        alist = Vec::from([0.0, x[i], -xmin[i]]);
+                        flist = Vec::from([fmi, f1]);
 
                         p[i] = 1.0;
                         ncall += gls(func, &xmin, &p, &mut alist, &mut flist, u, v, nloc, small, 6);
@@ -215,6 +209,7 @@ where
             }
             (x1, x2) = neighbor(&xmin, &delta, u, v);
         }
+
         let nftriple;
         // println!("before triple {xmin:?}\n{fmi}\n{x1:?}\n{x2:?}\n{hess:.15}, {G:.15}");
         diag = if (r - 1.0).abs() > 0.25 || gain == 0.0 || b < gamma * (f0 - f) {
@@ -265,11 +260,8 @@ where
             let f1 = func(&(xmin + p));
             ncall += 1;
 
-            alist.clear();
-            alist.extend([0.0, 1.0]);
-
-            flist.clear();
-            flist.extend([fmi, f1]);
+            alist = Vec::from([0.0, 1.0]);
+            flist = Vec::from([fmi, f1]);
 
             ncall += gls(func, &xmin, &p, &mut alist, &mut flist, u, v, nloc, small, smaxls);
 

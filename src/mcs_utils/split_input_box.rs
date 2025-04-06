@@ -26,7 +26,7 @@ pub fn split_input_box<const N: usize>(u: &SVector<f64, N>, v: &SVector<f64, N>,
                 .map(|(indx, max_arr)| (indx, max_arr[1] - max_arr[0]))
                 .unwrap();
 
-            if let Some(std::cmp::Ordering::Greater) = local_max_diff.partial_cmp(&global_max_diff) {
+            if local_max_diff.total_cmp(&global_max_diff) == std::cmp::Ordering::Greater {
                 global_max_diff = local_max_diff;
                 max_array_idx = array_idx;
                 max_vec_idx = vec_indx;
@@ -66,7 +66,7 @@ pub fn split_input_box<const N: usize>(u: &SVector<f64, N>, v: &SVector<f64, N>,
             }
 
             // Iterate over all intervals in the current dimension
-            for &(lower, upper) in &interval_lists[dim] {
+            for &(lower, upper) in interval_lists[dim].iter() {
                 current_lower[dim] = lower;
                 current_upper[dim] = upper;
                 recurse(

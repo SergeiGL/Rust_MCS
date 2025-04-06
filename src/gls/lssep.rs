@@ -2,7 +2,7 @@ use crate::gls::lsnew::lsnew;
 use crate::gls::lssort::lssort;
 use nalgebra::SVector;
 
-
+#[inline]
 pub fn lssep<const N: usize>(
     func: fn(&SVector<f64, N>) -> f64,
     nloc: usize,
@@ -37,10 +37,7 @@ pub fn lssep<const N: usize>(
         debug_assert!(down.len() == up.len());
 
         // Find intervals where the behavior of adjacent intervals is opposite (monotonicity behavior switches)
-        down.clear();
-        for i in 0..(*s - 1) {
-            down.push(flist[i + 1] < flist[i]);
-        }
+        *down = (0..(*s - 1)).map(|i| flist[i + 1] < flist[i]).collect::<Vec<bool>>();
 
         // sep = ([1,1,down] & [0,up,0] & [down,1,1]) | ([1,1,up] & [0,down,0] & [up,1,1])
         // ind=find(sep);

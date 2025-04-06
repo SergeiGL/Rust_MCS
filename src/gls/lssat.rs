@@ -1,3 +1,4 @@
+#[inline]
 pub fn lssat(
     small: f64,
     alist: &[f64],

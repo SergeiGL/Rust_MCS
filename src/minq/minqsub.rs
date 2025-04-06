@@ -3,6 +3,7 @@ use crate::minq::ldldown::ldldown;
 use crate::minq::ldlup::ldlup;
 use crate::minq::IerEnum;
 use nalgebra::{Const, DimMin, SMatrix, SVector};
+use std::cmp::Ordering;
 
 /// Performs a single iteration of the MINQ algorithm for bound-constrained quadratic minimization
 ///
@@ -54,6 +55,7 @@ use nalgebra::{Const, DimMin, SMatrix, SVector};
 /// This function is part of an iterative process and should be called repeatedly until convergence
 /// is achieved or an error condition is detected. The caller is responsible for checking the return
 /// value and the error code to determine when to stop the iterations.
+#[inline]
 pub fn minqsub<const N: usize>(
     nsub: &mut usize,
     free: &mut SVector<bool, N>,
@@ -139,18 +141,18 @@ where
     }
 
     (*alpu, *alpo) = (f64::NEG_INFINITY, f64::INFINITY);
-    for &i in &p_nonzero_ind_vec {
+    for &i in p_nonzero_ind_vec.iter() {
         let (p_i, o_i, u_i) = (p[i], (xo[i] - x[i]) / p[i], (xu[i] - x[i]) / p[i]);
         match p_i.partial_cmp(&0.0).unwrap() {
-            std::cmp::Ordering::Less => {
+            Ordering::Less => {
                 *alpu = alpu.max(o_i);
                 *alpo = alpo.min(u_i);
             }
-            std::cmp::Ordering::Greater => {
+            Ordering::Greater => {
                 *alpu = alpu.max(u_i);
                 *alpo = alpo.min(o_i);
             }
-            std::cmp::Ordering::Equal => {}
+            Ordering::Equal => {}
         }
     }
 
@@ -185,7 +187,7 @@ where
     // Note that xo, xu, x and p does not change since they "should be computed" according to Matlab
     // => everything needed to compute uu and oo is still valid
     let mut free_count = 0;
-    for &ik in &p_nonzero_ind_vec {
+    for ik in p_nonzero_ind_vec.into_iter() {
         let uu = (xu[ik] - x[ik]) / p[ik];
         let oo = (xo[ik] - x[ik]) / p[ik];
 
@@ -206,7 +208,7 @@ where
     }
 
     *nfree = free_count;
-    return true;
+    true
 }
 
 #[cfg(test)]

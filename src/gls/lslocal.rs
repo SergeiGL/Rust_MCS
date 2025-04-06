@@ -1,8 +1,19 @@
+use crate::gls::helpers;
 use crate::gls::lsguard::lsguard;
 use crate::gls::lssort::lssort;
 use nalgebra::SVector;
 
 
+#[derive(PartialEq)]
+enum CasEnum {
+    NoLocalRefinementAtBoundary, // -1
+    UseParabolicMinimizer,       // 0
+    UseHigherOrderPredictor1,    // 1
+    UseHigherOrderPredictor5,    // 5
+}
+
+
+#[inline]
 pub fn lslocal<const N: usize>(
     func: fn(&SVector<f64, N>) -> f64,
     nloc: usize,
@@ -26,58 +37,34 @@ pub fn lslocal<const N: usize>(
     s: &mut usize,
     saturated: &mut bool,
 ) {
+    debug_assert!(*s - 1 == up.len());
+    debug_assert!(*s - 1 == down.len()); // in order to access down[*s - 2]
+
     // Calculate up and down vectors
-    up.clear();
-    down.clear();
-    flist.windows(2).take(*s - 1).for_each(|win| {
-        up.push(win[0] < win[1]);
-        down.push(win[1] <= win[0]);
-    });
+    helpers::clear_and_calc_up_down(up, down, flist);
 
-    // Fix the last element of down as in Python
-    if down.len() > 0 {
-        down[*s - 2] = flist[*s - 1] < flist[*s - 2];
-    }
+    down[*s - 2] = flist[*s - 1] < flist[*s - 2];
 
-    // Calculate minima using Python's logic of padding with True
-    minima.clear();
-    minima.extend(
-        up.iter()
-            .chain(std::iter::once(&true))
-            .zip(std::iter::once(&true).chain(down.iter()))
-            .take(*s)
-            .map(|(up_val, down_val)| *up_val && *down_val)
-    );
+    *minima = up.iter().chain(std::iter::once(&true))
+        .zip(std::iter::once(&true).chain(down.iter()))
+        .map(|(up_val, down_val)| *up_val && *down_val)
+        .collect::<Vec<bool>>();
 
-    // Pre-allocate with capacity to avoid reallocations
-    let mut index_value_pairs = Vec::with_capacity(minima.len());
+    let mut imin = minima.iter().enumerate()
+        .filter(|(_, minima_i)| **minima_i).map(|(i, _)| i)
+        .collect::<Vec<usize>>();
 
-    // Single pass through data to collect indices and values together
-    for (idx, &is_min) in minima.iter().enumerate() {
-        if is_min {
-            index_value_pairs.push((idx, flist[idx]));
-        }
-    }
+    // TODO: Issue: The MATLAB code sorts in ascending order, then reverses the array to get descending order.
+    // Rust code directly sorts in descending order which could cause different ordering for equal elements.
+    // NOTE: the order of sort is reversed
+    // NOTE: no need to truncate; it is done in the the imin.into_iter().take(nind) line
+    imin.sort_unstable_by(|&i, &j| flist[j].total_cmp(&flist[i]));
 
-    // Sort by values directly, avoiding separate permutation vector
-    index_value_pairs.sort_unstable_by(|a, b| a.1.total_cmp(&b.1));
+    let nind = nloc.min(imin.len());
 
-    // Take needed number of elements, reverse, and extract indices
-    let nind = std::cmp::min(nloc, index_value_pairs.len());
-
-    // Preallocate result vector with exact size
-    let mut imin = Vec::with_capacity(nind);
-    for i in (0..nind).rev() {
-        imin.push(index_value_pairs[i].0);
-    }
-
-
-    let mut nadd = 0;
-    let mut nsat = 0;
-
-    let mut x_alp_p: SVector<f64, N>;
-
-    for i in imin {
+    let (mut nadd, mut nsat) = (false, 0_usize);
+    
+    for i in imin.into_iter().take(nind) {
         // Select nearest five points for local formula
         let (ind, ii) = if i <= 1 {
             ([0, 1, 2, 3, 4], i)
@@ -99,60 +86,54 @@ pub fn lslocal<const N: usize>(
         let f234 = (f34 - f23) / (aa[3] - aa[1]);
         let f345 = (f45 - f34) / (aa[4] - aa[2]);
 
-        // Decide on action using the same logic as Python
-        let mut cas = 0;
+        // Decide on action
+        let mut cas = CasEnum::UseParabolicMinimizer;
 
         if ii == 0 {
-            if f123 > 0.0 && f123.is_finite() {
+            if f123 > 0.0 && f123 != f64::INFINITY {
                 *alp = 0.5 * (aa[1] + aa[2] - f23 / f123);
-                if *alp < amin {
-                    cas = -1;
-                }
+                if *alp < amin { cas = CasEnum::NoLocalRefinementAtBoundary; }
             } else {
                 *alp = f64::NEG_INFINITY;
                 if (alist[0] - amin).abs() < f64::EPSILON && flist[1] < flist[2] {
-                    cas = -1;
+                    cas = CasEnum::NoLocalRefinementAtBoundary;
                 }
             }
             lsguard(alp, alist, amax, amin, small);
         } else if ii == 4 {
-            if f345 > 0.0 && f345.is_finite() {
+            if f345 > 0.0 && f345 != f64::INFINITY {
                 *alp = 0.5 * (aa[2] + aa[3] - f34 / f345);
-                if *alp > amax {
-                    cas = -1;
-                }
+                if *alp > amax { cas = CasEnum::NoLocalRefinementAtBoundary; }
             } else {
                 *alp = f64::INFINITY;
                 if (alist[*s - 1] - amax).abs() < f64::EPSILON && flist[*s - 2] < flist[*s - 3] {
-                    cas = -1;
+                    cas = CasEnum::NoLocalRefinementAtBoundary;
                 }
             }
             lsguard(alp, alist, amax, amin, small);
-        } else if !(f234 > 0.0 && f234.is_finite()) {
-            cas = 0;
+        } else if !(f234 > 0.0 && f234 != f64::INFINITY) {
             if ii < 2 {
                 *alp = 0.5 * (aa[1] + aa[2] - f23 / f123);
             } else {
                 *alp = 0.5 * (aa[2] + aa[3] - f34 / f345);
             }
-        } else if !(f123 > 0.0 && f123.is_finite()) {
-            if f345 > 0.0 && f345.is_finite() {
-                cas = 5;
+        } else if !(f123 > 0.0 && f123 != f64::INFINITY) {
+            if f345 > 0.0 && f345 != f64::INFINITY {
+                cas = CasEnum::UseHigherOrderPredictor5;
             } else {
-                cas = 0;
                 *alp = 0.5 * (aa[2] + aa[3] - f34 / f234);
             }
-        } else if f345 > 0.0 && f345.is_finite() && ff[1] > ff[3] {
-            cas = 5;
+        } else if f345 > 0.0 && f345 != f64::INFINITY && ff[1] > ff[3] {
+            cas = CasEnum::UseHigherOrderPredictor5;
         } else {
-            cas = 1;
+            cas = CasEnum::UseHigherOrderPredictor1;
         }
 
         match cas {
-            0 => {
+            CasEnum::UseParabolicMinimizer => {
                 *alp = alp.max(amin).min(amax);
             }
-            1 => {
+            CasEnum::UseHigherOrderPredictor1 => {
                 let f1x4 = if ff[1] < ff[2] {
                     let f13 = (ff[2] - ff[0]) / (aa[2] - aa[0]);
                     (f34 - f13) / (aa[3] - aa[0])
@@ -163,11 +144,11 @@ pub fn lslocal<const N: usize>(
                 *alp = 0.5 * (aa[1] + aa[2] - f23 / (f123 + f234 - f1x4));
                 if *alp <= *aa.iter().min_by(|a, b| a.total_cmp(b)).unwrap()
                     || *alp >= *aa.iter().max_by(|a, b| a.total_cmp(b)).unwrap() {
-                    cas = 0;
                     *alp = 0.5 * (aa[1] + aa[2] - f23 / f123.max(f234));
+                    cas = CasEnum::UseParabolicMinimizer;
                 }
             }
-            5 => {
+            CasEnum::UseHigherOrderPredictor5 => {
                 let f2x5 = if ff[2] < ff[3] {
                     let f24 = (ff[3] - ff[1]) / (aa[3] - aa[1]);
                     (f45 - f24) / (aa[4] - aa[1])
@@ -178,15 +159,15 @@ pub fn lslocal<const N: usize>(
                 *alp = 0.5 * (aa[2] + aa[3] - f34 / (f234 + f345 - f2x5));
                 if *alp <= *aa.iter().min_by(|a, b| a.total_cmp(b)).unwrap()
                     || *alp >= *aa.iter().max_by(|a, b| a.total_cmp(b)).unwrap() {
-                    cas = 0;
                     *alp = 0.5 * (aa[2] + aa[3] - f34 / f234.max(f345));
+                    cas = CasEnum::UseParabolicMinimizer;
                 }
             }
             _ => {}
         }
 
         // Calculate tolerance for accepting new STEP
-        let alptol = if cas < 0 || flist[i] > *fmed {
+        let alptol = if cas == CasEnum::NoLocalRefinementAtBoundary || flist[i] > *fmed {
             0.0
         } else if i == 0 {
             small * (alist[2] - alist[0])
@@ -196,25 +177,25 @@ pub fn lslocal<const N: usize>(
             small * (alist[i + 1] - alist[i - 1])
         };
 
-        let close = alist.iter().any(|&a| (a - *alp).abs() <= alptol);
+        // close= ( min(abs(alist-alp))<=alptol );
+        let close = alist.iter().any(|&alist_i| (alist_i - *alp).abs() <= alptol);
 
-        if cas < 0 || close {
+        if cas == CasEnum::NoLocalRefinementAtBoundary || close {
             nsat += 1;
         }
 
         *saturated = nsat == nind;
-        let final_check = *saturated && !alist.iter().any(|&a| a == *alp);
+        let final_check = *saturated && !alist.iter().any(|&alist_i| alist_i == *alp);
 
-        if cas >= 0 && (final_check || !close) {
-            nadd += 1;
-            x_alp_p = x + p.scale(*alp);
-            let falp = func(&x_alp_p);
+        if cas != CasEnum::NoLocalRefinementAtBoundary && (final_check || !close) {
+            nadd = true;
+            let falp = func(&(x + p.scale(*alp)));
             alist.push(*alp);
             flist.push(falp);
         }
     }
 
-    if nadd > 0 {
+    if nadd {
         (*abest, *fbest, *fmed, *up, *down, *monotone, *minima, *nmin, *unitlen, *s) = lssort(alist, flist);
     }
 }

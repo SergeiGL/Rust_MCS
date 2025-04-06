@@ -1,8 +1,7 @@
 use crate::mcs_utils::{add_basket::add_basket, sign::sign, updtrec::updtrec};
 use nalgebra::{Matrix2xX, Matrix3xX, SMatrix, SVector};
-
+use std::cmp::Ordering;
 const SQRT_5: f64 = 2.2360679774997896964091736687312;
-
 
 fn genbox<const SMAX: usize>(
     nboxes: &mut usize,
@@ -22,8 +21,7 @@ fn genbox<const SMAX: usize>(
     *nboxes += 1;
 
     match (*nboxes).cmp(&level.capacity()) {
-        std::cmp::Ordering::Less => {}
-        std::cmp::Ordering::Equal => {
+        Ordering::Equal => {
             let new_capacity = level.len() + level.capacity();
 
             level.resize(new_capacity, 0_usize);
@@ -35,7 +33,8 @@ fn genbox<const SMAX: usize>(
             f.resize_horizontally_mut(new_capacity, 1.0);
             z.resize_horizontally_mut(new_capacity, 1.0);
         }
-        std::cmp::Ordering::Greater => panic!()
+        Ordering::Less => {}
+        Ordering::Greater => panic!()
     }
 
     ipar[*nboxes] = Some(ipar_upd);

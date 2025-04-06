@@ -3,6 +3,7 @@ use crate::gls::lsnew::lsnew;
 use crate::gls::lssort::lssort;
 use nalgebra::SVector;
 
+#[inline]
 pub fn lspar<const N: usize>(
     func: fn(&SVector<f64, N>) -> f64,
     nloc: usize,
@@ -180,6 +181,41 @@ mod tests {
 
     #[test]
     fn test_2() {
+        // Matlab equivalent test
+        //
+        // prt = 0;
+        // nloc = 2;
+        // small = 1e-5;
+        // sinit = 3;
+        // short = 5.0;
+        // x = [1.0, 2.1, 3.2, 4.1, 5.4, 0.1];
+        // p = [1.0, 1., 1.0, 1., 1.0, 1., ];
+        // alist = [0.0, 0.11, 0.2, 0.13, 0.4, 0.41];
+        // flist = [0.0, 0.1, 0.4, 0.132, 0.4, 0.231];
+        // amin = 1.0;
+        // amax = 10.0;
+        // alp = 0.0;
+        // abest = 0.0;
+        // fmed = 0.0;
+        // unitlen = 5.0;
+        // s = 3;
+        //
+        // lspar;
+        //
+        // disp(alist);
+        // disp(flist);
+        // disp(abest);
+        // disp(fbest);
+        // disp(fmed);
+        // disp(up);
+        // disp(down);
+        // disp(monotone);
+        // disp(minima);
+        // disp(nmin);
+        // disp(unitlen);
+        // disp(s);
+        // disp(alp);
+
         let nloc = 2;
         let small = 1e-5;
         let sinit = 3;
@@ -201,16 +237,16 @@ mod tests {
 
 
         assert_eq!(alist, vec![0.0, 0.11, 0.13, 0.2, 0.4, 0.41, 1.0]);
-        assert_eq!(flist, [0.0, 0.1, 0.4, 0.132, 0.4, 0.231, -7.386702232051913e-134]);
+        assert_eq!(flist, [0.0, 0.1, 0.132, 0.4, 0.4, 0.231, -7.386702232051913e-134]);
         assert_eq!(abest, 1.0);
         assert_eq!(fbest, -7.386702232051913e-134);
         assert_eq!(fmed, 0.132);
-        assert_eq!(up, vec![true, true, false, true, false, false]);
-        assert_eq!(down, vec![false, false, true, false, true, true]);
+        assert_eq!(up, vec![true, true, true, false, false, false]);
+        assert_eq!(down, vec![false, false, false, true, true, true]);
         assert_eq!(monotone, false);
-        assert_eq!(minima, vec![true, false, false, true, false, false, true]);
-        assert_eq!(nmin, 3);
-        assert_eq!(unitlen, 0.8);
+        assert_eq!(minima, vec![true, false, false, false, false, false, true]);
+        assert_eq!(nmin, 2);
+        assert_eq!(unitlen, 1.);
         assert_eq!(s, 7);
         assert_eq!(alp, 1.0);
     }

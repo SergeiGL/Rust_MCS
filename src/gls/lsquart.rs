@@ -4,6 +4,7 @@ use crate::gls::lssort::lssort;
 use crate::gls::quartic::quartic;
 use nalgebra::{Matrix3, SVector};
 
+#[inline]
 pub fn lsquart<const N: usize>(
     func: fn(&SVector<f64, N>) -> f64,
     nloc: usize,
@@ -27,6 +28,9 @@ pub fn lsquart<const N: usize>(
     s: &mut usize,
     saturated: &mut bool,
 ) {
+    debug_assert!(*s - 1 == up.len());
+    debug_assert!(*s - 1 == down.len());
+
     let f12 = if alist[0] == alist[1] { 0.0 } else { (flist[1] - flist[0]) / (alist[1] - alist[0]) };
     let f23 = if alist[1] == alist[2] { 0.0 } else { (flist[2] - flist[1]) / (alist[2] - alist[1]) };
     let f34 = if alist[2] == alist[3] { 0.0 } else { (flist[3] - flist[2]) / (alist[3] - alist[2]) };
@@ -55,7 +59,9 @@ pub fn lsquart<const N: usize>(
         c[1] += c[0] * (alist[2] - alist[1]);
         c[4] = flist[2];
 
-        let cmax = c.normalize_mut();
+        let cmax = c.max();
+        // Built-in normalize func does not work as it computes cmax not as c.max() but as c.max()-c.min()
+        c.scale_mut(1. / cmax);
 
         let hk = 4.0 * c[0];
         let compmat = Matrix3::<f64>::new(
@@ -65,17 +71,18 @@ pub fn lsquart<const N: usize>(
         );
 
         // Calculate eigenvalues (complex)
-        let ev = compmat.complex_eigenvalues();
+        let mut ev = compmat.complex_eigenvalues();
+        ev.scale_mut(1. / hk);
 
         let n_real_roots = ev.iter().filter(|ev_i| ev_i.im == 0.0).count();
 
         if n_real_roots == 1 {
-            *alp = alist[2] + (ev[0].re / hk); // Img part is 0
+            *alp = alist[2] + ev[0].re; // Img part is 0
         } else {
-            let mut alp1 = alist[2] + ev[0].re.min(ev[1].re.min(ev[2].re)) / hk;
+            let mut alp1 = alist[2] + ev[0].re.min(ev[1].re.min(ev[2].re));
             lsguard(&mut alp1, alist, *amax, *amin, small);
 
-            let mut alp2 = alist[2] + ev[0].re.max(ev[1].re.max(ev[2].re)) / hk;
+            let mut alp2 = alist[2] + ev[0].re.max(ev[1].re.max(ev[2].re));
             lsguard(&mut alp2, alist, *amax, *amin, small);
 
             let f1 = cmax * quartic(&c, alp1 - alist[2]);
@@ -107,179 +114,532 @@ pub fn lsquart<const N: usize>(
 mod tests {
     use super::*;
     use crate::test_functions::hm6;
-    use approx::assert_relative_eq;
-
-    static TOLERANCE: f64 = 1e-14;
 
     #[test]
     fn test_real_mistake_0() {
+        // Matlab equivalent test
+        //
+        // func = "hm6";
+        // data = "hm6";
+        // prt = 0;
+        // nloc = 1;
+        // small = 0.1;
+        // x = [0.190983, 0.6, 0.7, 0.8, 0.9, 1.0];
+        // p = [0.0, 1.0, 0.0, 0.0, 0.0, 0.0];
+        // alist = [-1.6, -1.1, -0.6, -0.40767007775845987, 0.0];
+        // flist = [-0.00033007085742366247, -0.005222762849281021, -0.019362461793975085, -0.02327501776110989, -0.01523227097945881];
+        // amin = -1.6;
+        // amax = 0.4;
+        // alp = -0.40767007775845987;
+        // abest = -0.40767007775845987;
+        // fbest = -0.02327501776110989;
+        // fmed = -0.01523227097945881;
+        // up = [false, false, false, true];
+        // down = [true, true, true, false];
+        // monotone = false;
+        // minima = [false, false, false, true, false];
+        // nmin = 1;
+        // unitlen = 1.1923299222415402;
+        // s = 5;
+        // saturated = false;
+        //
+        // lsquart;
+        //
+        // disp(alist);
+        // disp(flist);
+        // disp(amin);
+        // disp(amax);
+        // disp(alp);
+        // disp(abest);
+        // disp(fbest);
+        // disp(fmed);
+        // disp(up);
+        // disp(down);
+        // disp(monotone);
+        // disp(minima);
+        // disp(nmin);
+        // disp(unitlen);
+        // disp(s);
+        // disp(saturated);
+
         let nloc = 1;
         let small = 0.1;
         let x = SVector::<f64, 6>::from_row_slice(&[0.190983, 0.6, 0.7, 0.8, 0.9, 1.0]);
         let p = SVector::<f64, 6>::from_row_slice(&[0.0, 1.0, 0.0, 0.0, 0.0, 0.0]);
         let mut alist = vec![-1.6, -1.1, -0.6, -0.40767007775845987, 0.0];
         let mut flist = vec![-0.00033007085742366247, -0.005222762849281021, -0.019362461793975085, -0.02327501776110989, -0.01523227097945881];
-        let (mut amin, mut amax, mut alp, mut abest, mut fbest, mut fmed) = (-1.6, 0.4, -0.40767007775845987, -0.40767007775845987, -0.02327501776110989, -0.01523227097945881);
+        let mut amin = -1.6;
+        let mut amax = 0.4;
+        let mut alp = -0.40767007775845987;
+        let mut abest = -0.40767007775845987;
+        let mut fbest = -0.02327501776110989;
+        let mut fmed = -0.01523227097945881;
         let mut up = vec![false, false, false, true];
         let mut down = vec![true, true, true, false];
         let mut monotone = false;
         let mut minima = vec![false, false, false, true, false];
-        let (mut nmin, mut unitlen, mut s) = (1, 1.1923299222415402, 5);
+        let mut nmin = 1;
+        let mut unitlen = 1.1923299222415402;
+        let mut s = up.len() + 1;
         let mut saturated = false;
 
         lsquart(hm6, nloc, small, &x, &p, &mut alist, &mut flist, &mut amin, &mut amax, &mut alp, &mut abest, &mut fbest, &mut fmed, &mut up, &mut down, &mut monotone, &mut minima, &mut nmin, &mut unitlen, &mut s, &mut saturated);
 
-        let expected_alist = vec![-1.6, -1.1, -0.6, -0.40767007775845987, -0.30750741391479824, 0.0];
-        let expected_flist = vec![-0.00033007085742366247, -0.005222762849281021, -0.019362461793975085, -0.02327501776110989, -0.023740401281451082, -0.01523227097945881];
-
-        assert_relative_eq!(alist.as_slice(), expected_alist.as_slice(), epsilon = TOLERANCE);
-        assert_relative_eq!(flist.as_slice(), expected_flist.as_slice(), epsilon = TOLERANCE);
+        assert_eq!(alist, [-1.6, -1.1, -0.6, -0.40767007775845987, -0.30750741391479774, 0.0]);
+        assert_eq!(flist, [-0.00033007085742366247, -0.005222762849281021, -0.019362461793975085, -0.02327501776110989, -0.023740401281451076, -0.01523227097945881]);
         assert_eq!(amin, -1.6);
         assert_eq!(amax, 0.4);
-        assert_relative_eq!(alp, -0.30750741391479824, epsilon = TOLERANCE);
-        assert_relative_eq!(abest, -0.30750741391479824, epsilon = TOLERANCE);
-        assert_relative_eq!(fbest, -0.023740401281451082, epsilon = TOLERANCE);
-        assert_relative_eq!(fmed, -0.017297366386716948, epsilon = TOLERANCE);
+        assert_eq!(alp, -0.30750741391479774);
+        assert_eq!(abest, -0.30750741391479774);
+        assert_eq!(fbest, -0.023740401281451076);
+        assert_eq!(fmed, -0.017297366386716948);
+        assert_eq!(up, vec![false, false, false, false, true, ]);
+        assert_eq!(down, vec![true, true, true, true, false, ]);
         assert_eq!(monotone, false);
-    }
-
-
-    #[test]
-    fn test_0() {
-        let nloc = 5;
-        let small = 1e-10;
-        let x = SVector::<f64, 6>::from_row_slice(&[1.0, 2.0, 3.0, 5.0, 6.0, 8.0]);
-        let p = SVector::<f64, 6>::from_row_slice(&[0.5, 0.5, 2.0, 3.0, 5.0, 1.0]);
-        let mut alist = vec![0.0, 0.01, 1.0, 2.0, 3.0, 5.0];
-        let mut flist = vec![1.0, 1.01, 2.0, 3.0, 4.0, 23.0];
-        let (mut amin, mut amax, mut alp, mut abest, mut fbest, mut fmed) = (-1.0, 5.0, 1.0, 0.5, 1.5, 2.0);
-        let mut up = vec![false; 4];
-        let mut down = vec![true; 4];
-        let mut monotone = true;
-        let mut minima = vec![true];
-        let (mut nmin, mut unitlen, mut s) = (1, 1.0, 3);
-        let mut saturated = false;
-
-        lsquart(hm6, nloc, small, &x, &p, &mut alist, &mut flist, &mut amin, &mut amax, &mut alp, &mut abest, &mut fbest, &mut fmed, &mut up, &mut down, &mut monotone, &mut minima, &mut nmin, &mut unitlen, &mut s, &mut saturated);
-
-        let expected_alist = vec![-1.0, 0.0, 0.01, 1.0, 2.0, 3.0, 5.0];
-        let expected_flist = vec![-6.455214899134537e-154, 1.0, 1.01, 2.0, 3.0, 4.0, 23.0];
-
-        assert_eq!(alist, expected_alist);
-        assert_eq!(flist, expected_flist);
-        assert!(up.iter().all(|&u| u));
-        assert!(down.iter().all(|&d| !d));
-        assert_eq!(amin, -1.0);
-        assert_eq!(amax, 5.0);
-        assert_eq!(alp, -1.0);
-        assert_eq!(abest, -1.0);
-        assert_eq!(fbest, -6.455214899134537e-154);
-        assert_eq!(fmed, 2.0);
-        assert!(monotone);
+        assert_eq!(minima, vec![false, false, false, false, true, false, ]);
         assert_eq!(nmin, 1);
-        assert_eq!(unitlen, 6.0);
-        assert_eq!(s, 7);
-        assert!(!saturated);
+        assert_eq!(unitlen, 1.2924925860852023);
+        assert_eq!(s, 6);
+        assert_eq!(saturated, false);
     }
 
     #[test]
-    fn test_1() {
-        let nloc = 5;
-        let small = 1e-10;
-        let x = SVector::<f64, 6>::from_row_slice(&[1.0, 2.0, 0.5, 1.0, 2.0, 3.0]);
-        let p = SVector::<f64, 6>::from_row_slice(&[0.5, 0.5, 0.0, 2.0, 4.0, 1.0]);
-        let mut alist = vec![-1.0, 0.0, 2.0, 4.0, 5.0, 3.0];
-        let mut flist = vec![1.0, 2.0, 3.0, 4.0, 5.0, 0.0];
-        let (mut amin, mut amax, mut alp, mut abest, mut fbest, mut fmed) = (-1.0, 5.0, 2.0, 2.0, 3.0, 3.0);
-        let mut up = vec![false; 4];
-        let mut down = vec![true; 4];
-        let mut monotone = true;
-        let mut minima = vec![true; 1];
-        let (mut nmin, mut unitlen, mut s) = (1, 1.0, 4);
-        let mut saturated = false;
+    fn test_unbounded_case() {
+        // MATLAB equivalent (quartic false branch):
+        // ---------------------------------------------
+        // func = "hm6";
+        // data = "hm6";
+        // prt = 0;
+        // nloc = 1;
+        // small = 0.1;
+        // x = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6];
+        // p = [1, 0, 0, 0, 0, 0];
+        // alist = [-1.0, -0.5, 0.0, 0.5, 1.0];
+        // flist = [0, 0, 0, 0, 0];   % Zero differences force f12345 == 0 (<= 0)
+        // amin = -1.0;
+        // amax = 1.0;
+        // alp = 0.0;
+        // abest = 0.0;
+        // fbest = 0.0;
+        // fmed = 0.0;
+        // up = [true, false, true, false];
+        // down = [false, true, false, true];
+        // monotone = false;
+        // minima = [false, true, false, true, false];
+        // nmin = 1;
+        // unitlen = 1.0;
+        // s = length(up)+1;
+        // saturated = false;
+        //
+        // lsquart();
+        //
+        // disp(alist);
+        // disp(flist);
+        // disp(amin);
+        // disp(amax);
+        // disp(alp);
+        // disp(abest);
+        // disp(fbest);
+        // disp(fmed);
+        // disp(up);
+        // disp(down);
+        // disp(monotone);
+        // disp(minima);
+        // disp(nmin);
+        // disp(unitlen);
+        // disp(s);
+        // disp(saturated);
 
-        lsquart(hm6, nloc, small, &x, &p, &mut alist, &mut flist, &mut amin, &mut amax, &mut alp, &mut abest, &mut fbest, &mut fmed, &mut up, &mut down, &mut monotone, &mut minima, &mut nmin, &mut unitlen, &mut s, &mut saturated);
-
-        let expected_alist = vec![-1.0, 0.0, 2.0, 3.0, 4.0, 5.0];
-        let expected_flist = vec![1.0, 2.0, 3.0, 4.0, 5.0, 0.0];
-
-        assert_eq!(alist, expected_alist);
-        assert_eq!(flist, expected_flist);
-        assert_eq!(up, Vec::from([true, true, true]));
-        assert_eq!(down, Vec::from([false, false, false]));
-        assert_eq!(minima, Vec::from([true, false, false, false]));
-        assert_eq!(monotone, true);
-        assert_eq!(alp, -0.6666666666666666);
-        assert_eq!(nmin, 1);
-        assert_eq!(unitlen, 1.0);
-        assert_eq!(s, 4);
-        assert!(saturated);
-    }
-
-    #[test]
-    fn test_2() {
-        let nloc = 5;
-        let small = 1e-10;
-        let x = SVector::<f64, 6>::from_row_slice(&[1.0, 2.0, 1.0 + 1e-9, 1.0 + 2e-9, 1.0 + 3e-9, 1.0 + 4e-9]);
-        let p = SVector::<f64, 6>::from_row_slice(&[0.5, 0.45, 5.5034, 0.5387, 5.8, 2.734]);
-        let mut alist = vec![1.0, 1.0 + 1e-5, 1.0 + 2e-4, 1.0 + 3e-4, 3.0 + 4e-5, -2.0];
-        let mut flist = vec![1.0, 1.1, 1.2, 1.3, 1.4, -2.0];
-        let (mut amin, mut amax, mut alp, mut abest, mut fbest, mut fmed) = (0.0, 2.0, 1.0, 1.0, 1.0, 1.2);
-        let mut up = vec![false; 4];
-        let mut down = vec![true; 4];
-        let mut monotone = true;
-        let mut minima = vec![true; 1];
-        let (mut nmin, mut unitlen, mut s) = (1, 1.0, 2);
-        let mut saturated = true;
-
-        lsquart(hm6, nloc, small, &x, &p, &mut alist, &mut flist, &mut amin, &mut amax, &mut alp, &mut abest, &mut fbest, &mut fmed, &mut up, &mut down, &mut monotone, &mut minima, &mut nmin, &mut unitlen, &mut s, &mut saturated);
-
-        let expected_alist = vec![-2.0, 0.0, 1.0, 1.00001, 1.0002, 1.0003, 3.00004];
-        let expected_flist = vec![1.0, -7.70489595691683e-12, 1.1, 1.2, 1.3, 1.4, -2.0];
-
-        assert_eq!(alist, expected_alist);
-        assert_eq!(flist, expected_flist);
-        assert_eq!(up, Vec::from([false, true, true, true, true, false]));
-        assert_eq!(down, Vec::from([true, false, false, false, false, true]));
-        assert_eq!(minima, Vec::from([false, true, false, false, false, false, true]));
-        assert_eq!(amin, 0.0);
-        assert_eq!(amax, 2.0);
-        assert_eq!(alp, 0.0);
-        assert!(!monotone);
-    }
-
-    #[test]
-    fn test_3() {
-        let nloc = 3;
-        let small = 1e-5;
-        let x = SVector::<f64, 6>::from_row_slice(&[1.0, 0.2325, 0.2, 1.0, 0.423, 0.4]);
-        let p = SVector::<f64, 6>::from_row_slice(&[0.5, 0.3, 0.25, 1.45, 0.537, 1.24]);
-        let mut alist = vec![10.101, 1.0, 2.0, 3.0, 2.21, 1.4];
-        let mut flist = vec![1.0, 0.5, 2.0, 1.5, 1.01, 1.5];
-        let (mut amin, mut amax, mut alp, mut abest, mut fbest, mut fmed) = (-1.0, 5.0, 2.0, 1.0, 0.5, 1.5);
-        let mut up = vec![false, false, true, false];
-        let mut down = vec![true, true, true, true];
+        let nloc = 1;
+        let small = 0.1;
+        let x = SVector::<f64, 6>::from_row_slice(&[0.1, 0.2, 0.3, 0.4, 0.5, 0.6]);
+        let p = SVector::<f64, 6>::from_row_slice(&[1.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
+        let mut alist = vec![-1.0, -0.5, 0.0, 0.5, 1.0];
+        let mut flist = vec![0.0, 0.0, 0.0, 0.0, 0.0];
+        let mut amin = -1.0;
+        let mut amax = 1.0;
+        let mut alp = 0.0;
+        let mut abest = 0.0;
+        let mut fbest = 0.0;
+        let mut fmed = 0.0;
+        let mut up = vec![true, false, true, false];
+        let mut down = vec![false, true, false, true];
         let mut monotone = false;
-        let mut minima = vec![true, false];
-        let (mut nmin, mut unitlen, mut s) = (2, 1.0, 3);
+        let mut minima = vec![false, true, false, true, false];
+        let mut nmin = 1;
+        let mut unitlen = 1.0;
+        let mut s = up.len() + 1;
         let mut saturated = false;
 
         lsquart(hm6, nloc, small, &x, &p, &mut alist, &mut flist, &mut amin, &mut amax, &mut alp, &mut abest, &mut fbest, &mut fmed, &mut up, &mut down, &mut monotone, &mut minima, &mut nmin, &mut unitlen, &mut s, &mut saturated);
 
-        let expected_alist = vec![1.0, 1.4, 2.0, 2.21, 3.0, 5.0, 10.101];
-        let expected_flist = vec![0.5, 1.5, 2.0, 1.01, 1.5, -4.018396477612926e-236, 1.0];
+        assert_eq!(alist, [-1.0, -0.5, 0.0, 0.5, 1.0]);
+        assert_eq!(flist, [0., 0., 0., 0., 0.]);
+        assert_eq!(amin, -1.);
+        assert_eq!(amax, 1.);
+        assert_eq!(alp, 0.0);
+        assert_eq!(abest, 0.0);
+        assert_eq!(fbest, 0.0);
+        assert_eq!(fmed, 0.0);
+        assert_eq!(up, vec![false, false, false, false]);
+        assert_eq!(down, vec![true, true, true, false]);
+        assert_eq!(monotone, false);
+        assert_eq!(minima, vec![false, false, false, false, false, ]);
+        assert_eq!(nmin, 1);
+        assert_eq!(unitlen, 1.);
+        assert_eq!(s, 5);
+        assert_eq!(saturated, false);
+    }
 
-        assert_eq!(alist, expected_alist);
-        assert_eq!(flist, expected_flist);
-        assert_eq!(up, Vec::from([true, true, false, true, false, true]));
-        assert_eq!(down, Vec::from([false, false, true, false, true, false]));
-        assert_eq!(minima, Vec::from([true, false, false, true, false, true, false]));
-        assert_eq!(amin, -1.0);
-        assert_eq!(amax, 5.0);
-        assert_eq!(alp, 5.0);
+    #[test]
+    fn test_bounded_case() {
+        // MATLAB equivalent (quartic true everywhere branch):
+        // ---------------------------------------------
+        // func = "hm6";
+        // data = "hm6";
+        // prt = 0;
+        // nloc = 1;
+        // small = 0.1;
+        // x = [0.5, 0.4, 0.3, 0.2, 0.1, 0.0];
+        // p = [0, 1, 0, 0, 0, 0];
+        // alist = [-1.0, -0.5, 0.0, 0.5, 1.0];
+        // flist = [0.0, -0.5, -1.0, -1.5, -1.0];
+        // amin = -1.0;
+        // amax = 1.0;
+        // alp = 1.4;
+        // abest = 21.4;
+        // fbest = -1.45;
+        // fmed = 3.;
+        // up = [false, true, false, true];
+        // down = [true, false, true, false];
+        // monotone = false;
+        // minima = [true, false, true, false, true];
+        // nmin = 1;
+        // unitlen = 1.0;
+        // s = length(up) + 1;
+        // saturated = false;
+        //
+        // lsquart();
+        //
+        // disp(alist);
+        // disp(flist);
+        // disp(amin);
+        // disp(amax);
+        // disp(alp);
+        // disp(abest);
+        // disp(fbest);
+        // disp(fmed);
+        // disp(up);
+        // disp(down);
+        // disp(monotone);
+        // disp(minima);
+        // disp(nmin);
+        // disp(unitlen);
+        // disp(s);
+        // disp(saturated);
+
+        let nloc = 1;
+        let small = 0.1;
+        let x = SVector::<f64, 6>::from_row_slice(&[0.5, 0.4, 0.3, 0.2, 0.1, 0.0]);
+        let p = SVector::<f64, 6>::from_row_slice(&[0.0, 1.0, 0.0, 0.0, 0.0, 0.0]);
+        let mut alist = vec![-1.0, -0.5, 0.0, 0.5, 1.0];
+        let mut flist = vec![0.0, -0.5, -1.0, -1.5, -1.0];
+        let mut amin = -1.0;
+        let mut amax = 1.0;
+        let mut alp = 1.4;
+        let mut abest = 21.4;
+        let mut fbest = -1.45;
+        let mut fmed = 3.;
+        let mut up = vec![false, true, false, true];
+        let mut down = vec![true, false, true, false];
+        let mut monotone = false;
+        let mut minima = vec![true, false, true, false, true];
+        let mut nmin = 1;
+        let mut unitlen = 1.0;
+        let mut s = up.len() + 1;
+        let mut saturated = false;
+
+        lsquart(hm6, nloc, small, &x, &p, &mut alist, &mut flist, &mut amin, &mut amax, &mut alp, &mut abest, &mut fbest, &mut fmed, &mut up, &mut down, &mut monotone, &mut minima, &mut nmin, &mut unitlen, &mut s, &mut saturated);
+
+        assert_eq!(alist, [-1.0, -0.5, 0.0, 0.5, 0.6140142478696381, 1.0]);
+        assert_eq!(flist, [0., -0.5, -1., -1.5, -0.5698604198029456, -1.00]);
+        assert_eq!(amin, -1.);
+        assert_eq!(amax, 1.);
+        assert_eq!(alp, 0.6140142478696381);
+        assert_eq!(abest, 0.5);
+        assert_eq!(fbest, -1.5);
+        assert_eq!(fmed, -0.7849302099014728);
+        assert_eq!(up, vec![false, false, false, true, false]);
+        assert_eq!(down, vec![true, true, true, false, true]);
+        assert_eq!(monotone, false);
+        assert_eq!(minima, vec![false, false, false, true, false, true]);
+        assert_eq!(nmin, 2);
+        assert_eq!(unitlen, 0.5);
+        assert_eq!(s, 6);
+        assert_eq!(saturated, false);
+    }
+
+    #[test]
+    fn test_edge_case_equal_alist() {
+        // MATLAB equivalent (testing divisions when consecutive alist values are equal):
+        // ---------------------------------------------
+        // func = "hm6";
+        // data = "hm6";
+        // prt = 0;
+        // nloc = 1;
+        // small = 0.1;
+        // x = [1, 2, 3, 4, 5, 6];
+        // p = [0, 0, 1, 0, 0, 0];
+        // alist = [0.0, 0.0, 1.0, 2.0, 3.0];   % First two elements equal
+        // flist = [1.0, 1.0, 2.0, 3.0, 4.0];
+        // amin = 0.0;
+        // amax = 3.0;
+        // alp = 0.0;
+        // abest = 0.1;
+        // fbest = 0.2;
+        // fmed = 0.3;
+        // up = [true, false, true, false];
+        // down = [false, true, false, true];
+        // monotone = false;
+        // minima = [false, false, true, false, true];
+        // nmin = 1;
+        // unitlen = 1.0;
+        // s = length(up)+1;  saturated = false;
+        //
+        // lsquart();
+        //
+        // disp(alist);
+        // disp(flist);
+        // disp(amin);
+        // disp(amax);
+        // disp(alp);
+        // disp(abest);
+        // disp(fbest);
+        // disp(fmed);
+        // disp(up);
+        // disp(down);
+        // disp(monotone);
+        // disp(minima);
+        // disp(nmin);
+        // disp(unitlen);
+        // disp(s);
+        // disp(saturated);
+
+        let nloc = 1;
+        let small = 0.1;
+        let x = SVector::<f64, 6>::from_row_slice(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
+        let p = SVector::<f64, 6>::from_row_slice(&[0.0, 0.0, 1.0, 0.0, 0.0, 0.0]);
+        let mut alist = vec![0.0, 0.0, 1.0, 2.0, 3.0];
+        let mut flist = vec![1.0, 1.0, 2.0, 3.0, 4.0];
+        let mut amin = 0.0;
+        let mut amax = 3.0;
+        let mut alp = 0.0;
+        let mut abest = 0.1;
+        let mut fbest = 0.2;
+        let mut fmed = 0.3;
+        let mut up = vec![true, false, true, false];
+        let mut down = vec![false, true, false, true];
+        let mut monotone = false;
+        let mut minima = vec![false, false, true, false, true];
+        let mut nmin = 1;
+        let mut unitlen = 1.0;
+        let mut s = up.len() + 1;
+        let mut saturated = false;
+
+        lsquart(hm6, nloc, small, &x, &p, &mut alist, &mut flist, &mut amin, &mut amax, &mut alp, &mut abest, &mut fbest, &mut fmed, &mut up, &mut down, &mut monotone, &mut minima, &mut nmin, &mut unitlen, &mut s, &mut saturated);
+
+        assert_eq!(alist, vec![0., 0., 0.0, 1.0, 2.0, 3., ]);
+        assert_eq!(flist, vec![1., 1., -3.391970967769076e-191, 2.0, 3., 4.0]);
+        assert_eq!(amin, 0.);
+        assert_eq!(amax, 3.);
+        assert_eq!(alp, 0.0);
+        assert_eq!(abest, 0.0);
+        assert_eq!(fbest, -3.391970967769076e-191);
+        assert_eq!(fmed, 1.5);
+        assert_eq!(up, vec![false, false, true, true, true, ]);
+        assert_eq!(down, vec![true, true, false, false, false, ]);
+        assert_eq!(monotone, false);
+        assert_eq!(minima, vec![false, false, true, false, false, false, ]);
+        assert_eq!(nmin, 1);
+        assert_eq!(unitlen, 3.);
+        assert_eq!(s, 6);
+        assert_eq!(saturated, false);
+    }
+
+    #[test]
+    fn test_real_mistake_negative_direction_() {
+        // MATLAB equivalent:
+        // --------------------
+        // func = "hm6";
+        // data = "hm6";
+        // prt = 0;
+        // nloc = 1;
+        // small = 0.1;
+        // x = [1.0, 0.5, -0.5, -1.0, -1.5, -2.0];
+        // p = [-1.0, -0.5, 0.0, 0.5, 1.0, 1.5];
+        // alist = [0.1, 0.5, -1.0, 1.5, -2.0];
+        // flist = [0.0, -0.2, -0.4, -0.3, -0.1];
+        // amin = 0.0;
+        // amax = 2.0;
+        // alp = 1.0;
+        // abest = 1.0;
+        // fbest = -0.4;
+        // fmed = -0.3;
+        // up = [true, false, true, false];
+        // down = [false, true, false, true];
+        // monotone = true;
+        // minima = [false, true, false, true, false];
+        // nmin = 1;
+        // unitlen = 1.0;
+        // s = length(up) + 1;
+        // saturated = false;
+        //
+        // lsquart();
+        //
+        // disp(alist);
+        // disp(flist);
+        // disp(amin);
+        // disp(amax);
+        // disp(alp);
+        // disp(abest);
+        // disp(fbest);
+        // disp(fmed);
+        // disp(up);
+        // disp(down);
+        // disp(monotone);
+        // disp(minima);
+        // disp(nmin);
+        // disp(unitlen);
+        // disp(s);
+        // disp(saturated);
+
+        let nloc = 1;
+        let small = 0.1;
+        let x = SVector::<f64, 6>::from_row_slice(&[1.0, 0.5, -0.5, -1.0, -1.5, -2.0]);
+        let p = SVector::<f64, 6>::from_row_slice(&[-1.0, -0.5, 0.0, 0.5, 1.0, 1.5]);
+        let mut alist = vec![0.1, 0.5, -1.0, 1.5, -2.0];
+        let mut flist = vec![0.0, -0.2, -0.4, -0.3, -0.1];
+        let mut amin = 0.0;
+        let mut amax = 2.0;
+        let mut alp = 1.0;
+        let mut abest = 1.0;
+        let mut fbest = -0.4;
+        let mut fmed = -0.3;
+        let mut up = vec![true, false, true, false];
+        let mut down = vec![false, true, false, true];
+        let mut monotone = true;
+        let mut minima = vec![false, true, false, true, false];
+        let mut nmin = 1;
+        let mut unitlen = 1.0;
+        let mut s = up.len() + 1;
+        let mut saturated = false;
+
+        lsquart(hm6, nloc, small, &x, &p, &mut alist, &mut flist, &mut amin, &mut amax, &mut alp, &mut abest, &mut fbest, &mut fmed, &mut up, &mut down, &mut monotone, &mut minima, &mut nmin, &mut unitlen, &mut s, &mut saturated);
+
+        assert_eq!(alist, vec![-2., -1., 0.1, 0.5, 1.1478848440118115, 1.5]);
+        assert_eq!(flist, vec![-0.1, -0.4, 0., -0.2, -1.6484456831893024e-9, -0.3]);
+        assert_eq!(amin, 0.);
+        assert_eq!(amax, 2.);
+        assert_eq!(alp, 1.1478848440118115);
+        assert_eq!(abest, -1.0);
+        assert_eq!(fbest, -0.4);
+        assert_eq!(fmed, -0.15000000000000002);
+        assert_eq!(up, vec![false, true, false, true, false, ]);
+        assert_eq!(down, vec![true, false, true, false, true, ]);
+        assert_eq!(monotone, false);
+        assert_eq!(minima, vec![false, true, false, true, false, true, ]);
         assert_eq!(nmin, 3);
-        assert_eq!(unitlen, 2.79);
-        assert_eq!(s, 7);
+        assert_eq!(unitlen, 1.5);
+        assert_eq!(s, 6);
+        assert_eq!(saturated, false);
+    }
+
+    #[test]
+    fn test_non_monotone_input() {
+        // MATLAB equivalent:
+        // --------------------
+        // func = "hm6";
+        // data = "hm6";
+        // prt = 0;
+        // nloc = 1;
+        // small = 0.1;
+        // x = [2, 4, 6, 8, 10, 12];
+        // p = [0, -1, 1, 0, 0, 0];
+        // alist = [-1.0, 0.5, 1.0, -2.5, 3.0];
+        // flist = [1.0, 0.8, 0.6, 0.4, 0.2];
+        // amin = 1.0;
+        // amax = 3.0;
+        // alp = 2.0;
+        // abest = 2.0;
+        // fbest = 0.6;
+        // fmed = 0.8;
+        // up = [false, true, false, true];
+        // down = [true, false, true, false];
+        // monotone = false;
+        // minima = [true, false, true, false, true];
+        // nmin = 2;
+        // unitlen = 0.5;
+        // s = length(up) + 1;
+        // saturated = false;
+        //
+        // lsquart();
+        //
+        // disp(alist);
+        // disp(flist);
+        // disp(amin);
+        // disp(amax);
+        // disp(alp);
+        // disp(abest);
+        // disp(fbest);
+        // disp(fmed);
+        // disp(up);
+        // disp(down);
+        // disp(monotone);
+        // disp(minima);
+        // disp(nmin);
+        // disp(unitlen);
+        // disp(s);
+        // disp(saturated);
+
+        let nloc = 1;
+        let small = 0.1;
+        let x = SVector::<f64, 6>::from_row_slice(&[2.0, 4.0, 6.0, 8.0, 10.0, 12.0]);
+        let p = SVector::<f64, 6>::from_row_slice(&[0.0, -1.0, 1.0, 0.0, 0.0, 0.0]);
+        let mut alist = vec![-1.0, 0.5, 1.0, -2.5, 3.0];
+        let mut flist = vec![1.0, 0.8, 0.6, 0.4, 0.2];
+        let mut amin = 1.0;
+        let mut amax = 3.0;
+        let mut alp = 2.0;
+        let mut abest = 2.0;
+        let mut fbest = 0.6;
+        let mut fmed = 0.8;
+        let mut up = vec![false, true, false, true];
+        let mut down = vec![true, false, true, false];
+        let mut monotone = false;
+        let mut minima = vec![true, false, true, false, true];
+        let mut nmin = 2;
+        let mut unitlen = 0.5;
+        let mut s = up.len() + 1;
+        let mut saturated = false;
+
+        lsquart(hm6, nloc, small, &x, &p, &mut alist, &mut flist, &mut amin, &mut amax, &mut alp, &mut abest, &mut fbest, &mut fmed, &mut up, &mut down, &mut monotone, &mut minima, &mut nmin, &mut unitlen, &mut s, &mut saturated);
+
+        assert_eq!(alist, vec![-2.5, -1., 0.5, 1., 2.5480214566643298, 3.]);
+        assert_eq!(flist, vec![0.4, 1., 0.8, 0.6, 0., 0.2]);
+        assert_eq!(amin, 1.);
+        assert_eq!(amax, 3.);
+        assert_eq!(alp, 2.5480214566643298);
+        assert_eq!(abest, 2.5480214566643298);
+        assert_eq!(fbest, 0.0);
+        assert_eq!(fmed, 0.5);
+        assert_eq!(up, vec![true, false, false, false, true, ]);
+        assert_eq!(down, vec![false, true, true, true, false, ]);
+        assert_eq!(monotone, false);
+        assert_eq!(minima, vec![true, false, false, false, true, false, ]);
+        assert_eq!(nmin, 2);
+        assert_eq!(unitlen, 5.04802145666433);
+        assert_eq!(s, 6);
+        assert_eq!(saturated, false);
     }
 }
 
