@@ -130,6 +130,263 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_ldlup_case_5() {
+        // Matlab code for test_ldlup_case_5:
+        // -----------------------------------
+        // function [L_out,d_out,p] = ldlup(L,d,j,g)
+        // L = eye(4);
+        // d = [2.0; 3.0; 4.0; 5.0];
+        // j = 3; % Matlab is 1-indexed; corresponds to Rust j = 2 (0-indexed)
+        // g = [1.0; 0.0; 3.0; 0.0];
+        // [L_out,d_out,p] = ldlup(L,d,j,g)
+        // disp('L_out:'); disp(L_out)
+        // disp('d_out:'); disp(d_out)
+        // disp('p:'); disp(p)
+        // -----------------------------------
+        
+        const N: usize = 4;
+        let mut L = SMatrix::<f64, N, N>::identity();
+        let mut d = SVector::<f64, N>::from_row_slice(&[2.0, 3.0, 4.0, 5.0]);
+        let j = 2; // Rust index (0-indexed) corresponding to Matlab's j=3
+        let g = SVector::<f64, N>::from_row_slice(&[1.0, 0.0, 3.0, 0.0]);
+        let p = ldlup(&mut L, &mut d, j, &g);
+
+        // Expected values from Matlab (replace these placeholders with actual values):
+        let expected_L = SMatrix::<f64, N, N>::from_row_slice(&[
+            1.0, 0.0, 0.0, 0.0,
+            0.0, 1.0, 0.0, 0.0,
+            0.5, 0.0, 1.0, 0.0,
+            0.0, 0.0, 0.0, 1.0,
+        ]);
+        let expected_d = SVector::<f64, N>::from_row_slice(&[2.0, 3.0, 2.5, 5.0]);
+        let expected_p = None;
+
+        assert_eq!(L, expected_L);
+        assert_eq!(d, expected_d);
+        assert_eq!(p, expected_p);
+    }
+
+    #[test]
+    fn test_ldlup_real_mistake() {
+        // Matlab code for test_ldlup_case_6:
+        // -----------------------------------
+        // function [L_out,d_out,p] = ldlup(L,d,j,g)
+        // L = [ 1.0, 0.0, 0.0, 0.0;
+        //     2.0, 3.0, 0.0, 0.0;
+        //     3.0, 4.0, 2.0, 0.0;
+        //     5.0, 6.0, 7.0, 4.0];
+        // d = [10; 20; 30; 40];
+        // j = 2; % Matlab indexing: j=2 corresponds to Rust j = 1
+        // g = [0.5; 0.2; 0.8; 0.1];
+        // [L_out,d_out,p] = ldlup(L,d,j,g)
+        // disp('L_out:'); disp(L_out)
+        // disp('d_out:'); disp(d_out)
+        // disp('p:'); disp(p)
+        // -----------------------------------
+        const N: usize = 4;
+        let mut L = SMatrix::<f64, N, N>::from_row_slice(&[
+            1.0, 0.0, 0.0, 0.0,
+            2.0, 3.0, 0.0, 0.0,
+            3.0, 4.0, 2.0, 0.0,
+            5.0, 6.0, 7.0, 4.0,
+        ]);
+        let mut d = SVector::<f64, N>::from_row_slice(&[10.0, 20.0, 30.0, 40.0]);
+        let j = 1;
+        let g = SVector::<f64, N>::from_row_slice(&[0.5, 0.2, 0.8, 0.1]);
+        let p = ldlup(&mut L, &mut d, j, &g);
+
+        // Expected values from Matlab (replace these placeholders with actual values):
+        let expected_L = SMatrix::<f64, N, N>::from_row_slice(&[
+            1., 0., 0., 0.,
+            0.050000000000000, 1., 0., 0.,
+            3., -3.999999999999999, 2., 0.,
+            5., -13.714285714285712, 7.367647058823529, 4.,
+        ]);
+        let expected_d = SVector::<f64, N>::from_row_slice(&[10., 0.17500000000000002, 27.200000000000003, 0.6092436974790232]);
+        let expected_p = None;
+
+        assert_eq!(L, expected_L);
+        assert_eq!(d, expected_d);
+        assert_eq!(p, expected_p);
+    }
+
+    #[test]
+    fn test_ldlup_real_del_lower_or_eq_tham_N_times_EPS() {
+        // Matlab code for test_ldlup_case_6:
+        // -----------------------------------
+        // function [L_out,d_out,p] = ldlup(L,d,j,g)
+        // L = [ 1.0, 1.1, 2.2, 3.3;
+        //     2.0, 3.0, 7.0, 4.0;
+        //     3.0, 4.0, 2.0, 5.5;
+        //     5.0, 6.0, 7.0, 4.1];
+        // d = [11; -20; 3; -40];
+        // j = 3; % Matlab indexing: j=3 corresponds to Rust j = 2
+        // g = [-1.5; 0.2; -0.8; -0.1];
+        // [L_out,d_out,p] = ldlup(L,d,j,g)
+        // disp('L_out:'); disp(L_out)
+        // disp('d_out:'); disp(d_out)
+        // disp('p:'); disp(p)
+        // -----------------------------------
+        const N: usize = 4;
+        let mut L = SMatrix::<f64, N, N>::from_row_slice(&[
+            1.0, 1.1, 2.2, 3.3,
+            2.0, 3.0, 7.0, 4.0,
+            3.0, 4.0, 2.0, 5.5,
+            5.0, 6.0, 7.0, 4.1,
+        ]);
+        let mut d = SVector::<f64, N>::from_row_slice(&[11., -20.0, 3., -40.0]);
+        let j = 2;
+        let g = SVector::<f64, N>::from_row_slice(&[-1.5, 0.2, -0.8, -0.1]);
+        let p = ldlup(&mut L, &mut d, j, &g);
+
+        // Expected values from Matlab (replace these placeholders with actual values):
+        let expected_L = SMatrix::<f64, N, N>::from_row_slice(&[
+            1.0, 1.1, 2.2, 3.3,
+            2.0, 3.0, 7.0, 4.0,
+            3.0, 4.0, 2.0, 5.5,
+            5.0, 6.0, 7.0, 4.1,
+        ]);
+        let expected_d = SVector::<f64, N>::from_row_slice(&[11., -20., 3., -40.]);
+        let expected_p = Some(SVector::<f64, N>::from_row_slice(&[-1.5113636363636374, 0.4875000000000004, -1.000000000000000, 0.]));
+
+        assert_eq!(L, expected_L);
+        assert_eq!(d, expected_d);
+        assert_eq!(p, expected_p);
+    }
+
+    #[test]
+    fn test_ldlup_match_false() {
+        // Matlab code for test_ldlup_case_6:
+        // -----------------------------------
+        // function [L_out,d_out,p] = ldlup(L,d,j,g)
+        // L = [ -1.0, 1.1, 2.2, 3.3;
+        //     -2.0, -3.0, 7.0, 4.0;
+        //     -3.0, -4.0, 2.0, 5.5;
+        //     5.0, -6.0, 7.0, 4.1];
+        // d = [100; 40; 30; 20];
+        // j = 3;
+        // g = [150; 100; 200; 400];
+        // [L_out,d_out,p] = ldlup(L,d,j,g);
+        // disp('L_out:'); disp(L_out)
+        // disp('d_out:'); disp(d_out)
+        // disp('p:'); disp(p)
+        // -----------------------------------
+        const N: usize = 4;
+        let mut L = SMatrix::<f64, N, N>::from_row_slice(&[
+            -1.0, 1.1, 2.2, 3.3,
+            -2.0, -3.0, 7.0, 4.0,
+            -3.0, -4.0, 2.0, 5.5,
+            5.0, -6.0, 7.0, 4.1,
+        ]);
+        let mut d = SVector::<f64, N>::from_row_slice(&[100., 40., 30., 20.]);
+        let j = 2;
+        let g = SVector::<f64, N>::from_row_slice(&[150., 100., 200., 400.]);
+        let p = ldlup(&mut L, &mut d, j, &g);
+
+        // Expected values from Matlab (replace these placeholders with actual values):
+        let expected_L = SMatrix::<f64, N, N>::from_row_slice(&[
+            -1., 1.1, 2.2, 3.3,
+            -2., -3., 7., 4.,
+            -3., -4., 2., 5.5,
+            5., -6., 7., 4.1
+        ]);
+        let expected_d = SVector::<f64, N>::from_row_slice(&[100., 40., 30., 20.]);
+        let expected_p = Some(SVector::<f64, N>::from_row_slice(&[7.274888786623714, 0.23661604540573702, -6.062279490719435, 0.24390243902439027]));
+
+        assert_eq!(L, expected_L);
+        assert_eq!(d, expected_d);
+        assert_eq!(p, expected_p);
+    }
+
+    #[test]
+    fn test_ldlup_match_false_2() {
+        // Matlab code for test_ldlup_case_6:
+        // -----------------------------------
+        // function [L_out,d_out,p] = ldlup(L,d,j,g)
+        // L = [ -1.0, 1.1, 2.2, 3.3;
+        //     -2.0, -3.0, 7.0, 4.0;
+        //     -3.0, -4.0, 2.0, 5.5;
+        //     -5.0, -6.0, 7.0, 4.1];
+        // d = [40; 40; 30; 20];
+        // j = 2;
+        // g = [10; 100; 200; 400];
+        // [L_out,d_out,p] = ldlup(L,d,j,g);
+        // disp('L_out:'); disp(L_out)
+        // disp('d_out:'); disp(d_out)
+        // disp('p:'); disp(p)
+        // -----------------------------------
+        const N: usize = 4;
+        let mut L = SMatrix::<f64, N, N>::from_row_slice(&[
+            -1.0, 1.1, 2.2, 3.3,
+            -2.0, -3.0, 7.0, 4.0,
+            -3.0, -4.0, 2.0, 5.5,
+            -5.0, -6.0, 7.0, 4.1,
+        ]);
+        let mut d = SVector::<f64, N>::from_row_slice(&[40., 40., 30., 20.]);
+        let j = 1;
+        let g = SVector::<f64, N>::from_row_slice(&[10., 100., 200., 400.]);
+        let p = ldlup(&mut L, &mut d, j, &g);
+
+        // Expected values from Matlab (replace these placeholders with actual values):
+        let expected_L = SMatrix::<f64, N, N>::from_row_slice(&[
+            -1., 1.1, 2.2, 3.3,
+            -2., -3., 7., 4.,
+            -3., -4., 2., 5.5,
+            -5., -6., 7., 4.1
+        ]);
+        let expected_d = SVector::<f64, N>::from_row_slice(&[40., 40., 30., 20.]);
+        let expected_p = Some(SVector::<f64, N>::from_row_slice(&[-1.282051282051282, -0.8717948717948718, 0.500000000000000, 0.]));
+
+        assert_eq!(L, expected_L);
+        assert_eq!(d, expected_d);
+        assert_eq!(p, expected_p);
+    }
+
+    #[test]
+    fn test_ldlup_match_false_3() {
+        // Matlab code for test_ldlup_case_6:
+        // -----------------------------------
+        // function [L_out,d_out,p] = ldlup(L,d,j,g)
+        // L = [ 1.0, 1.1, 1.2, 1.3;
+        //     12.0, -3.0, 7.0, 0.0;
+        //     3.1, 3.0, 23.0, 5.;
+        //     -25.0, -36.0, 17.0, 4.1];
+        // d = [25; 10; 30; 20];
+        // j = 2;
+        // g = [13; 101; 220; 430];
+        // [L_out,d_out,p] = ldlup(L,d,j,g);
+        // disp('L_out:'); disp(L_out)
+        // disp('d_out:'); disp(d_out)
+        // disp('p:'); disp(p)
+        // -----------------------------------
+        const N: usize = 4;
+        let mut L = SMatrix::<f64, N, N>::from_row_slice(&[
+            1.0, 1.1, 1.2, 1.3,
+            12.0, -3.0, 7.0, 0.0,
+            3.1, 3.0, 23.0, 5.,
+            -25.0, -36.0, 17.0, 4.1,
+        ]);
+        let mut d = SVector::<f64, N>::from_row_slice(&[25., 10., 30., 20.]);
+        let j = 1;
+        let g = SVector::<f64, N>::from_row_slice(&[13., 101., 220., 430.]);
+        let p = ldlup(&mut L, &mut d, j, &g);
+
+        // Expected values from Matlab (replace these placeholders with actual values):
+        let expected_L = SMatrix::<f64, N, N>::from_row_slice(&[
+            1.0, 1.1, 1.2, 1.3,
+            12.0, -3.0, 7.0, 0.0,
+            3.1, 3.0, 23.0, 5.,
+            -25.0, -36.0, 17.0, 4.1,
+        ]);
+        let expected_d = SVector::<f64, N>::from_row_slice(&[25., 10., 30., 20.]);
+        let expected_p = Some(SVector::<f64, N>::from_row_slice(&[-0.09167158780541818, -0.08290580940429615, 0.043478260869565216, 0.]));
+
+        assert_eq!(L, expected_L);
+        assert_eq!(d, expected_d);
+        assert_eq!(p, expected_p);
+    }
+
+    #[test]
     fn test_coverage_0() {
         const N: usize = 3;
         let mut L = SMatrix::<f64, N, N>::from_row_slice(&[
@@ -521,262 +778,6 @@ mod tests {
         let expected_p = Some(SVector::<f64, N>::from_row_slice(&[
             -102.0, 10.0, -1.0, 0.0,
         ]));
-
-        assert_eq!(L, expected_L);
-        assert_eq!(d, expected_d);
-        assert_eq!(p, expected_p);
-    }
-
-    #[test]
-    fn test_ldlup_case_5() {
-        // Matlab code for test_ldlup_case_5:
-        // -----------------------------------
-        // function [L_out,d_out,p] = ldlup(L,d,j,g)
-        // L = eye(4);
-        // d = [2.0; 3.0; 4.0; 5.0];
-        // j = 3; % Matlab is 1-indexed; corresponds to Rust j = 2 (0-indexed)
-        // g = [1.0; 0.0; 3.0; 0.0];
-        // [L_out,d_out,p] = ldlup(L,d,j,g)
-        // disp('L_out:'); disp(L_out)
-        // disp('d_out:'); disp(d_out)
-        // disp('p:'); disp(p)
-        // -----------------------------------
-        const N: usize = 4;
-        let mut L = SMatrix::<f64, N, N>::identity();
-        let mut d = SVector::<f64, N>::from_row_slice(&[2.0, 3.0, 4.0, 5.0]);
-        let j = 2; // Rust index (0-indexed) corresponding to Matlab's j=3
-        let g = SVector::<f64, N>::from_row_slice(&[1.0, 0.0, 3.0, 0.0]);
-        let p = ldlup(&mut L, &mut d, j, &g);
-
-        // Expected values from Matlab (replace these placeholders with actual values):
-        let expected_L = SMatrix::<f64, N, N>::from_row_slice(&[
-            1.0, 0.0, 0.0, 0.0,
-            0.0, 1.0, 0.0, 0.0,
-            0.5, 0.0, 1.0, 0.0,
-            0.0, 0.0, 0.0, 1.0,
-        ]);
-        let expected_d = SVector::<f64, N>::from_row_slice(&[2.0, 3.0, 2.5, 5.0]);
-        let expected_p = None;
-
-        assert_eq!(L, expected_L);
-        assert_eq!(d, expected_d);
-        assert_eq!(p, expected_p);
-    }
-
-    #[test]
-    fn test_ldlup_real_mistake() {
-        // Matlab code for test_ldlup_case_6:
-        // -----------------------------------
-        // function [L_out,d_out,p] = ldlup(L,d,j,g)
-        // L = [ 1.0, 0.0, 0.0, 0.0;
-        //     2.0, 3.0, 0.0, 0.0;
-        //     3.0, 4.0, 2.0, 0.0;
-        //     5.0, 6.0, 7.0, 4.0];
-        // d = [10; 20; 30; 40];
-        // j = 2; % Matlab indexing: j=2 corresponds to Rust j = 1
-        // g = [0.5; 0.2; 0.8; 0.1];
-        // [L_out,d_out,p] = ldlup(L,d,j,g)
-        // disp('L_out:'); disp(L_out)
-        // disp('d_out:'); disp(d_out)
-        // disp('p:'); disp(p)
-        // -----------------------------------
-        const N: usize = 4;
-        let mut L = SMatrix::<f64, N, N>::from_row_slice(&[
-            1.0, 0.0, 0.0, 0.0,
-            2.0, 3.0, 0.0, 0.0,
-            3.0, 4.0, 2.0, 0.0,
-            5.0, 6.0, 7.0, 4.0,
-        ]);
-        let mut d = SVector::<f64, N>::from_row_slice(&[10.0, 20.0, 30.0, 40.0]);
-        let j = 1;
-        let g = SVector::<f64, N>::from_row_slice(&[0.5, 0.2, 0.8, 0.1]);
-        let p = ldlup(&mut L, &mut d, j, &g);
-
-        // Expected values from Matlab (replace these placeholders with actual values):
-        let expected_L = SMatrix::<f64, N, N>::from_row_slice(&[
-            1., 0., 0., 0.,
-            0.050000000000000, 1., 0., 0.,
-            3., -3.999999999999999, 2., 0.,
-            5., -13.714285714285712, 7.367647058823529, 4.,
-        ]);
-        let expected_d = SVector::<f64, N>::from_row_slice(&[10., 0.17500000000000002, 27.200000000000003, 0.6092436974790232]);
-        let expected_p = None;
-
-        assert_eq!(L, expected_L);
-        assert_eq!(d, expected_d);
-        assert_eq!(p, expected_p);
-    }
-
-    #[test]
-    fn test_ldlup_real_del_lower_or_eq_tham_N_times_EPS() {
-        // Matlab code for test_ldlup_case_6:
-        // -----------------------------------
-        // function [L_out,d_out,p] = ldlup(L,d,j,g)
-        // L = [ 1.0, 1.1, 2.2, 3.3;
-        //     2.0, 3.0, 7.0, 4.0;
-        //     3.0, 4.0, 2.0, 5.5;
-        //     5.0, 6.0, 7.0, 4.1];
-        // d = [11; -20; 3; -40];
-        // j = 3; % Matlab indexing: j=3 corresponds to Rust j = 2
-        // g = [-1.5; 0.2; -0.8; -0.1];
-        // [L_out,d_out,p] = ldlup(L,d,j,g)
-        // disp('L_out:'); disp(L_out)
-        // disp('d_out:'); disp(d_out)
-        // disp('p:'); disp(p)
-        // -----------------------------------
-        const N: usize = 4;
-        let mut L = SMatrix::<f64, N, N>::from_row_slice(&[
-            1.0, 1.1, 2.2, 3.3,
-            2.0, 3.0, 7.0, 4.0,
-            3.0, 4.0, 2.0, 5.5,
-            5.0, 6.0, 7.0, 4.1,
-        ]);
-        let mut d = SVector::<f64, N>::from_row_slice(&[11., -20.0, 3., -40.0]);
-        let j = 2;
-        let g = SVector::<f64, N>::from_row_slice(&[-1.5, 0.2, -0.8, -0.1]);
-        let p = ldlup(&mut L, &mut d, j, &g);
-
-        // Expected values from Matlab (replace these placeholders with actual values):
-        let expected_L = SMatrix::<f64, N, N>::from_row_slice(&[
-            1.0, 1.1, 2.2, 3.3,
-            2.0, 3.0, 7.0, 4.0,
-            3.0, 4.0, 2.0, 5.5,
-            5.0, 6.0, 7.0, 4.1,
-        ]);
-        let expected_d = SVector::<f64, N>::from_row_slice(&[11., -20., 3., -40.]);
-        let expected_p = Some(SVector::<f64, N>::from_row_slice(&[-1.5113636363636374, 0.4875000000000004, -1.000000000000000, 0.]));
-
-        assert_eq!(L, expected_L);
-        assert_eq!(d, expected_d);
-        assert_eq!(p, expected_p);
-    }
-
-    #[test]
-    fn test_ldlup_match_false() {
-        // Matlab code for test_ldlup_case_6:
-        // -----------------------------------
-        // function [L_out,d_out,p] = ldlup(L,d,j,g)
-        // L = [ -1.0, 1.1, 2.2, 3.3;
-        //     -2.0, -3.0, 7.0, 4.0;
-        //     -3.0, -4.0, 2.0, 5.5;
-        //     5.0, -6.0, 7.0, 4.1];
-        // d = [100; 40; 30; 20];
-        // j = 3;
-        // g = [150; 100; 200; 400];
-        // [L_out,d_out,p] = ldlup(L,d,j,g);
-        // disp('L_out:'); disp(L_out)
-        // disp('d_out:'); disp(d_out)
-        // disp('p:'); disp(p)
-        // -----------------------------------
-        const N: usize = 4;
-        let mut L = SMatrix::<f64, N, N>::from_row_slice(&[
-            -1.0, 1.1, 2.2, 3.3,
-            -2.0, -3.0, 7.0, 4.0,
-            -3.0, -4.0, 2.0, 5.5,
-            5.0, -6.0, 7.0, 4.1,
-        ]);
-        let mut d = SVector::<f64, N>::from_row_slice(&[100., 40., 30., 20.]);
-        let j = 2;
-        let g = SVector::<f64, N>::from_row_slice(&[150., 100., 200., 400.]);
-        let p = ldlup(&mut L, &mut d, j, &g);
-
-        // Expected values from Matlab (replace these placeholders with actual values):
-        let expected_L = SMatrix::<f64, N, N>::from_row_slice(&[
-            -1., 1.1, 2.2, 3.3,
-            -2., -3., 7., 4.,
-            -3., -4., 2., 5.5,
-            5., -6., 7., 4.1
-        ]);
-        let expected_d = SVector::<f64, N>::from_row_slice(&[100., 40., 30., 20.]);
-        let expected_p = Some(SVector::<f64, N>::from_row_slice(&[7.274888786623714, 0.23661604540573702, -6.062279490719435, 0.24390243902439027]));
-
-        assert_eq!(L, expected_L);
-        assert_eq!(d, expected_d);
-        assert_eq!(p, expected_p);
-    }
-
-    #[test]
-    fn test_ldlup_match_false_2() {
-        // Matlab code for test_ldlup_case_6:
-        // -----------------------------------
-        // function [L_out,d_out,p] = ldlup(L,d,j,g)
-        // L = [ -1.0, 1.1, 2.2, 3.3;
-        //     -2.0, -3.0, 7.0, 4.0;
-        //     -3.0, -4.0, 2.0, 5.5;
-        //     -5.0, -6.0, 7.0, 4.1];
-        // d = [40; 40; 30; 20];
-        // j = 2;
-        // g = [10; 100; 200; 400];
-        // [L_out,d_out,p] = ldlup(L,d,j,g);
-        // disp('L_out:'); disp(L_out)
-        // disp('d_out:'); disp(d_out)
-        // disp('p:'); disp(p)
-        // -----------------------------------
-        const N: usize = 4;
-        let mut L = SMatrix::<f64, N, N>::from_row_slice(&[
-            -1.0, 1.1, 2.2, 3.3,
-            -2.0, -3.0, 7.0, 4.0,
-            -3.0, -4.0, 2.0, 5.5,
-            -5.0, -6.0, 7.0, 4.1,
-        ]);
-        let mut d = SVector::<f64, N>::from_row_slice(&[40., 40., 30., 20.]);
-        let j = 1;
-        let g = SVector::<f64, N>::from_row_slice(&[10., 100., 200., 400.]);
-        let p = ldlup(&mut L, &mut d, j, &g);
-
-        // Expected values from Matlab (replace these placeholders with actual values):
-        let expected_L = SMatrix::<f64, N, N>::from_row_slice(&[
-            -1., 1.1, 2.2, 3.3,
-            -2., -3., 7., 4.,
-            -3., -4., 2., 5.5,
-            -5., -6., 7., 4.1
-        ]);
-        let expected_d = SVector::<f64, N>::from_row_slice(&[40., 40., 30., 20.]);
-        let expected_p = Some(SVector::<f64, N>::from_row_slice(&[-1.282051282051282, -0.8717948717948718, 0.500000000000000, 0.]));
-
-        assert_eq!(L, expected_L);
-        assert_eq!(d, expected_d);
-        assert_eq!(p, expected_p);
-    }
-
-    #[test]
-    fn test_ldlup_match_false_3() {
-        // Matlab code for test_ldlup_case_6:
-        // -----------------------------------
-        // function [L_out,d_out,p] = ldlup(L,d,j,g)
-        // L = [ 1.0, 1.1, 1.2, 1.3;
-        //     12.0, -3.0, 7.0, 0.0;
-        //     3.1, 3.0, 23.0, 5.;
-        //     -25.0, -36.0, 17.0, 4.1];
-        // d = [25; 10; 30; 20];
-        // j = 2;
-        // g = [13; 101; 220; 430];
-        // [L_out,d_out,p] = ldlup(L,d,j,g);
-        // disp('L_out:'); disp(L_out)
-        // disp('d_out:'); disp(d_out)
-        // disp('p:'); disp(p)
-        // -----------------------------------
-        const N: usize = 4;
-        let mut L = SMatrix::<f64, N, N>::from_row_slice(&[
-            1.0, 1.1, 1.2, 1.3,
-            12.0, -3.0, 7.0, 0.0,
-            3.1, 3.0, 23.0, 5.,
-            -25.0, -36.0, 17.0, 4.1,
-        ]);
-        let mut d = SVector::<f64, N>::from_row_slice(&[25., 10., 30., 20.]);
-        let j = 1;
-        let g = SVector::<f64, N>::from_row_slice(&[13., 101., 220., 430.]);
-        let p = ldlup(&mut L, &mut d, j, &g);
-
-        // Expected values from Matlab (replace these placeholders with actual values):
-        let expected_L = SMatrix::<f64, N, N>::from_row_slice(&[
-            1.0, 1.1, 1.2, 1.3,
-            12.0, -3.0, 7.0, 0.0,
-            3.1, 3.0, 23.0, 5.,
-            -25.0, -36.0, 17.0, 4.1,
-        ]);
-        let expected_d = SVector::<f64, N>::from_row_slice(&[25., 10., 30., 20.]);
-        let expected_p = Some(SVector::<f64, N>::from_row_slice(&[-0.09167158780541818, -0.08290580940429615, 0.043478260869565216, 0.]));
 
         assert_eq!(L, expected_L);
         assert_eq!(d, expected_d);

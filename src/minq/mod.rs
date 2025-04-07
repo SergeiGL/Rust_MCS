@@ -60,12 +60,12 @@ pub fn minq<const N: usize>(
 where
     Const<N>: DimMin<Const<N>, Output=Const<N>>,
 {
-    let mut g: SVector<f64, N>;
+    // Maximal number of iterations this limits the work to about 1+4*maxit/n matrix multiplies; usually at most 2*n iterations are needed for convergence
+    let maxit = 3 * N;
+    // Maximal number of iterative refinement steps
+    let nitrefmax: usize = 3;
+
     let mut x = SVector::<f64, N>::zeros();
-    let mut K = SVector::<bool, N>::repeat(false);
-    let mut free = SVector::<bool, N>::repeat(false);
-    let mut L = SMatrix::<f64, N, N>::identity();
-    let mut d = SVector::<f64, N>::repeat(1.0);
 
     // Regularization for low rank problems // TODO: WTF
     let hpeps = f64::EPSILON * 100.0;
@@ -73,18 +73,25 @@ where
         G[(i, i)] += hpeps * G[(i, i)];
     }
 
-    let nitrefmax: usize = 3;
-    let maxit = 3 * N;
+    let mut K = SVector::<bool, N>::repeat(false);
+    // issparse() sparse matrices are used in MATLAB to efficiently store and operate on matrices that are mostly zeros -- no influence other than performance in Matlab
+    let mut L = SMatrix::<f64, N, N>::identity();
+    let mut d = SVector::<f64, N>::repeat(1.0);
+    let mut free = SVector::<bool, N>::repeat(false);
     let mut nfree: usize = 0;
     let mut nfree_old_option: Option<usize> = None;
-    let mut fct = f64::INFINITY;
-    let (mut nsub, mut nitref) = (0_usize, 0_usize);
-    let (mut unfix, mut improvement) = (true, true);
+    let mut fct = f64::INFINITY; // best function value
+    let mut nsub = 0_usize; // number of subspace steps
+    let mut unfix = true; // allow variables to be freed in csearch?
+    let mut nitref = 0_usize; // no iterative refinement steps so far
+    let mut improvement = true; // improvement expected
+
     let mut ier = IerEnum::LocalMinimizerFound;
-    let (mut alp, mut alpu, mut alpo, mut lba, mut uba) = (0.0, 0.0, 0.0, true, true);
+    let (mut alp, mut alpu, mut alpo, mut lba, mut uba) = (f64::NAN, f64::NAN, f64::NAN, true, true);
 
     clamp_SVector_mut(&mut x, &xu, &xo);
 
+    let mut g: SVector<f64, N>;
     'main: loop {
         debug_assert!(!x.iter().any(|&val| val.is_infinite()));
 
@@ -95,6 +102,7 @@ where
         if !improvement ||
             nitref > nitrefmax ||
             (nitref > 0 && nfree_old_option.map_or(false, |nfree_old| nfree_old == nfree) && fctnew >= fct) {
+            ier = IerEnum::LocalMinimizerFound;
             break 'main;
         }
 
@@ -177,19 +185,23 @@ where
             nitref = 0;
         }
         nfree_old_option = Some(nfree);
-
         let gain_cs = fct - gam - 0.5 * x.dot(&(c + g));
         improvement = gain_cs > 0.0 || !unfix;
 
-        if !improvement || nitref > nitrefmax {} else if nfree == 0 {
-            unfix = true;
-        } else {
-            let subdone = minqsub(&mut nsub, &mut free, &mut L, &mut d, &mut K, G, &mut g,
-                                  &mut x, xo, xu, &mut nfree, &mut unfix, &mut alp, &mut alpu, &mut alpo,
-                                  &mut lba, &mut uba, &mut ier);
+        match !improvement || nitref > nitrefmax {
+            true => {}
+            false => {
+                if nfree == 0 {
+                    unfix = true;
+                } else {
+                    minqsub(&mut nsub, &mut free, &mut L, &mut d, &mut K, G, &mut g,
+                            &mut x, xo, xu, &mut nfree, &mut unfix, &mut alp, &mut alpu, &mut alpo,
+                            &mut lba, &mut uba, &mut ier);
 
-            if !subdone || ier != IerEnum::LocalMinimizerFound {
-                return (x, fct, ier);
+                    if ier != IerEnum::LocalMinimizerFound {
+                        return (x, fct, ier);
+                    }
+                }
             }
         }
     }
@@ -203,6 +215,708 @@ mod tests {
     use approx::assert_relative_eq;
 
     static TOLERANCE: f64 = 1e-15;
+
+    #[test]
+    fn test_matlab_0() {
+        // Matlab Equivalent test:
+        //
+        // format long g;
+        // prt = 0;
+        // gam = 0.1;
+        // c = [-1.0; -2.0; -3.0];
+        // G = [
+        //     [-1.0, 0.0, 0.0];
+        //     [0.0, -2.0, 0.0];
+        //     [0.0, 0.0, -1.0]
+        //   ];
+        // xu = [-5.0; -5.0; -5.0];
+        // xo = [5.0; 5.0; 5.0];
+        //
+        // [x,fct,ier,nsub]=minq(gam,c,G,xu,xo,prt);
+        //
+        // x = sprintf('%.16g,', x);
+        // disp(x);
+        // disp(fct);
+        // disp(ier);
+
+        let gam = 0.1;
+        let c = SVector::<f64, 3>::from_row_slice(&[-1.0, -2.0, -3.0]);
+        let mut G = SMatrix::<f64, 3, 3>::from_row_slice(&[
+            -1.0, 0.0, 0.0,
+            0.0, -2.0, 0.0,
+            0.0, 0.0, -1.0
+        ]);
+        let xu = SVector::<f64, 3>::from_row_slice(&[-5.0, -5.0, -5.0]);
+        let xo = SVector::<f64, 3>::from_row_slice(&[5.0, 5.0, 5.0]);
+
+        let (x, fct, ier) = minq(gam, &c, &mut G, &xu, &xo);
+
+        let expected_x = [5., 5., 5.];
+
+        assert_relative_eq!(x.as_slice(), expected_x.as_slice(), epsilon = TOLERANCE);
+        assert_eq!(fct, -79.90000000000111);
+        assert_eq!(ier, IerEnum::LocalMinimizerFound);
+    }
+
+    #[test]
+    fn test_matlab_1() {
+        // Matlab Equivalent test:
+        //
+        // format long g;
+        // prt = 0;
+        // gam = 5.0;
+        // c = [0.01; 0.03; 0.04];
+        // G = [
+        //     [1.0, 0.0, 0.0];
+        //     [0.0, -1.0, 0.0];
+        //     [0.0, 0.0, 1.0]
+        //   ];
+        // xu = [-20.0; -20.0; -20.0];
+        // xo = [20.0; 20.0; 20.0];
+        //
+        // [x,fct,ier,nsub]=minq(gam,c,G,xu,xo,prt);
+        //
+        // x = sprintf('%.16g,', x);
+        // disp(x);
+        // disp(fct);
+        // disp(ier);
+
+        let gam = 5.0;
+        let c = SVector::<f64, 3>::from_row_slice(&[0.01, 0.03, 0.04]);
+        let mut G = SMatrix::<f64, 3, 3>::from_row_slice(&[
+            1.0, 0.0, 0.0,
+            0.0, -1.0, 0.0,
+            0.0, 0.0, 1.0
+        ]);
+        let xu = SVector::<f64, 3>::from_row_slice(&[-20.0, -20.0, -20.0]);
+        let xo = SVector::<f64, 3>::from_row_slice(&[20.0, 20.0, 20.0]);
+
+        let (x, fct, ier) = minq(gam, &c, &mut G, &xu, &xo);
+
+        let expected_x = [-0.009999999999999778, -20., -0.03999999999999911];
+
+        assert_relative_eq!(x.as_slice(), expected_x.as_slice(), epsilon = TOLERANCE);
+        assert_eq!(fct, -195.60085000000444);
+        assert_eq!(ier, IerEnum::LocalMinimizerFound);
+    }
+    #[test]
+    fn test_extreme_negative_curvature() {
+        // Matlab Equivalent test:
+        //
+        // format long g;
+        // prt = 0;
+        // gam = -0.01;
+        // c = [0.01; 0.012; 0.014; 0.015];
+        // G = [
+        //     [-1.0, -10.0, 30.0,-2.0];
+        //     [1.1, -2.0, 0.0, 111.0];
+        //     [2.0, -0.01, 3.0, 0.0];
+        //     [-3.0, 30.0, 0.0, -4.0]
+        //   ];
+        // xu = [-100.0; -100.0; -100.0; -100.0];
+        // xo = [100.0; 100.0; 100.0; 100.0];
+        //
+        // [x,fct,ier,nsub]=minq(gam,c,G,xu,xo,prt);
+        //
+        // x = sprintf('%.16g,', x);
+        // disp(x);
+        // disp(fct);
+        // disp(ier);
+
+        let gam = -0.01;
+        let c = SVector::<f64, 4>::from_row_slice(&[0.01, 0.012, 0.014, 0.015]);
+        let mut G = SMatrix::<f64, 4, 4>::from_row_slice(&[
+            -1.0, -10.0, 30.0, -2.0,
+            1.1, -2.0, 0.0, 111.0,
+            2.0, -0.01, 3.0, 0.0,
+            -3.0, 30.0, 0.0, -4.0
+        ]);
+        let xu = SVector::<f64, 4>::from_row_slice(&[-100.0, -100.0, -100.0, -100.0]);
+        let xo = SVector::<f64, 4>::from_row_slice(&[100.0, 100.0, 100.0, 100.0]);
+
+        let (x, fct, ier) = minq(gam, &c, &mut G, &xu, &xo);
+
+        let expected_x = [-100., 100., 66.99533333333184, -100.];
+
+        assert_relative_eq!(x.as_slice(), expected_x.as_slice(), epsilon = TOLERANCE);
+        assert_eq!(fct, -820993.8410326652);
+        assert_eq!(ier, IerEnum::LocalMinimizerFound);
+    }
+
+    #[test]
+    fn test_tight_bounds() {
+        // Matlab Equivalent test:
+        //
+        // format long g;
+        // prt = 0;
+        // gam = 10.0;
+        // c = [5.0; -3.0; 2.0; 1.0];
+        // G = [
+        //     [4.0, 0.5, 0.1, 0.2];
+        //     [0.5, 3.0, 0.6, 0.3];
+        //     [0.1, 0.6, 2.0, 0.4];
+        //     [0.2, 0.3, 0.4, 5.0]
+        //   ];
+        // xu = [1.0; 1.0; 1.0; 1.0];
+        // xo = [1.0; 1.0; 1.0; 1.0];
+        //
+        // [x,fct,ier,nsub]=minq(gam,c,G,xu,xo,prt);
+        //
+        // x = sprintf('%.16g,', x);
+        // disp(x);
+        // disp(fct);
+        // disp(ier);
+
+        let gam = 10.0;
+        let c = SVector::<f64, 4>::from_row_slice(&[5.0, -3.0, 2.0, 1.0]);
+        let mut G = SMatrix::<f64, 4, 4>::from_row_slice(&[
+            4.0, 0.5, 0.1, 0.2,
+            0.5, 3.0, 0.6, 0.3,
+            0.1, 0.6, 2.0, 0.4,
+            0.2, 0.3, 0.4, 5.0
+        ]);
+        let xu = SVector::<f64, 4>::from_row_slice(&[1.0, 1.0, 1.0, 1.0]);
+        let xo = SVector::<f64, 4>::from_row_slice(&[1.0, 1.0, 1.0, 1.0]);
+
+        let (x, fct, ier) = minq(gam, &c, &mut G, &xu, &xo);
+
+        let expected_x = [1., 1., 1., 1.];
+
+        assert_relative_eq!(x.as_slice(), expected_x.as_slice(), epsilon = TOLERANCE);
+        assert_eq!(fct, 24.100000000000158);
+        assert_eq!(ier, IerEnum::LocalMinimizerFound);
+    }
+
+    #[test]
+    fn test_large_scale() {
+        // Matlab Equivalent test:
+        //
+        // format long g;
+        // prt = 0;
+        // gam = 1.0;
+        // n = 10;
+        // c = ones(n, 1);
+        // G = diag(2*ones(n, 1));
+        // for i=1:n-1
+        //   G(i,i+1) = -1;
+        //   G(i+1,i) = -1;
+        // end
+        // xu = -5 * ones(n, 1);
+        // xo = 5 * ones(n, 1);
+        //
+        // [x,fct,ier,nsub]=minq(gam,c,G,xu,xo,prt);
+        //
+        // x = sprintf('%.16g,', x);
+        // disp(x);
+        // disp(fct);
+        // disp(ier);
+
+        const N: usize = 10;
+        let gam = 1.0;
+        let c = SVector::<f64, N>::from_element(1.0);
+
+        let mut G = SMatrix::<f64, N, N>::from_element(0.0);
+        // Set diagonal elements to 2.0
+        for i in 0..N {
+            G[(i, i)] = 2.0;
+        }
+        // Set off-diagonal elements
+        for i in 0..N - 1 {
+            G[(i, i + 1)] = -1.0;
+            G[(i + 1, i)] = -1.0;
+        }
+
+        let xu = SVector::<f64, N>::from_element(-5.0);
+        let xo = SVector::<f64, N>::from_element(5.0);
+
+        let (x, fct, ier) = minq(gam, &c, &mut G, &xu, &xo);
+
+        let expected_x = [-2.666666466718111, -4.333333233358959, -5., -5., -5., -5., -5., -5., -4.333332963260136, -2.666666481630009, ];
+
+        assert_relative_eq!(x.as_slice(), expected_x.as_slice(), epsilon = TOLERANCE);
+        assert_eq!(fct, -32.666666666661285);
+        assert_eq!(ier, IerEnum::LocalMinimizerFound);
+    }
+
+    #[test]
+    fn test_large_scale_2() {
+        // Matlab Equivalent test:
+        //
+        // format long g;
+        // prt = 0;
+        // gam = -2.01;
+        // c = ones(11, 1);
+        // G = [
+        //     [-5.0, 2.0, 3.0, -5.0, 9.0, 8.0, -5.0, -2.0, -4.0, 6.0, -9.0];
+        //     [4.0, -5.0, 5.0, -8.0, 0.0, -4.0, 2.0, -3.0, 1.0, -9.0, 1.0];
+        //     [-4.0, -9.0, -3.0, -3.0, 5.0, -3.0, 1.0, -9.0, -4.0, 5.0, 1.0];
+        //     [-7.0, -8.0, -8.0, 3.0, -10.0, -2.0, -1.0, -4.0, -2.0, 3.0, -3.0];
+        //     [-8.0, 6.0, -6.0, 3.0, -1.0, -8.0, -8.0, 5.0, -6.0, -6.0, -7.0];
+        //     [-1.0, -7.0, -2.0, 4.0, 5.0, -6.0, -8.0, -10.0, 6.0, 1.0, 5.0];
+        //     [8.0, 7.0, -6.0, -8.0, -6.0, -7.0, 5.0, -6.0, -8.0, -10.0, 7.0];
+        //     [6.0, -7.0, 0.0, 5.0, 6.0, -2.0, -9.0, 5.0, -9.0, -10.0, 0.0];
+        //     [9.0, -8.0, 6.0, -2.0, 6.0, 7.0, 7.0, 6.0, 1.0, -4.0, -7.0];
+        //     [-1.0, -7.0, 8.0, 6.0, 0.0, -9.0, -6.0, 4.0, 1.0, -2.0, 2.0];
+        //     [3.0, 7.0, -9.0, -7.0, -4.0, 9.0, -6.0, 4.0, 8.0, 7.0, -9.0]
+        // ];
+        // xu = -15 * ones(11, 1);
+        // xo = 15 * ones(11, 1);
+        //
+        // [x,fct,ier,nsub]=minq(gam,c,G,xu,xo,prt);
+        //
+        // x = sprintf('%.16g,', x);
+        // disp(x);
+        // disp(fct);
+        // disp(ier);
+
+        const N: usize = 11;
+        let gam = -2.01;
+        let c = SVector::<f64, N>::repeat(1.0);
+
+        let mut G = SMatrix::<f64, N, N>::from_row_slice(&[
+            -5.0, 2.0, 3.0, -5.0, 9.0, 8.0, -5.0, -2.0, -4.0, 6.0, -9.0,
+            4.0, -5.0, 5.0, -8.0, 0.0, -4.0, 2.0, -3.0, 1.0, -9.0, 1.0,
+            -4.0, -9.0, -3.0, -3.0, 5.0, -3.0, 1.0, -9.0, -4.0, 5.0, 1.0,
+            -7.0, -8.0, -8.0, 3.0, -10.0, -2.0, -1.0, -4.0, -2.0, 3.0, -3.0,
+            -8.0, 6.0, -6.0, 3.0, -1.0, -8.0, -8.0, 5.0, -6.0, -6.0, -7.0,
+            -1.0, -7.0, -2.0, 4.0, 5.0, -6.0, -8.0, -10.0, 6.0, 1.0, 5.0,
+            8.0, 7.0, -6.0, -8.0, -6.0, -7.0, 5.0, -6.0, -8.0, -10.0, 7.0,
+            6.0, -7.0, 0.0, 5.0, 6.0, -2.0, -9.0, 5.0, -9.0, -10.0, 0.0,
+            9.0, -8.0, 6.0, -2.0, 6.0, 7.0, 7.0, 6.0, 1.0, -4.0, -7.0,
+            -1.0, -7.0, 8.0, 6.0, 0.0, -9.0, -6.0, 4.0, 1.0, -2.0, 2.0,
+            3.0, 7.0, -9.0, -7.0, -4.0, 9.0, -6.0, 4.0, 8.0, 7.0, -9.,
+        ]);
+
+        let xu = SVector::<f64, N>::from_element(-15.0);
+        let xo = SVector::<f64, N>::from_element(15.0);
+
+        let (x, fct, ier) = minq(gam, &c, &mut G, &xu, &xo);
+
+        let expected_x = [-15., 15., 15., 15., 15., 15., 15., 15., -15., 15., 15., ];
+
+        assert_relative_eq!(x.as_slice(), expected_x.as_slice(), epsilon = TOLERANCE);
+        assert_eq!(fct, -17672.010000000042);
+        assert_eq!(ier, IerEnum::LocalMinimizerFound);
+    }
+
+    #[test]
+    fn test_large_scale_3() {
+        //         Matlab Equivalent test:
+        //
+        //         format long g;
+        //         prt = 0;
+        //         gam = 0.01;
+        //         c = zeros(11, 1);
+        //         G = [
+        // [3.0, -8.0, 2.0, 5.0, 7.0, -6.0, -9.0, -3.0, 6.0, 2.0, -4.0];
+        //  [8.0, 6.0, 6.0, 0.0, 4.0, -10.0, -1.0, -7.0, -8.0, -7.0, -3.0];
+        //  [-2.0, 9.0, 4.0, 5.0, -3.0, 6.0, 3.0, -6.0, -10.0, 4.0, -9.0];
+        //  [5.0, 1.0, 5.0, -9.0, -7.0, -2.0, -10.0, 8.0, -5.0, -4.0, 7.0];
+        //  [1.0, 7.0, 9.0, 0.0, -5.0, 1.0, 6.0, 7.0, 0.0, 5.0, 3.0];
+        //  [1.0, -8.0, -5.0, 5.0, -6.0, -10.0, -6.0, -2.0, -2.0, -1.0, -1.0];
+        //  [-6.0, -9.0, 6.0, 1.0, 6.0, -3.0, 0.0, -6.0, -9.0, 2.0, 7.0];
+        //  [-2.0, -6.0, -6.0, 6.0, 7.0, -5.0, 7.0, -5.0, 3.0, -4.0, 1.0];
+        //  [-10.0, 8.0, 8.0, 5.0, 1.0, 4.0, 5.0, 8.0, -5.0, -2.0, 2.0];
+        //  [-4.0, -6.0, 8.0, 5.0, -1.0, -10.0, -4.0, 7.0, 6.0, 2.0, 1.0];
+        //  [1.0, -3.0, 8.0, -4.0, 5.0, 1.0, 2.0, -2.0, -7.0, -7.0, -10.0]
+        //      ];
+        //         xu = -10 * ones(11, 1);
+        //         xo = 10 * ones(11, 1);
+        //
+        //         [x,fct,ier,nsub]=minq(gam,c,G,xu,xo,prt);
+        //
+        //         x = sprintf('%.16g,', x);
+        //         disp(x);
+        //         disp(fct);
+        //         disp(ier);
+
+        const N: usize = 11;
+        let gam = 0.01;
+        let c = SVector::<f64, N>::repeat(0.0);
+
+        let mut G = SMatrix::<f64, N, N>::from_row_slice(&[
+            3.0, -8.0, 2.0, 5.0, 7.0, -6.0, -9.0, -3.0, 6.0, 2.0, -4.0,
+            8.0, 6.0, 6.0, 0.0, 4.0, -10.0, -1.0, -7.0, -8.0, -7.0, -3.0,
+            -2.0, 9.0, 4.0, 5.0, -3.0, 6.0, 3.0, -6.0, -10.0, 4.0, -9.0,
+            5.0, 1.0, 5.0, -9.0, -7.0, -2.0, -10.0, 8.0, -5.0, -4.0, 7.0,
+            1.0, 7.0, 9.0, 0.0, -5.0, 1.0, 6.0, 7.0, 0.0, 5.0, 3.0,
+            1.0, -8.0, -5.0, 5.0, -6.0, -10.0, -6.0, -2.0, -2.0, -1.0, -1.0,
+            -6.0, -9.0, 6.0, 1.0, 6.0, -3.0, 0.0, -6.0, -9.0, 2.0, 7.0,
+            -2.0, -6.0, -6.0, 6.0, 7.0, -5.0, 7.0, -5.0, 3.0, -4.0, 1.0,
+            -10.0, 8.0, 8.0, 5.0, 1.0, 4.0, 5.0, 8.0, -5.0, -2.0, 2.0,
+            -4.0, -6.0, 8.0, 5.0, -1.0, -10.0, -4.0, 7.0, 6.0, 2.0, 1.0,
+            1.0, -3.0, 8.0, -4.0, 5.0, 1.0, 2.0, -2.0, -7.0, -7.0, -10.,
+        ]);
+
+        let xu = SVector::<f64, N>::from_element(-10.0);
+        let xo = SVector::<f64, N>::from_element(10.0);
+
+        let (x, fct, ier) = minq(gam, &c, &mut G, &xu, &xo);
+
+        let expected_x = [-10., -10., 10., 10., 10., -10., -10., -10., 10., -10., -10.];
+
+        assert_relative_eq!(x.as_slice(), expected_x.as_slice(), epsilon = TOLERANCE);
+        assert_eq!(fct, -11849.990000000033);
+        assert_eq!(ier, IerEnum::LocalMinimizerFound);
+    }
+
+    #[test]
+    fn test_indefinite_matrix() {
+        // Matlab Equivalent test:
+        //
+        // format long g;
+        // prt = 0;
+        // gam = 0.0;
+        // c = [1.0; -2.0; 3.0];
+        // G = [
+        //     [2.0, 1.0, 0.5];
+        //     [1.0, -3.0, 1.0];
+        //     [0.5, 1.0, 2.0]
+        //   ];
+        // xu = [-1.0; -1.0; -1.0];
+        // xo = [1.0; 1.0; 1.0];
+        //
+        // [x,fct,ier,nsub]=minq(gam,c,G,xu,xo,prt);
+        //
+        // x = sprintf('%.16g,', x);
+        // disp(x);
+        // disp(fct);
+        // disp(ier);
+
+        let gam = 0.0;
+        let c = SVector::<f64, 3>::from_row_slice(&[1.0, -2.0, 3.0]);
+        let mut G = SMatrix::<f64, 3, 3>::from_row_slice(&[
+            2.0, 1.0, 0.5,
+            1.0, -3.0, 1.0,
+            0.5, 1.0, 2.0
+        ]);
+        let xu = SVector::<f64, 3>::from_row_slice(&[-1.0, -1.0, -1.0]);
+        let xo = SVector::<f64, 3>::from_row_slice(&[1.0, 1.0, 1.0]);
+
+        let (x, fct, ier) = minq(gam, &c, &mut G, &xu, &xo);
+
+        let expected_x = [-0.7499999999999833, 1., -1.];
+
+        assert_relative_eq!(x.as_slice(), expected_x.as_slice(), epsilon = TOLERANCE);
+        assert_eq!(fct, -7.062499999999999);
+        assert_eq!(ier, IerEnum::LocalMinimizerFound);
+    }
+
+    #[test]
+    fn test_asymmetric_bounds() {
+        // Matlab Equivalent test:
+        //
+        // format long g;
+        // prt = 0;
+        // gam = 5.0;
+        // c = [2.0; 3.0; -1.0; 4.0];
+        // G = [
+        //     [4.0, 0.0, 0.0, 0.0];
+        //     [0.0, 6.0, 0.0, 0.0];
+        //     [0.0, 0.0, 8.0, 0.0];
+        //     [0.0, 0.0, 0.0, 10.0]
+        //   ];
+        // xu = [-10.0; -5.0; 0.0; 2.0];
+        // xo = [-5.0; 0.0; 5.0; 10.0];
+        //
+        // [x,fct,ier,nsub]=minq(gam,c,G,xu,xo,prt);
+        //
+        // x = sprintf('%.16g,', x);
+        // disp(x);
+        // disp(fct);
+        // disp(ier);
+
+        let gam = 5.0;
+        let c = SVector::<f64, 4>::from_row_slice(&[2.0, 3.0, -1.0, 4.0]);
+        let mut G = SMatrix::<f64, 4, 4>::from_row_slice(&[
+            4.0, 0.0, 0.0, 0.0,
+            0.0, 6.0, 0.0, 0.0,
+            0.0, 0.0, 8.0, 0.0,
+            0.0, 0.0, 0.0, 10.0
+        ]);
+        let xu = SVector::<f64, 4>::from_row_slice(&[-10.0, -5.0, 0.0, 2.0]);
+        let xo = SVector::<f64, 4>::from_row_slice(&[-5.0, 0.0, 5.0, 10.0]);
+
+        let (x, fct, ier) = minq(gam, &c, &mut G, &xu, &xo);
+
+        let expected_x = [-5., -0.4999999999999889, 0.1249999999999972, 2.];
+
+        assert_relative_eq!(x.as_slice(), expected_x.as_slice(), epsilon = TOLERANCE);
+        assert_eq!(fct, 72.18750000000156);
+        assert_eq!(ier, IerEnum::LocalMinimizerFound);
+    }
+
+    #[test]
+    fn test_zero_diagonal() {
+        // Matlab Equivalent test:
+        //
+        // format long g;
+        // prt = 0;
+        // gam = 3.0;
+        // c = [1.0; 2.0; 3.0];
+        // G = [
+        //     [0.0, 1.0, 2.0];
+        //     [1.0, 0.0, 3.0];
+        //     [2.0, 3.0, 0.0]
+        //   ];
+        // xu = [-2.0; -2.0; -2.0];
+        // xo = [2.0; 2.0; 2.0];
+        //
+        // [x,fct,ier,nsub]=minq(gam,c,G,xu,xo,prt);
+        //
+        // x = sprintf('%.16g,', x);
+        // disp(x);
+        // disp(fct);
+        // disp(ier);
+
+        let gam = 3.0;
+        let c = SVector::<f64, 3>::from_row_slice(&[1.0, 2.0, 3.0]);
+        let mut G = SMatrix::<f64, 3, 3>::from_row_slice(&[
+            0.0, 1.0, 2.0,
+            1.0, 0.0, 3.0,
+            2.0, 3.0, 0.0
+        ]);
+        let xu = SVector::<f64, 3>::from_row_slice(&[-2.0, -2.0, -2.0]);
+        let xo = SVector::<f64, 3>::from_row_slice(&[2.0, 2.0, 2.0]);
+
+        let (x, fct, ier) = minq(gam, &c, &mut G, &xu, &xo);
+
+        let expected_x = [-2., -2., 2.];
+
+        assert_relative_eq!(x.as_slice(), expected_x.as_slice(), epsilon = TOLERANCE);
+        assert_eq!(fct, -13.);
+        assert_eq!(ier, IerEnum::LocalMinimizerFound);
+    }
+
+    #[test]
+    fn test_mixed_bounds() {
+        // Matlab Equivalent test:
+        //
+        // format long g;
+        // prt = 0;
+        // gam = 7.5;
+        // c = [1.0; -1.0; 0.5; -0.5; 2.0];
+        // G = eye(5);
+        // for i=1:4
+        //   G(i,i+1) = 0.1;
+        //   G(i+1,i) = 0.1;
+        // end
+        // xu = [-Inf; -Inf; 0.0; -Inf; -Inf]; % Some unbounded below
+        // xo = [Inf; 1.0; Inf; 0.0; Inf]; % Some unbounded above
+        //
+        // [x,fct,ier,nsub]=minq(gam,c,G,xu,xo,prt);
+        //
+        // x = sprintf('%.16g,', x);
+        // disp(x);
+        // disp(fct);
+        // disp(ier);
+
+        let gam = 7.5;
+        let c = SVector::<f64, 5>::from_row_slice(&[1.0, -1.0, 0.5, -0.5, 2.0]);
+
+        let mut G = SMatrix::<f64, 5, 5>::identity();
+        for i in 0..4 {
+            G[(i, i + 1)] = 0.1;
+            G[(i + 1, i)] = 0.1;
+        }
+
+        let xu = SVector::<f64, 5>::from_row_slice(&[f64::NEG_INFINITY, f64::NEG_INFINITY, 0.0, f64::NEG_INFINITY, f64::NEG_INFINITY]);
+        let xo = SVector::<f64, 5>::from_row_slice(&[f64::INFINITY, 1.0, f64::INFINITY, 0.0, f64::INFINITY]);
+
+        let (x, fct, ier) = minq(gam, &c, &mut G, &xu, &xo);
+
+        let expected_x = [-1.099999999999976, 1., 0., 0., -1.999999999999956];
+
+        assert_relative_eq!(x.as_slice(), expected_x.as_slice(), epsilon = TOLERANCE);
+        assert_eq!(fct, 4.395000000000069);
+        assert_eq!(ier, IerEnum::LocalMinimizerFound);
+    }
+
+
+    #[test]
+    fn test_matlab_random_0() {
+        // Matlab Equivalent test:
+        //
+        // prt = 0;
+        // gam = -2.;
+        // c = [2.; -1.; 0.; -4.; 0.; 0.];
+        // G = [
+        //     [95., 1., 0., 4., 0., 0.];
+        //     [1., 45., 0., -3., 0., 0.];
+        //     [-0., -0., 0., -0., 0., 0.];
+        //     [4., -3., 0., 50., 0., 0.];
+        //     [0., 0., 0., 0., 0., 0.];
+        //     [0., 0., 0., 0., 0., 80.]
+        //   ];
+        // xu = [0.;0.;-0.5;-0.1;-0.07;-0.019];
+        // xo = [0.25;0.;0.1;0.1;0.07;0.1];
+        //
+        // [x,fct,ier,nsub]=minq(gam,c,G,xu,xo,prt);
+        //
+        // x = sprintf('%.16g,', x);
+        // disp(x);
+        // disp(fct);
+        // disp(ier);
+
+        let gam = -2.;
+        let c = SVector::<f64, 6>::from_row_slice(&[2., -1., 0., -4., 0., 0.]);
+        let mut G = SMatrix::<f64, 6, 6>::from_row_slice(&[
+            95., 1., -0., 4., 0., 0.,
+            1., 45., -0., -3., 0., -0.,
+            -0., -0., 0., -0., 0., 0.,
+            4., -3., -0., 50., 0., -0.,
+            0., 0., 0., 0., 0., -0.,
+            0., -0., 0., -0., -0., 80.
+        ]);
+        let xu = SVector::<f64, 6>::from_row_slice(&[0., 0., -0.5, -0.1, -0.07, -0.019]);
+        let xo = SVector::<f64, 6>::from_row_slice(&[0.25, 0., 0.1, 0.1, 0.07, 0.1]);
+
+        let (x, fct, ier) = minq(gam, &c, &mut G, &xu, &xo);
+
+        let expected_x = [0., 0., 0., 0.07999999999999823, 0., 0.];
+
+        assert_relative_eq!(x.as_slice(), expected_x.as_slice(), epsilon = TOLERANCE);
+        assert_eq!(fct, -2.1599999999999966);
+        assert_eq!(ier, IerEnum::LocalMinimizerFound);
+    }
+
+    #[test]
+    fn test_coverage_3() {
+        // Matlab Equivalent test:
+        //
+        // format long g;
+        // prt = 0;
+        // gam = -5.0;
+        // c = [0.01;0.1;0.7;0.3;0.9;-0.5];
+        // G = [
+        //     [13., 0.08, 0.105, -0.9, 0.7, -0.4];
+        //     [1., 0.08, 0.105, 0.9, 0.7, -0.4];
+        //     [0.1, 0.08, 0.105, -0.9, 0.7, -0.4];
+        //     [0.2, 0.08, 0.105, 0.9, 0.7, -0.4];
+        //     [-0.3, 0.08, 0.105, 0.9, 0.7, -0.4];
+        //     [4., 0.08, 0.105, -0.9, 0.7, -0.4]
+        //   ];
+        // xu = [-3.;-3.;-3.;-3.;-3.;-3.];
+        // xo = [3.;3.;3.;3.;3.;3.];
+        //
+        // [x,fct,ier,nsub]=minq(gam,c,G,xu,xo,prt);
+        //
+        // x = sprintf('%.16g,', x);
+        // disp(x);
+        // disp(fct);
+        // disp(ier);
+
+        let gam = -5.0;
+        let c = SVector::<f64, 6>::from_row_slice(&[0.01, 0.1, 0.7, 0.3, 0.9, -0.5]);
+        let mut G = SMatrix::<f64, 6, 6>::from_row_slice(&[
+            13., 0.08, 0.105, -0.9, 0.7, -0.4,
+            1., 0.08, 0.105, 0.9, 0.7, -0.4,
+            0.1, 0.08, 0.105, -0.9, 0.7, -0.4,
+            0.2, 0.08, 0.105, 0.9, 0.7, -0.4,
+            -0.3, 0.08, 0.105, 0.9, 0.7, -0.4,
+            4., 0.08, 0.105, -0.9, 0.7, -0.4
+        ]);
+        let xu = SVector::<f64, 6>::from_row_slice(&[-3.; 6]);
+        let xo = SVector::<f64, 6>::from_row_slice(&[3.; 6]);
+
+        let (x, fct, ier) = minq(gam, &c, &mut G, &xu, &xo);
+
+        let expected_x = SVector::<f64, 6>::from_row_slice(&[0.4549999999999899, -3., 3., 3., -3., 3.]);
+
+        assert_relative_eq!(x.as_slice(), expected_x.as_slice(), epsilon = TOLERANCE);
+        assert_relative_eq!(fct, -21.028224999999914, epsilon = TOLERANCE);
+        assert_eq!(ier, IerEnum::LocalMinimizerFound);
+    }
+
+    #[test]
+    fn test_difficult_cond() {
+        // Matlab Equivalent test:
+        //
+        // format long g;
+        // prt = 0;
+        // gam = 2.0;
+        // c = [1.0; 0.1; 0.2; 0.3; 0.4; 0.6];
+        // G = [
+        //     [1., 0.08, 0.1, -0.3, 0.7, -0.4];
+        //     [1., 0.1, -0.1, 0.1, 0.7, -0.4];
+        //     [0.1, 0.04, 0.5, -10., 0.6, -0.2];
+        //     [0.2, 0.08, -0.1, 0.4, 0.6, -0.1];
+        //     [-0.3, -0.3, 0.1, 0.2, 0.0, -0.3];
+        //     [4., 0.4, 0.05, -0.9, 0.0, -0.4];
+        //   ];
+        // xu = [-10.; -9.; -8.; -7.; -6.; -5.];
+        // xo = [10.; 9.; 8.; 7.; 6.; 5.];
+        //
+        // [x,fct,ier,nsub]=minq(gam,c,G,xu,xo,prt);
+        //
+        // x = sprintf('%.16g,', x);
+        // disp(x);
+        // disp(fct);
+        // disp(ier);
+
+        let gam = 2.0;
+        let c = SVector::<f64, 6>::from_row_slice(&[1.0, 0.1, 0.2, 0.3, 0.4, 0.6]);
+        let mut G = SMatrix::<f64, 6, 6>::from_row_slice(&[
+            1., 0.08, 0.1, -0.3, 0.7, -0.4,
+            1., 0.1, -0.1, 0.1, 0.7, -0.4,
+            0.1, 0.04, 0.5, -10., 0.6, -0.2,
+            0.2, 0.08, -0.1, 0.4, 0.6, -0.1,
+            -0.3, -0.3, 0.1, 0.2, 0.0, -0.3,
+            4., 0.4, 0.05, -0.9, 0.0, -0.4,
+        ]);
+        let xu = SVector::<f64, 6>::from_row_slice(&[-10.0, -9.0, -8.0, -7.0, -6.0, -5.0]);
+        let xo = SVector::<f64, 6>::from_row_slice(&[10.0, 9.0, 8.0, 7.0, 6.0, 5.0]);
+
+        let (x, fct, ier) = minq(gam, &c, &mut G, &xu, &xo);
+
+        let expected_x = SVector::<f64, 6>::from_row_slice(&[-5.219999999999884, 9., -8., -7., 6., 5.]);
+
+        assert_eq!(x, expected_x);
+        assert_eq!(fct, -331.51999999999794);
+        assert_eq!(ier, IerEnum::LocalMinimizerFound);
+    }
+
+    #[test]
+    fn test_difficult_cond_2() {
+        // Matlab Equivalent test:
+        //
+        // format long g;
+        // prt = 0;
+        // gam = 200.0;
+        // c = [1.0; 2.0; 3.0];
+        // G = [
+        //     [1.0, 2.0, 4.0];
+        //     [3.0, 5.0, -1.0];
+        //     [0.0, -3.0, -10.0];
+        //   ];
+        // xu = [0.0; 0.0; -3.0];
+        // xo = [1.0; 2.0; 4.0];
+        //
+        // [x,fct,ier,nsub]=minq(gam,c,G,xu,xo,prt);
+        //
+        // x = sprintf('%.16g,', x);
+        // disp(x);
+        // disp(fct);
+        // disp(ier);
+
+        let gam = 200.0;
+        let c = SVector::<f64, 3>::from_row_slice(&[1.0, 2.0, 3.0]);
+        let mut G = SMatrix::<f64, 3, 3>::from_row_slice(&[
+            1.0, 2.0, 4.0,
+            3.0, 5.0, -1.0,
+            0.0, -3.0, -10.0
+        ]);
+        let xu = SVector::<f64, 3>::from_row_slice(&[0.0, 0.0, -3.0]);
+        let xo = SVector::<f64, 3>::from_row_slice(&[1.0, 2.0, 4.0]);
+
+        let (x, fct, ier) = minq(gam, &c, &mut G, &xu, &xo);
+
+        let expected_x = SVector::<f64, 3>::from_row_slice(&[0., 0.39999999999999114, 4.]);
+
+        assert_eq!(x, expected_x);
+        assert_eq!(fct, 129.99999999999827);
+        assert_eq!(ier, IerEnum::LocalMinimizerFound);
+    }
 
     #[test]
     fn test_real_mistake() {
@@ -296,30 +1010,6 @@ mod tests {
 
         assert_relative_eq!(x.as_slice(), expected_x.as_slice(), epsilon = TOLERANCE);
         assert_eq!(fct, -14.442743529914747);
-        assert_eq!(ier, IerEnum::LocalMinimizerFound);
-    }
-
-    #[test]
-    fn test_coverage_3() {
-        let gam = -5.0;
-        let c = SVector::<f64, 6>::from_row_slice(&[0.01, 0.1, 0.7, 0.3, 0.9, -0.5]);
-        let mut G = SMatrix::<f64, 6, 6>::from_row_slice(&[
-            13., 0.08, 0.105, -0.9, 0.7, -0.4,
-            1., 0.08, 0.105, 0.9, 0.7, -0.4,
-            0.1, 0.08, 0.105, -0.9, 0.7, -0.4,
-            0.2, 0.08, 0.105, 0.9, 0.7, -0.4,
-            -0.3, 0.08, 0.105, 0.9, 0.7, -0.4,
-            4., 0.08, 0.105, -0.9, 0.7, -0.4
-        ]);
-        let xu = SVector::<f64, 6>::from_row_slice(&[-3.; 6]);
-        let xo = SVector::<f64, 6>::from_row_slice(&[3.; 6]);
-
-        let (x, fct, ier) = minq(gam, &c, &mut G, &xu, &xo);
-
-        let expected_x = SVector::<f64, 6>::from_row_slice(&[0.4549999999999899, -3., 3., 3., -3., 3., ]);
-
-        assert_relative_eq!(x.as_slice(), expected_x.as_slice(), epsilon = TOLERANCE);
-        assert_relative_eq!(fct, -20.444599767258207, epsilon = TOLERANCE);
         assert_eq!(ier, IerEnum::LocalMinimizerFound);
     }
 
@@ -484,40 +1174,6 @@ mod tests {
 
         assert_eq!(x, SVector::<f64, 2>::from_row_slice(&[0.0, 0.0]));
         assert_eq!(fct, 1.0);
-        assert_eq!(ier, IerEnum::LocalMinimizerFound);
-    }
-
-    #[test]
-    fn test_difficult_cond() {
-        let gam = 2.0;
-        let c = SVector::<f64, 3>::from_row_slice(&[1.0, 2.0, 3.0]);
-        let mut G = SMatrix::<f64, 3, 3>::from_row_slice(&[1.0, 2.0, -4.0, 3.0, 5.0, -1.0, 0.0, -3.0, -10.0]);
-        let xu = SVector::<f64, 3>::from_row_slice(&[-10.0, -10.0, -3.0]);
-        let xo = SVector::<f64, 3>::from_row_slice(&[1.0, 2.0, 4.0]);
-
-        let (x, fct, ier) = minq(gam, &c, &mut G, &xu, &xo);
-
-        let expected_x = SVector::<f64, 3>::from_row_slice(&[1.0, -0.19999999999999557, 4.0]);
-
-        assert_eq!(x, expected_x);
-        assert_eq!(fct, 2.0);
-        assert_eq!(ier, IerEnum::LocalMinimizerFound);
-    }
-
-    #[test]
-    fn test_difficult_cond_2() {
-        let gam = 200.0;
-        let c = SVector::<f64, 3>::from_row_slice(&[1.0, 2.0, 3.0]);
-        let mut G = SMatrix::<f64, 3, 3>::from_row_slice(&[1.0, 2.0, 4.0, 3.0, 5.0, -1.0, 0.0, -3.0, -10.0]);
-        let xu = SVector::<f64, 3>::from_row_slice(&[0.0, 0.0, -3.0]);
-        let xo = SVector::<f64, 3>::from_row_slice(&[1.0, 2.0, 4.0]);
-
-        let (x, fct, ier) = minq(gam, &c, &mut G, &xu, &xo);
-        let expected_x = SVector::<f64, 3>::from_row_slice(&[0.0, 0.39999999999999114, 4.0]);
-
-
-        assert_eq!(x, expected_x);
-        assert_eq!(fct, 200.0);
         assert_eq!(ier, IerEnum::LocalMinimizerFound);
     }
 

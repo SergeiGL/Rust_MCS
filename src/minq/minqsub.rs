@@ -53,8 +53,7 @@ use std::cmp::Ordering;
 ///
 /// # Note
 /// This function is part of an iterative process and should be called repeatedly until convergence
-/// is achieved or an error condition is detected. The caller is responsible for checking the return
-/// value and the error code to determine when to stop the iterations.
+/// is achieved or an error condition is detected.
 #[inline]
 pub fn minqsub<const N: usize>(
     nsub: &mut usize,
@@ -75,8 +74,7 @@ pub fn minqsub<const N: usize>(
     lba: &mut bool,
     uba: &mut bool,
     ier: &mut IerEnum,
-) ->
-    bool // subdone
+)
 where
     Const<N>: DimMin<Const<N>, Output=Const<N>>,
 {
@@ -137,7 +135,7 @@ where
 
     if p_nonzero_ind_vec.is_empty() {
         *unfix = true;
-        return false;
+        return;
     }
 
     (*alpu, *alpo) = (f64::NEG_INFINITY, f64::INFINITY);
@@ -179,7 +177,7 @@ where
 
     if *ier != IerEnum::LocalMinimizerFound {
         *x = if *lba { -p } else { p };
-        return false;
+        return;
     }
 
     *unfix = !(*lba || *uba);
@@ -208,7 +206,6 @@ where
     }
 
     *nfree = free_count;
-    true
 }
 
 #[cfg(test)]
@@ -261,7 +258,7 @@ mod tests {
         let mut uba = false;
         let mut ier = IerEnum::LocalMinimizerFound;
 
-        let subdone = minqsub(&mut nsub, &mut free, &mut L, &mut d, &mut K, &G, &mut g, &mut x, &xo, &xu, &mut nfree, &mut unfix, &mut alp, &mut alpu, &mut alpo, &mut lba, &mut uba, &mut ier);
+        minqsub(&mut nsub, &mut free, &mut L, &mut d, &mut K, &G, &mut g, &mut x, &xo, &xu, &mut nfree, &mut unfix, &mut alp, &mut alpu, &mut alpo, &mut lba, &mut uba, &mut ier);
 
         let expected_L = SMatrix::<f64, N, N>::from_row_slice(&[
             1.0, 0.0, 0.0, 0.0, 0.0, 0.0,
@@ -297,7 +294,6 @@ mod tests {
         assert_eq!(uba, false);
         assert_eq!(ier, IerEnum::LocalMinimizerFound);
         assert_eq!(unfix, true);
-        assert_eq!(subdone, true);
     }
 
 
@@ -344,7 +340,7 @@ mod tests {
         let mut uba = false;
         let mut ier = IerEnum::LocalMinimizerFound;
 
-        let subdone = minqsub(&mut nsub, &mut free, &mut L, &mut d, &mut K, &G, &mut g, &mut x, &xo, &xu, &mut nfree, &mut unfix, &mut alp, &mut alpu, &mut alpo, &mut lba, &mut uba, &mut ier);
+        minqsub(&mut nsub, &mut free, &mut L, &mut d, &mut K, &G, &mut g, &mut x, &xo, &xu, &mut nfree, &mut unfix, &mut alp, &mut alpu, &mut alpo, &mut lba, &mut uba, &mut ier);
 
         let expected_L = SMatrix::<f64, N, N>::from_row_slice(&[
             1.0, 0.0, 0.0, 0.0, 0.0, 0.0,
@@ -380,7 +376,6 @@ mod tests {
         assert_eq!(uba, false);
         assert_eq!(ier, IerEnum::LocalMinimizerFound);
         assert_eq!(unfix, true);
-        assert_eq!(subdone, true);
     }
 
 
@@ -429,7 +424,7 @@ mod tests {
         let mut uba = false;
         let mut ier = IerEnum::LocalMinimizerFound;
 
-        let subdone = minqsub(&mut nsub, &mut free, &mut L, &mut d, &mut K, &G, &mut g, &mut x, &xo, &xu, &mut nfree, &mut unfix, &mut alp, &mut alpu, &mut alpo, &mut lba, &mut uba, &mut ier);
+        minqsub(&mut nsub, &mut free, &mut L, &mut d, &mut K, &G, &mut g, &mut x, &xo, &xu, &mut nfree, &mut unfix, &mut alp, &mut alpu, &mut alpo, &mut lba, &mut uba, &mut ier);
 
         let expected_L = SMatrix::<f64, N, N>::from_row_slice(&[
             1.0, 0.0, 0.0, 0.0, 0.0, 0.0,
@@ -469,7 +464,6 @@ mod tests {
         // assert_relative_eq!(alp, 0.7938353009736487, epsilon=TOLERANCE);
         // assert_relative_eq!(alpu, -8.934536499651395e+16, epsilon=TOLERANCE);
         // assert_relative_eq!(alpo, 1.0181035157598803e+17, epsilon=TOLERANCE);
-        // assert_eq!(subdone, true);
     }
 
     #[test]
@@ -510,7 +504,7 @@ mod tests {
         let mut uba = false;
         let mut ier = IerEnum::LocalMinimizerFound;
 
-        let subdone = minqsub(&mut nsub, &mut free, &mut L, &mut d, &mut K, &G, &mut g, &mut x, &xo, &xu, &mut nfree, &mut unfix, &mut alp, &mut alpu, &mut alpo, &mut lba, &mut uba, &mut ier);
+        minqsub(&mut nsub, &mut free, &mut L, &mut d, &mut K, &G, &mut g, &mut x, &xo, &xu, &mut nfree, &mut unfix, &mut alp, &mut alpu, &mut alpo, &mut lba, &mut uba, &mut ier);
 
         let expected_L = SMatrix::<f64, N, N>::from_row_slice(&[
             1.0, 0.0, 0.0, 0.0, 0.0, 0.0,
@@ -541,7 +535,6 @@ mod tests {
         assert_eq!(uba, false);
         assert_eq!(ier, IerEnum::LocalMinimizerFound);
         assert_eq!(unfix, true);
-        assert_eq!(subdone, true);
     }
 
     #[test]
@@ -597,7 +590,7 @@ mod tests {
         let mut uba = false;
         let mut ier = IerEnum::LocalMinimizerFound;
 
-        let subdone = minqsub(&mut nsub, &mut free, &mut L, &mut d, &mut K, &G, &mut g, &mut x, &xo, &xu, &mut nfree, &mut unfix, &mut alp, &mut alpu, &mut alpo, &mut lba, &mut uba, &mut ier);
+        minqsub(&mut nsub, &mut free, &mut L, &mut d, &mut K, &G, &mut g, &mut x, &xo, &xu, &mut nfree, &mut unfix, &mut alp, &mut alpu, &mut alpo, &mut lba, &mut uba, &mut ier);
 
         let expected_L = SMatrix::<f64, N, N>::from_row_slice(&[
             1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
@@ -641,6 +634,5 @@ mod tests {
         assert_eq!(uba, true);
         assert_eq!(ier, IerEnum::Unbounded);
         assert_eq!(unfix, false);
-        assert_eq!(subdone, false);
     }
 }

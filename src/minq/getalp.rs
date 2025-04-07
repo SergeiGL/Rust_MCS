@@ -84,6 +84,20 @@ mod tests {
 
     #[test]
     fn test_infinities() {
+        // Matlab equivalent test
+        //
+        // alpu = -inf;
+        // alpo = inf;
+        // gTp = 1.0;
+        // pTGp = -2.0;
+        // [alp_out, lba_out, uba_out, ier_out] = getalp(alpu, alpo, gTp, pTGp);
+        //
+        // format long g;
+        // disp(alp_out);
+        // disp(lba_out);
+        // disp(uba_out);
+        // disp(ier_out);
+
         let alpu = f64::NEG_INFINITY;
         let alpo = f64::INFINITY;
         let gTp = 1.0;

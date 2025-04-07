@@ -63,7 +63,7 @@ pub fn lslocal<const N: usize>(
     let nind = nloc.min(imin.len());
 
     let (mut nadd, mut nsat) = (false, 0_usize);
-    
+
     for i in imin.into_iter().take(nind) {
         // Select nearest five points for local formula
         let (ind, ii) = if i <= 1 {

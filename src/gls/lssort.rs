@@ -136,84 +136,46 @@ pub fn lssort(
 mod tests {
     use super::*;
 
+
     #[test]
-    fn test_0() {
-        let mut alist = vec![0.0, 1.0, 2.0, 3.0, 4.0];
-        let mut flist = vec![10.0, 9.0, 8.0, 7.0, 6.0];
+    fn test_real_mistake() {
+        // Matlab equivalent test
+        //
+        // alist = [-1.019, -0.379105253950312, -0.049749624842453155, 0.0, 0.07100663942762264, 0.19590590689852053, 0.20709033280383873, 0.20765772963373272, 0.2076577296774571, 0.20765772969931923, 0.2076577297102503, 0.20765772972118146, 0.20765775932356492, 0.20771011156915464, 0.21301991828286793, 1.1, 0.20765772971025037];
+        // flist = [-0.003907362214834647, -0.1297426474105576, -0.3095955670706172, -0.33325589907106856, -0.36021529264174956, -0.38198002424136596, -0.38214503577923953, -0.3821454210118594, -0.3821454210118594, -0.3821454210118594, -0.38214542101185944, -0.3821454210118594, -0.38214542101185833, -0.3821454177287701, -0.38211103633912735, 2.2, -0.38214542101185944];
+        //
+        // lssort;
+        //
+        // disp(alist);
+        // disp(flist);
+        // disp(abest);
+        // disp(fbest);
+        // disp(fmed);
+        // disp(up);
+        // disp(down);
+        // disp(monotone);
+        // disp(minima);
+        // disp(nmin);
+        // disp(unitlen);
+        // disp(s);
+
+        let mut alist = vec![-1.019, -0.379105253950312, -0.049749624842453155, 0.0, 0.07100663942762264, 0.19590590689852053, 0.20709033280383873, 0.20765772963373272, 0.2076577296774571, 0.20765772969931923, 0.2076577297102503, 0.20765772972118146, 0.20765775932356492, 0.20771011156915464, 0.21301991828286793, 1.1, 0.20765772971025037];
+        let mut flist = vec![-0.003907362214834647, -0.1297426474105576, -0.3095955670706172, -0.33325589907106856, -0.36021529264174956, -0.38198002424136596, -0.38214503577923953, -0.3821454210118594, -0.3821454210118594, -0.3821454210118594, -0.38214542101185944, -0.3821454210118594, -0.38214542101185833, -0.3821454177287701, -0.38211103633912735, 2.2, -0.38214542101185944];
+
         let (abest, fbest, fmed, up, down, monotone, minima, nmin, unitlen, s) = lssort(&mut alist, &mut flist);
 
-        assert_eq!(alist, vec![0.0, 1.0, 2.0, 3.0, 4.0]);
-        assert_eq!(flist, vec![10.0, 9.0, 8.0, 7.0, 6.0]);
-        assert_eq!(abest, 4.0);
-        assert_eq!(fbest, 6.0);
-        assert_eq!(fmed, 8.0);
-        assert_eq!(up, vec![false, false, false, false]);
-        assert_eq!(down, vec![true, true, true, true]);
-        assert!(monotone); // monotone
-        assert_eq!(minima, vec![false, false, false, false, true]);
+        assert_eq!(alist, vec![-1.019, -0.379105253950312, -0.049749624842453155, 0.0, 0.07100663942762264, 0.19590590689852053, 0.20709033280383873, 0.20765772963373272, 0.2076577296774571, 0.20765772969931923, 0.2076577297102503, 0.20765772971025037, 0.20765772972118146, 0.20765775932356492, 0.20771011156915464, 0.21301991828286793, 1.1]);
+        assert_eq!(flist, vec![-0.003907362214834647, -0.1297426474105576, -0.3095955670706172, -0.33325589907106856, -0.36021529264174956, -0.38198002424136596, -0.38214503577923953, -0.3821454210118594, -0.3821454210118594, -0.3821454210118594, -0.38214542101185944, -0.38214542101185944, -0.3821454210118594, -0.38214542101185833, -0.3821454177287701, -0.38211103633912735, 2.2]);
+        assert_eq!(abest, 0.2076577297102503);
+        assert_eq!(fbest, -0.38214542101185944);
+        assert_eq!(fmed, -0.38214503577923953);
+        assert_eq!(up, vec![false, false, false, false, false, false, false, false, false, false, false, true, true, true, true, true, ]);
+        assert_eq!(down, vec![true, true, true, true, true, true, true, true, true, true, true, false, false, false, false, false, ]);
+        assert_eq!(monotone, false);
+        assert_eq!(minima, vec![false, false, false, false, false, false, false, false, false, false, false, true, false, false, false, false, false, ]);
         assert_eq!(nmin, 1);
-        assert_eq!(unitlen, 4.0);
-        assert_eq!(s, 5);
-    }
-
-    #[test]
-    fn test_1() {
-        let mut alist = vec![3.0, 1.0, 4.0, 0.0, 2.0];
-        let mut flist = vec![8.0, 9.0, 7.0, 10.0, 6.0];
-        let (abest, fbest, fmed, up, down, monotone, minima, nmin, unitlen, s) = lssort(&mut alist, &mut flist);
-
-        assert_eq!(alist, vec![0.0, 1.0, 2.0, 3.0, 4.0]);
-        assert_eq!(flist, vec![10.0, 9.0, 6.0, 8.0, 7.0]);
-        assert_eq!(abest, 2.0);
-        assert_eq!(fbest, 6.0);
-        assert_eq!(fmed, 8.0);
-        assert_eq!(up, vec![false, false, true, false]);
-        assert_eq!(down, vec![true, true, false, true]);
-        assert!(!monotone);
-        assert_eq!(minima, vec![false, false, true, false, true]);
-        assert_eq!(nmin, 2);
-        assert_eq!(unitlen, 2.0);
-        assert_eq!(s, 5);
-    }
-
-    #[test]
-    fn test_2() {
-        let mut alist = vec![1.0, 1.0, 1.0];
-        let mut flist = vec![2.0, 2.0, 2.0];
-        let (abest, fbest, fmed, up, down, monotone, minima, nmin, unitlen, s) = lssort(&mut alist, &mut flist);
-
-        assert_eq!(alist, vec![1.0, 1.0, 1.0]);
-        assert_eq!(flist, vec![2.0, 2.0, 2.0]);
-        assert_eq!(abest, 1.0);
-        assert_eq!(fbest, 2.0);
-        assert_eq!(fmed, 2.0);
-        assert_eq!(up, vec![false, false]);
-        assert_eq!(down, vec![true, false]);
-        assert!(monotone); // monotone
-        assert_eq!(minima, vec![false, false, false]);
-        assert_eq!(nmin, 0);
-        assert_eq!(unitlen, 0.0);
-        assert_eq!(s, 3);
-    }
-
-    #[test]
-    fn test_3() {
-        let mut alist = vec![-5.0, 2.0, -3.0, 9.0, 0.0];
-        let mut flist = vec![3.0, 5.0, 1.0, 7.0, 2.0];
-        let (abest, fbest, fmed, up, down, monotone, minima, nmin, unitlen, s) = lssort(&mut alist, &mut flist);
-
-        assert_eq!(alist, vec![-5.0, -3.0, 0.0, 2.0, 9.0]);
-        assert_eq!(flist, vec![3.0, 1.0, 2.0, 5.0, 7.0]);
-        assert_eq!(abest, -3.0);
-        assert_eq!(fbest, 1.0);
-        assert_eq!(fmed, 3.0);
-        assert_eq!(up, vec![false, true, true, true]);
-        assert_eq!(down, vec![true, false, false, false]);
-        assert!(!monotone);
-        assert_eq!(minima, vec![false, true, false, false, false]);
-        assert_eq!(nmin, 1);
-        assert_eq!(unitlen, 12.0);
-        assert_eq!(s, 5);
+        assert_eq!(unitlen, 1.226657729710250);
+        assert_eq!(s, 17);
     }
 
 
@@ -526,6 +488,86 @@ mod tests {
         assert_eq!(minima, vec![true, false, false, false, true]);
         assert_eq!(nmin, 2);
         assert_eq!(unitlen, 200.);
+        assert_eq!(s, 5);
+    }
+
+    #[test]
+    fn test_0() {
+        let mut alist = vec![0.0, 1.0, 2.0, 3.0, 4.0];
+        let mut flist = vec![10.0, 9.0, 8.0, 7.0, 6.0];
+        let (abest, fbest, fmed, up, down, monotone, minima, nmin, unitlen, s) = lssort(&mut alist, &mut flist);
+
+        assert_eq!(alist, vec![0.0, 1.0, 2.0, 3.0, 4.0]);
+        assert_eq!(flist, vec![10.0, 9.0, 8.0, 7.0, 6.0]);
+        assert_eq!(abest, 4.0);
+        assert_eq!(fbest, 6.0);
+        assert_eq!(fmed, 8.0);
+        assert_eq!(up, vec![false, false, false, false]);
+        assert_eq!(down, vec![true, true, true, true]);
+        assert!(monotone); // monotone
+        assert_eq!(minima, vec![false, false, false, false, true]);
+        assert_eq!(nmin, 1);
+        assert_eq!(unitlen, 4.0);
+        assert_eq!(s, 5);
+    }
+
+    #[test]
+    fn test_1() {
+        let mut alist = vec![3.0, 1.0, 4.0, 0.0, 2.0];
+        let mut flist = vec![8.0, 9.0, 7.0, 10.0, 6.0];
+        let (abest, fbest, fmed, up, down, monotone, minima, nmin, unitlen, s) = lssort(&mut alist, &mut flist);
+
+        assert_eq!(alist, vec![0.0, 1.0, 2.0, 3.0, 4.0]);
+        assert_eq!(flist, vec![10.0, 9.0, 6.0, 8.0, 7.0]);
+        assert_eq!(abest, 2.0);
+        assert_eq!(fbest, 6.0);
+        assert_eq!(fmed, 8.0);
+        assert_eq!(up, vec![false, false, true, false]);
+        assert_eq!(down, vec![true, true, false, true]);
+        assert!(!monotone);
+        assert_eq!(minima, vec![false, false, true, false, true]);
+        assert_eq!(nmin, 2);
+        assert_eq!(unitlen, 2.0);
+        assert_eq!(s, 5);
+    }
+
+    #[test]
+    fn test_2() {
+        let mut alist = vec![1.0, 1.0, 1.0];
+        let mut flist = vec![2.0, 2.0, 2.0];
+        let (abest, fbest, fmed, up, down, monotone, minima, nmin, unitlen, s) = lssort(&mut alist, &mut flist);
+
+        assert_eq!(alist, vec![1.0, 1.0, 1.0]);
+        assert_eq!(flist, vec![2.0, 2.0, 2.0]);
+        assert_eq!(abest, 1.0);
+        assert_eq!(fbest, 2.0);
+        assert_eq!(fmed, 2.0);
+        assert_eq!(up, vec![false, false]);
+        assert_eq!(down, vec![true, false]);
+        assert!(monotone); // monotone
+        assert_eq!(minima, vec![false, false, false]);
+        assert_eq!(nmin, 0);
+        assert_eq!(unitlen, 0.0);
+        assert_eq!(s, 3);
+    }
+
+    #[test]
+    fn test_3() {
+        let mut alist = vec![-5.0, 2.0, -3.0, 9.0, 0.0];
+        let mut flist = vec![3.0, 5.0, 1.0, 7.0, 2.0];
+        let (abest, fbest, fmed, up, down, monotone, minima, nmin, unitlen, s) = lssort(&mut alist, &mut flist);
+
+        assert_eq!(alist, vec![-5.0, -3.0, 0.0, 2.0, 9.0]);
+        assert_eq!(flist, vec![3.0, 1.0, 2.0, 5.0, 7.0]);
+        assert_eq!(abest, -3.0);
+        assert_eq!(fbest, 1.0);
+        assert_eq!(fmed, 3.0);
+        assert_eq!(up, vec![false, true, true, true]);
+        assert_eq!(down, vec![true, false, false, false]);
+        assert!(!monotone);
+        assert_eq!(minima, vec![false, true, false, false, false]);
+        assert_eq!(nmin, 1);
+        assert_eq!(unitlen, 12.0);
         assert_eq!(s, 5);
     }
 }
