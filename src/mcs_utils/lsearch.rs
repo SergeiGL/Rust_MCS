@@ -1,7 +1,6 @@
 use crate::gls::gls;
 use crate::mcs_utils::{csearch::csearch, helper_funcs::*, neighbor::neighbor, triple::triple};
 use crate::minq::minq;
-use crate::StopStruct;
 use nalgebra::{Const, DimMin, SMatrix, SVector};
 
 pub fn lsearch<const N: usize>(
@@ -12,7 +11,8 @@ pub fn lsearch<const N: usize>(
     u: &SVector<f64, N>,
     v: &SVector<f64, N>,
     nf_left: Option<usize>,
-    stop_struct: &StopStruct,
+    nsweeps: usize,
+    freach: f64,
     maxstep: usize,
     gamma: f64,
     hess: &SMatrix<f64, N, N>,
@@ -37,7 +37,7 @@ where
     let mut xold = xmin.clone();
     let mut fold = fmi.clone();
 
-    update_flag(&mut flag, fmi, stop_struct);
+    update_flag(&mut flag, fmi, nsweeps, freach);
 
     if !flag { return (xmin, fmi, ncall, flag); }
 
@@ -94,7 +94,7 @@ where
 
         clamp_SVector_mut(&mut xmin, u, v);
 
-        update_flag(&mut flag, fmi, stop_struct);
+        update_flag(&mut flag, fmi, nsweeps, freach);
 
         if !flag {
             return (xmin, fmi, ncall, flag);
@@ -125,7 +125,7 @@ where
         && (nstep < maxstep)
         && (
         (diag || ind_len < N)
-            || (stop_struct.nsweeps == 0 && fmi - gain <= stop_struct.freach)
+            || (nsweeps == 0 && fmi - gain <= freach)
             || (b >= gamma * (f0 - f) && gain > 0.0)
     )
     {
@@ -227,7 +227,7 @@ where
         xold = xmin.clone();
         fold = fmi;
 
-        update_flag(&mut flag, fmi, stop_struct);
+        update_flag(&mut flag, fmi, nsweeps, freach);
 
         if !flag {
             return (xmin, fmi, ncall, flag);
@@ -275,7 +275,7 @@ where
             xmin = xmin + alist[argmin] * p;
             clamp_SVector_mut(&mut xmin, u, v);
 
-            update_flag(&mut flag, fmi, stop_struct);
+            update_flag(&mut flag, fmi, nsweeps, freach);
 
             if !flag {
                 return (xmin, fmi, ncall, flag);
@@ -329,16 +329,13 @@ mod tests {
         let u = SVector::<f64, 6>::from_row_slice(&[0.0; 6]);
         let v = SVector::<f64, 6>::from_row_slice(&[1.0; 6]);
         let nf_left = None;
-        let stop = StopStruct {
-            nsweeps: 18,                // maximum number of sweeps
-            freach: f64::NEG_INFINITY,  // target function value
-            nf: 0,              // maximum number of function evaluations
-        };
+        let nsweeps = 18;
+        let freach = f64::NEG_INFINITY;
         let maxstep = 50;
         let gamma = f64::EPSILON;
         let hess: SMatrix<f64, 6, 6> = SMatrix::repeat(1.0);
 
-        let (xmin, fmi, ncall, flag) = lsearch(hm6, &x, f, f0, &u, &v, nf_left, &stop, maxstep, gamma, &hess);
+        let (xmin, fmi, ncall, flag) = lsearch(hm6, &x, f, f0, &u, &v, nf_left, nsweeps, freach, maxstep, gamma, &hess);
 
         let expected_xmin = [0.20290601266983127, 0.14223984340198792, 0.4775778674570614, 0.2700662542458104, 0.3104183680708858, 0.6594579515964624];
 
@@ -356,16 +353,13 @@ mod tests {
         let u = SVector::<f64, 6>::from_row_slice(&[0.0; 6]);
         let v = SVector::<f64, 6>::from_row_slice(&[1.0; 6]);
         let nf_left = Some(95);
-        let stop = StopStruct {
-            nsweeps: 18,                // maximum number of sweeps
-            freach: f64::NEG_INFINITY,  // target function value
-            nf: 0,              // maximum number of function evaluations
-        };
+        let nsweeps = 18;
+        let freach = f64::NEG_INFINITY;
         let maxstep = 50;
         let gamma = 2e-6;
         let hess: SMatrix<f64, 6, 6> = SMatrix::repeat(1.0);
 
-        let (xmin, fmi, ncall, flag) = lsearch(hm6, &x, f, f0, &u, &v, nf_left, &stop, maxstep, gamma, &hess);
+        let (xmin, fmi, ncall, flag) = lsearch(hm6, &x, f, f0, &u, &v, nf_left, nsweeps, freach, maxstep, gamma, &hess);
 
         let expected_xmin = [0.20169016858295652, 0.1500100239040133, 0.4768726575742668, 0.2753321620932197, 0.31165307086540384, 0.6572993388248786];
 
@@ -383,16 +377,13 @@ mod tests {
         let u = SVector::<f64, 6>::from_row_slice(&[0.0; 6]);
         let v = SVector::<f64, 6>::from_row_slice(&[1.0; 6]);
         let nf_left = Some(95);
-        let stop = StopStruct {
-            nsweeps: 18,                // maximum number of sweeps
-            freach: f64::NEG_INFINITY,  // target function value
-            nf: 0,              // maximum number of function evaluations
-        };
+        let nsweeps = 18;
+        let freach = f64::NEG_INFINITY;
         let maxstep = 50;
         let gamma = 2e-6;
         let hess: SMatrix<f64, 6, 6> = SMatrix::repeat(1.0);
 
-        let (xmin, fmi, ncall, flag) = lsearch(hm6, &x, f, f0, &u, &v, nf_left, &stop, maxstep, gamma, &hess);
+        let (xmin, fmi, ncall, flag) = lsearch(hm6, &x, f, f0, &u, &v, nf_left, nsweeps, freach, maxstep, gamma, &hess);
 
         let expected_xmin = [0.0, 0.0, 0.4, 0.5, 1.0, 1.0];
 
@@ -411,16 +402,14 @@ mod tests {
         let u = SVector::<f64, 6>::from_row_slice(&[0.0; 6]);
         let v = SVector::<f64, 6>::from_row_slice(&[1.0; 6]);
         let nf_left = Some(90);
-        let stop = StopStruct {
-            nsweeps: 20,                // maximum number of sweeps
-            freach: f64::NEG_INFINITY,  // target function value
-            nf: 0,              // maximum number of function evaluations
-        };
+
+        let nsweeps = 20;
+        let freach = f64::NEG_INFINITY;
         let maxstep = 100;
         let gamma = 2e-6;
         let hess: SMatrix<f64, 6, 6> = SMatrix::repeat(1.0);
 
-        let (xmin, fmi, ncall, flag) = lsearch(hm6, &x, f, f0, &u, &v, nf_left, &stop, maxstep, gamma, &hess);
+        let (xmin, fmi, ncall, flag) = lsearch(hm6, &x, f, f0, &u, &v, nf_left, nsweeps, freach, maxstep, gamma, &hess);
 
         let expected_xmin = [0.40466193295801317, 0.8824636278527813, 0.8464090444977177, 0.5740213137874376, 0.13816034855820664, 0.0384741244365488];
 

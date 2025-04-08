@@ -26,13 +26,6 @@ use mcs_utils::vertex::vertex;
 
 use nalgebra::{Const, DimMin, Matrix2xX, SMatrix, SVector};
 
-
-pub struct StopStruct {
-    pub nsweeps: usize,
-    pub freach: f64,
-    pub nf: usize,
-}
-
 pub enum IinitEnum {
     Zero,   // Simple initialization list
     One,    // Not implemented
@@ -50,99 +43,128 @@ pub enum ExitFlagEnum {
 const INIT_VEC_CAPACITY: usize = 10_000;
 
 
+// default values for the input parameters
+// if nargin < 5, prt = 1; end
+// if nargin < 6, smax = 5*n+10; end
+// if nargin < 7, nf = 50*n^2; end
+// if nargin < 8, stop = 3*n; end
+// if nargin < 9,
+//   if isempty(find(isinf(u))) & isempty(find(isinf(v)))
+//     iinit = 0;
+//   else
+//     iinit = 1;
+//   end
+// end
+// if nargin < 10, local = 50; end
+// if nargin < 11, gamma = eps; end
+// if nargin < 12, hess = ones(n,n); end
 pub fn mcs<const SMAX: usize, const N: usize>(
     func: fn(&SVector<f64, N>) -> f64,
     u: &SVector<f64, N>,
     v: &SVector<f64, N>,
-    stop_struct: &StopStruct,
+    nsweeps: usize,
+    freach: f64,
+    nf: usize,
     iinit: &IinitEnum,
     local: usize,
     gamma: f64,
     hess: &SMatrix<f64, N, N>,
-) -> (
-    SVector<f64, N>,       // xbest
-    f64,                   // fbest
-    Vec<SVector<f64, N>>,  // xmin
-    Vec<f64>,              // fmi
-    usize,                 // ncall
-    usize,                 // ncloc
-    ExitFlagEnum,          // flag
-)
+) ->
+    Result<(
+        SVector<f64, N>,       // xbest
+        f64,                   // fbest
+        Vec<SVector<f64, N>>,  // xmin
+        Vec<f64>,              // fmi
+        usize,                 // ncall
+        usize,                 // ncloc
+        ExitFlagEnum,          // flag
+    ), String>
 where
     Const<N>: DimMin<Const<N>, Output=Const<N>>,
 {
-    if u >= v {
-        panic!("Error MCS main: v should be > u:\nv = {v:?}\nu = {u:?}");
-    }
+    if v <= u {
+        return Err(format!("Error MCS main: v should be > u:\nv = {v:?}\nu = {u:?}"));
+    };
 
-    // l is always 1; L is always 2
-    let mut x0 = SMatrix::<f64, N, 3>::zeros();
-    match iinit {
+    let (mut xmin, mut fmi): (Vec<SVector<f64, N>>, Vec<f64>) = (Vec::with_capacity(INIT_VEC_CAPACITY), Vec::with_capacity(INIT_VEC_CAPACITY));
+
+    let mut ncloc = 0_usize; // number of function evaluations used for local search
+
+    // We handle vectors differently (let them grow by themselves as they do it once in 2**x), so no step1 = 10000;    // step = 1000;    // dim = step1;
+
+    let mut isplit = vec![0_isize; INIT_VEC_CAPACITY]; // can be any negative or positive integer number
+    let mut level = vec![0_usize; INIT_VEC_CAPACITY]; // the same numeration as in matlab
+    // ipar: -1 from Matlab
+    let mut ipar = vec![Some(0_usize); INIT_VEC_CAPACITY]; // can be >=0 or -1 (None)
+    let mut f = Matrix2xX::<f64>::zeros(INIT_VEC_CAPACITY);
+    let mut z = Matrix2xX::<f64>::zeros(INIT_VEC_CAPACITY);
+    let mut ichild = vec![0_isize; INIT_VEC_CAPACITY]; // can be negative
+    let mut nogain = vec![0_usize; INIT_VEC_CAPACITY];
+
+    // l is always 1; L is always 2 for IinitEnum::Zero (2 and 3 respectively for Matlab)
+    let x0: SMatrix<f64, N, 3> = match iinit {
         IinitEnum::Zero => {
-            for i in 0..N {
-                x0[(i, 0)] = u[i];
-                x0[(i, 1)] = (u[i] + v[i]) / 2.0;
-                x0[(i, 2)] = v[i];
-            }
+            SMatrix::<f64, N, 3>::from_row_iterator(
+                (0..N).flat_map(|row_n| [u[row_n], (u[row_n] + v[row_n]) / 2.0, v[row_n]])
+            )
         }
-        _ => { panic!("iinit != 0 is not implemented"); }
-    }
+        _ => { return Err("Error MCS main: iinit != 0 is not implemented.\nChange iinit to IinitEnum::Zero.".to_string()); }
+    };
 
 
     // Check whether there are infinities in the initialization list
-    if x0.iter().any(|&value| value.is_infinite()) {
-        panic!("Error MCS main: infinities in initialization list");
-    }
+    if x0.iter().any(|&x0_i| x0_i.is_infinite()) {
+        return Err(format!("Error MCS main: infinities in initialization list.\nx0 = {x0:?}"));
+    };
 
-    let (mut f0, istar, mut ncall) = init(func, &x0);
+    // ncall=0 before this if IinitEnum::Zero
+    let (mut f0, istar, mut ncall) = init::<N>(func, &x0);
 
-    // Computing B[x,y] in this case y = v
+    // definition of the base vertex of the original box (get middle element; l=2 in Matlab)
     let x: SVector<f64, N> = x0.column(1).into_owned();
 
-    // 2 opposite vertex
-    let v1: SVector<f64, N> = SVector::from_fn(|ind, _| {
-        if (x[ind] - u[ind]).abs() > (x[ind] - v[ind]).abs() {
-            // corener at the lower bound side (left of mid point)
-            u[ind] // go left
+    // definition of the opposite vertex v1 of the original box
+    let v1: SVector<f64, N> = SVector::from_fn(|i, _| {
+        if (x[i] - u[i]).abs() > (x[i] - v[i]).abs() {
+            u[i] // go left; corener at the lower bound side (left of mid point)
         } else {
-            // corener of the upper bound side
-            v[ind] // go right of mid point
+            v[i] // go right of mid point; corener of the upper bound side
         }
     });
 
 
-    let mut isplit = vec![0_isize; INIT_VEC_CAPACITY]; // can be any negative or positive integer number
-    let mut ichild = vec![0_isize; INIT_VEC_CAPACITY]; // can be negative
-    let mut ipar = vec![Some(0_usize); INIT_VEC_CAPACITY]; // can be >=0 or -1 (None)
-    let mut level = vec![0_usize; INIT_VEC_CAPACITY];
-    let mut nogain = vec![0_usize; INIT_VEC_CAPACITY];
-
-    let mut f = Matrix2xX::<f64>::zeros(INIT_VEC_CAPACITY);
-    let mut z = Matrix2xX::<f64>::zeros(INIT_VEC_CAPACITY);
-
-    let (mut ncloc, mut nboxes, mut m) = (0_usize, 0_usize, N);
+    // record: will be reinitialides at strtsw
+    // nboxes: -1 from Matlab
+    let mut nboxes = 0_usize; //counter for boxes not in the 'shopping basket'
+    // counter for boxes in the 'shopping basket'
     let (mut nbasket_option, mut nbasket0_option): (Option<usize>, Option<usize>) = (None, None); // -1
-    let (mut nsweep, mut nsweepbest) = (1_usize, 0_usize);
-    let mut xloc: Vec<SVector<f64, N>> = Vec::with_capacity(INIT_VEC_CAPACITY);
+    let mut nsweep = 0_usize; // sweep counter
+    let mut nsweepbest = 0_usize; // number of sweep in which fbest was updated for the last time
+    let mut m = N;
+    let mut xloc: Vec<SVector<f64, N>> = Vec::with_capacity(INIT_VEC_CAPACITY); // (for local ~= 0) columns are the points that have been used as starting points for local search
     let mut flag = true;
 
-    // Initialize the boxes
+    // p: -1 from Matlab
     let (p, mut xbest, mut fbest) = initbox(&x0, &f0, &istar, u, v, &mut isplit, &mut level, &mut ipar, &mut ichild, &mut f, &mut nboxes);
     let f0min = fbest;
 
-    update_flag(&mut flag, fbest, stop_struct);
+    // stop(1) in matlab and stop[0] here is nsweeps
+    update_flag(&mut flag, fbest, nsweeps, freach);
 
+    // s: same as in Matlab;
+    // record(i): -1 from Matlab; points to the best non-split box at level i
     let (mut s, mut record) = strtsw::<SMAX>(&level, f.row(0), nboxes);
+    nsweep += 1;
 
+    // VARIABLES USED LATER
     let mut loc: bool;
-    let mut nf_left: Option<usize>;
-    let (mut fmi, mut xmin): (Vec<f64>, Vec<SVector<f64, N>>) = (Vec::with_capacity(INIT_VEC_CAPACITY), Vec::with_capacity(INIT_VEC_CAPACITY));
-    let (mut e, mut xmin1, mut ncall_add): (SVector<f64, N>, SVector<f64, N>, usize);
+    // TODO: get rid of e; substitute to f64 (e.min())
+    let (mut e, mut xmin1, mut ncall_increment): (SVector<f64, N>, SVector<f64, N>, usize);
 
-    let (mut n0, mut x, mut y, mut x1, mut x2, mut f1, mut f2) =
-        (SVector::<usize, N>::zeros(), SVector::<f64, N>::repeat(f64::INFINITY), SVector::<f64, N>::repeat(f64::INFINITY), SVector::<f64, N>::repeat(f64::INFINITY), SVector::<f64, N>::repeat(f64::INFINITY), SVector::<f64, N>::zeros(), SVector::<f64, N>::zeros());
+    let (mut n0, mut x, mut y, mut x1, mut x2, mut f1, mut f2) = (SVector::<usize, N>::zeros(), SVector::<f64, N>::repeat(f64::NAN), SVector::<f64, N>::repeat(f64::NAN), SVector::<f64, N>::repeat(f64::NAN), SVector::<f64, N>::repeat(f64::NAN), SVector::<f64, N>::repeat(f64::NAN), SVector::<f64, N>::repeat(f64::NAN));
+    // VARIABLES USED LATER
 
-    while s < SMAX && ncall + 1 <= stop_struct.nf {
+    while s < SMAX && ncall + 1 <= nf {
         let par = record[s];
         vertex(par, u, &v1, &x0, &f0, &ipar, &isplit, &ichild, &z, &f, &mut n0, &mut x, &mut y, &mut x1, &mut x2, &mut f1, &mut f2);
 
@@ -223,18 +245,18 @@ where
                     let mut f1 = fmi[j];
                     if chkloc(&xloc, &x) {
                         xloc.push(x);
-                        (loc, flag, ncall_add) = basket(func, &mut x, &mut f1, &mut xmin, &mut fmi, &mut xbest, &mut fbest, stop_struct, &nbasket0_option, nsweep, &mut nsweepbest);
-                        ncall += ncall_add;
+                        (loc, flag, ncall_increment) = basket(func, &mut x, &mut f1, &mut xmin, &mut fmi, &mut xbest, &mut fbest, nsweeps, freach, &nbasket0_option, nsweep, &mut nsweepbest);
+                        ncall += ncall_increment;
                         if !flag {
                             break;
                         }
                         if loc {
-                            nf_left = match stop_struct.nf >= ncall {
-                                true => { Some(stop_struct.nf - ncall) }
+                            let nf_left = match nf >= ncall {
+                                true => { Some(nf - ncall) }
                                 false => { None }
                             };
                             let (fmi1, nc);
-                            (xmin1, fmi1, nc, flag) = lsearch(func, &mut x, f1, f0min, u, v, nf_left, stop_struct, local, gamma, hess);
+                            (xmin1, fmi1, nc, flag) = lsearch(func, &mut x, f1, f0min, u, v, nf_left, nsweeps, freach, local, gamma, hess);
                             ncall = ncall + nc;
                             ncloc = ncloc + nc;
                             if fmi1 < fbest {
@@ -245,14 +267,13 @@ where
                                     add_basket(&mut nbasket0_option, &mut xmin, &mut fmi, &xmin1, fmi1);
                                     break;
                                 }
-                                update_flag(&mut flag, fbest, stop_struct);
+                                update_flag(&mut flag, fbest, nsweeps, freach);
                                 if !flag {
-                                    return (xbest, fbest, xmin, fmi, ncall, ncloc, ExitFlagEnum::NormalShutdown);
+                                    return Ok((xbest, fbest, xmin, fmi, ncall, ncloc, ExitFlagEnum::NormalShutdown));
                                 }
                             }
-                            (loc, flag, ncall_add) = basket1(func, &mut xmin1, fmi1, &mut xmin, &mut fmi, &mut xbest, &mut fbest, stop_struct,
-                                                             &nbasket0_option, nsweep, &mut nsweepbest);
-                            ncall += ncall_add;
+                            (loc, flag, ncall_increment) = basket1(func, &mut xmin1, fmi1, &mut xmin, &mut fmi, &mut xbest, &mut fbest, nsweeps, freach, &nbasket0_option, nsweep, &mut nsweepbest);
+                            ncall += ncall_increment;
 
                             if !flag { break; }
                             if loc {
@@ -270,15 +291,15 @@ where
                 }
             }
             (s, record) = strtsw::<SMAX>(&level, f.row(0), nboxes);
-            if stop_struct.nsweeps > 1 && nsweep - nsweepbest >= stop_struct.nsweeps {
-                return (xbest, fbest, xmin, fmi, ncall, ncloc, ExitFlagEnum::StopNsweepsExceeded);
+            if nsweeps > 1 && nsweep - nsweepbest >= nsweeps {
+                return Ok((xbest, fbest, xmin, fmi, ncall, ncloc, ExitFlagEnum::StopNsweepsExceeded));
             }
             nsweep += 1;
         }
     }
 
-    let exit_flag = if ncall >= stop_struct.nf { ExitFlagEnum::StopNfExceeded } else { ExitFlagEnum::NormalShutdown };
-    (xbest, fbest, xmin, fmi, ncall, ncloc, exit_flag)
+    let exit_flag = if ncall >= nf { ExitFlagEnum::StopNfExceeded } else { ExitFlagEnum::NormalShutdown };
+    Ok((xbest, fbest, xmin, fmi, ncall, ncloc, exit_flag))
 }
 
 
@@ -314,17 +335,17 @@ mod tests {
         let hess = SMatrix::<f64, 6, 6>::repeat(1.);   // sparsity pattern of Hessian
 
         // Run the optimization
-        let (xbest, fbest, xmin, fmi, ncall, ncloc, flag) = mcs::<SMAX, 6>(hm6, &u, &v, &stop, &iinit, local, gamma, &hess);
+        let (xbest, fbest, xmin, fmi, ncall, ncloc, flag) = mcs::<SMAX, 6>(hm6, &u, &v, nsweeps, freach, nf, &iinit, local, gamma, &hess).unwrap();
     }
 
     #[test]
     fn test_0() {
         const SMAX: usize = 20;
-        let stop = StopStruct {
-            nsweeps: 18,                // maximum number of sweeps
-            freach: f64::NEG_INFINITY,  // target function value
-            nf: 1000,              // maximum number of function evaluations
-        };
+
+        let nsweeps = 18;  // maximum number of sweeps
+        let freach = f64::NEG_INFINITY;  // target function value
+        let nf = 1000; // maximum number of function evaluations
+
         let iinit = IinitEnum::Zero;
         let local = 50;
         let gamma = 2e-6;
@@ -332,7 +353,7 @@ mod tests {
         let v = SVector::<f64, 6>::from_row_slice(&[1.0; 6]);
         let hess = SMatrix::<f64, 6, 6>::repeat(1.);
 
-        let (xbest, fbest, xmin, fmi, ncall, ncloc, flag) = mcs::<SMAX, 6>(hm6, &u, &v, &stop, &iinit, local, gamma, &hess);
+        let (xbest, fbest, xmin, fmi, ncall, ncloc, flag) = mcs::<SMAX, 6>(hm6, &u, &v, nsweeps, freach, nf, &iinit, local, gamma, &hess).unwrap();
 
         // assert_eq!(ncall, 1031); // Due to unstable sorting in lslocal
         // assert_eq!(ncloc, 968);  // Due to unstable sorting in lslocal
@@ -349,11 +370,11 @@ mod tests {
     #[test]
     fn test_1() {
         const SMAX: usize = 30;
-        let stop = StopStruct {
-            nsweeps: 100,                // maximum number of sweeps
-            freach: f64::NEG_INFINITY,  // target function value
-            nf: 1000,              // maximum number of function evaluations
-        };
+
+        let nsweeps = 100;  // maximum number of sweeps
+        let freach = f64::NEG_INFINITY;  // target function value
+        let nf = 1000; // maximum number of function evaluations
+
         let iinit = IinitEnum::Zero;
         let local = 0;
         let gamma = 2e-9;
@@ -361,7 +382,7 @@ mod tests {
         let v = SVector::<f64, 6>::from_row_slice(&[1., 2., 3., 4., 5., 6.]);
         let hess = SMatrix::<f64, 6, 6>::repeat(1.);
 
-        let (xbest, fbest, xmin, fmi, ncall, ncloc, flag) = mcs::<SMAX, 6>(hm6, &u, &v, &stop, &iinit, local, gamma, &hess);
+        let (xbest, fbest, xmin, fmi, ncall, ncloc, flag) = mcs::<SMAX, 6>(hm6, &u, &v, nsweeps, freach, nf, &iinit, local, gamma, &hess).unwrap();
 
         assert_eq!(ncall, 1001);
         assert_eq!(ncloc, 0);
@@ -373,11 +394,11 @@ mod tests {
     #[test]
     fn test_2() {
         const SMAX: usize = 50;
-        let stop = StopStruct {
-            nsweeps: 11,                // maximum number of sweeps
-            freach: f64::NEG_INFINITY,  // target function value
-            nf: 100,              // maximum number of function evaluations
-        };
+
+        let nsweeps = 11;  // maximum number of sweeps
+        let freach = f64::NEG_INFINITY;  // target function value
+        let nf = 100; // maximum number of function evaluations
+
         let iinit = IinitEnum::Zero;
         let local = 0;
         let gamma = 2e-10;
@@ -385,7 +406,7 @@ mod tests {
         let v = SVector::<f64, 6>::from_row_slice(&[3.; 6]);
         let hess = SMatrix::<f64, 6, 6>::repeat(1.);
 
-        let (xbest, fbest, xmin, fmi, ncall, ncloc, flag) = mcs::<SMAX, 6>(hm6, &u, &v, &stop, &iinit, local, gamma, &hess);
+        let (xbest, fbest, xmin, fmi, ncall, ncloc, flag) = mcs::<SMAX, 6>(hm6, &u, &v, nsweeps, freach, nf, &iinit, local, gamma, &hess).unwrap();
 
         assert_eq!(ncall, 100);
         assert_eq!(ncloc, 0);
@@ -407,11 +428,11 @@ mod tests {
     #[test]
     fn test_3() {
         const SMAX: usize = 100;
-        let stop = StopStruct {
-            nsweeps: 11,                // maximum number of sweeps
-            freach: f64::NEG_INFINITY,  // target function value
-            nf: 100,              // maximum number of function evaluations
-        };
+
+        let nsweeps = 11;  // maximum number of sweeps
+        let freach = f64::NEG_INFINITY;  // target function value
+        let nf = 100; // maximum number of function evaluations
+
         let iinit = IinitEnum::Zero;
         let local = 50;
         let gamma = 2e-10;
@@ -419,7 +440,7 @@ mod tests {
         let v = SVector::<f64, 6>::from_row_slice(&[3.; 6]);
         let hess = SMatrix::<f64, 6, 6>::repeat(1.);
 
-        let (xbest, fbest, xmin, fmi, ncall, ncloc, flag) = mcs::<SMAX, 6>(hm6, &u, &v, &stop, &iinit, local, gamma, &hess);
+        let (xbest, fbest, xmin, fmi, ncall, ncloc, flag) = mcs::<SMAX, 6>(hm6, &u, &v, nsweeps, freach, nf, &iinit, local, gamma, &hess).unwrap();
 
         assert_eq!(ncall, 246);
         assert_eq!(ncloc, 188);
@@ -438,11 +459,11 @@ mod tests {
     #[test]
     fn test_random_1() {
         const SMAX: usize = 101;
-        let stop = StopStruct {
-            nsweeps: 14,                // maximum number of sweeps
-            freach: f64::NEG_INFINITY,  // target function value
-            nf: 101,              // maximum number of function evaluations
-        };
+
+        let nsweeps = 14;  // maximum number of sweeps
+        let freach = f64::NEG_INFINITY;  // target function value
+        let nf = 101; // maximum number of function evaluations
+
         let iinit = IinitEnum::Zero;
         let local = 14;
         let gamma = 2e-12;
@@ -457,7 +478,7 @@ mod tests {
             0.8954440435903359, 0.15526584218928685, 0.9137102875926272, 0.7949626220636087, 0.2212099433145306, 0.2424741572631993
         ]);
 
-        let (xbest, fbest, xmin, fmi, ncall, ncloc, flag) = mcs::<SMAX, 6>(hm6, &u, &v, &stop, &iinit, local, gamma, &hess);
+        let (xbest, fbest, xmin, fmi, ncall, ncloc, flag) = mcs::<SMAX, 6>(hm6, &u, &v, nsweeps, freach, nf, &iinit, local, gamma, &hess).unwrap();
 
         assert_eq!(ncall, 205);
         assert_eq!(ncloc, 146);
@@ -474,11 +495,11 @@ mod tests {
     #[test]
     fn test_random_2() {
         const SMAX: usize = 101;
-        let stop = StopStruct {
-            nsweeps: 14,                // maximum number of sweeps
-            freach: f64::NEG_INFINITY,  // target function value
-            nf: 101,              // maximum number of function evaluations
-        };
+
+        let nsweeps = 14;  // maximum number of sweeps
+        let freach = f64::NEG_INFINITY;  // target function value
+        let nf = 101; // maximum number of function evaluations
+
         let iinit = IinitEnum::Zero;
         let local = 14;
         let gamma = 2e-12;
@@ -493,7 +514,7 @@ mod tests {
             0.8954440435903359, 0.15526584218928685, 0.9137102875926272, 0.7949626220636087, 0.2212099433145306, 0.2424741572631993
         ]);
 
-        let (xbest, fbest, xmin, fmi, ncall, ncloc, flag) = mcs::<SMAX, 6>(hm6, &u, &v, &stop, &iinit, local, gamma, &hess);
+        let (xbest, fbest, xmin, fmi, ncall, ncloc, flag) = mcs::<SMAX, 6>(hm6, &u, &v, nsweeps, freach, nf, &iinit, local, gamma, &hess).unwrap();
 
         assert_eq!(ncall, 206);
         assert_eq!(ncloc, 147);
@@ -511,11 +532,11 @@ mod tests {
     #[test]
     fn test_random_3() {
         const SMAX: usize = 101;
-        let stop = StopStruct {
-            nsweeps: 21,                // maximum number of sweeps
-            freach: f64::NEG_INFINITY,  // target function value
-            nf: 101,              // maximum number of function evaluations
-        };
+
+        let nsweeps = 21;  // maximum number of sweeps
+        let freach = f64::NEG_INFINITY;  // target function value
+        let nf = 101; // maximum number of function evaluations
+
         let iinit = IinitEnum::Zero;
         let local = 21;
         let gamma = 2e-12;
@@ -530,7 +551,7 @@ mod tests {
             0.07396847834524134, 0.9249142825555874, 0.39542437348302395, 0.7255942609674336, 0.3014258849016729, 0.5500039335110584
         ]);
 
-        let (xbest, fbest, xmin, fmi, ncall, ncloc, flag) = mcs::<SMAX, 6>(hm6, &u, &v, &stop, &iinit, local, gamma, &hess);
+        let (xbest, fbest, xmin, fmi, ncall, ncloc, flag) = mcs::<SMAX, 6>(hm6, &u, &v, nsweeps, freach, nf, &iinit, local, gamma, &hess).unwrap();
 
         assert_eq!(ncall, 186);
         assert_eq!(ncloc, 127);
@@ -548,11 +569,11 @@ mod tests {
     #[test]
     fn test_random_4() {
         const SMAX: usize = 101;
-        let stop = StopStruct {
-            nsweeps: 7,                // maximum number of sweeps
-            freach: f64::NEG_INFINITY,  // target function value
-            nf: 101,              // maximum number of function evaluations
-        };
+
+        let nsweeps = 7;  // maximum number of sweeps
+        let freach = f64::NEG_INFINITY;  // target function value
+        let nf = 101; // maximum number of function evaluations
+
         let iinit = IinitEnum::Zero;
         let local = 7;
         let gamma = 2e-7;
@@ -567,7 +588,7 @@ mod tests {
             0.6187202250393025, 0.1377423026724791, 0.8070825819627165, 0.2817037864244687, 0.5842187774516107, 0.09751501025007547
         ]);
 
-        let (xbest, fbest, xmin, fmi, ncall, ncloc, flag) = mcs::<SMAX, 6>(hm6, &u, &v, &stop, &iinit, local, gamma, &hess);
+        let (xbest, fbest, xmin, fmi, ncall, ncloc, flag) = mcs::<SMAX, 6>(hm6, &u, &v, nsweeps, freach, nf, &iinit, local, gamma, &hess).unwrap();
 
         assert_eq!(ncall, 222);
         assert_eq!(ncloc, 162);
@@ -579,7 +600,7 @@ mod tests {
             SVector::<f64, 6>::from_row_slice(&[0.17828933536282762, 0.16875439312523205, 0.5823529521265135 , 0.06874148889830267, 0.33828521303632625, 0.7069002116463341 ]),
         ].as_slice(),
         epsilon = TOLERANCE);
-        assert_relative_eq!(fmi.as_slice(), [-2.3417974980696994, -2.3417843204349675, -2.2316087735356884].as_slice(),        epsilon = TOLERANCE);
+        assert_relative_eq!(fmi.as_slice(), [-2.3417974980696994, -2.3417843204349675, -2.2316087735356884].as_slice(), epsilon = TOLERANCE);
     }
 }
 

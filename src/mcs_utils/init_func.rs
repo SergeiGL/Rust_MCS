@@ -47,8 +47,8 @@ pub fn subint<const F: usize>(x: f64, y: f64) ->
 ///
 /// # Note
 ///
-/// * `l` is always full of 1
-/// * `L` is always full of 2
+/// * `l` is always full of 1 (2 in Matlab)
+/// * `L` is always full of 2 (3 in Matlab)
 pub fn init<const N: usize>(
     func: fn(&SVector<f64, N>) -> f64,
     x0: &SMatrix<f64, N, 3>,
@@ -63,12 +63,10 @@ pub fn init<const N: usize>(
 
     let mut f1 = func(&x);
     ncall += 1;
-
     let mut f0 = Matrix3xX::<f64>::repeat(N, 0.0); // L[0] is always = 3
     f0[(1, 0)] = f1;
 
     let mut istar = [1_usize; N];
-
     for i in 0..N {
         for j in 0..3 {
             if j == 1 {
@@ -77,7 +75,6 @@ pub fn init<const N: usize>(
                 x[i] = x0[(i, j)];
                 f0[(j, i)] = func(&x);
                 ncall += 1;
-
                 if f0[(j, i)] < f1 {
                     f1 = f0[(j, i)];
                     istar[i] = j;
@@ -149,8 +146,8 @@ pub fn init<const N: usize>(
 ///
 /// # Note
 ///
-/// * `l` is always full of 1
-/// * `L` is always full of 2
+/// * `l` is always full of 1 (2 in Matlab)
+/// * `L` is always full of 2 (3 in Matlab)
 pub fn initbox<const N: usize>(
     x0: &SMatrix<f64, N, 3>,
     f0: &Matrix3xX<f64>,
@@ -168,15 +165,17 @@ pub fn initbox<const N: usize>(
     SVector<f64, N>,   // xbest
     f64                // fbest
 ) {
+    // nboxes will be modified in place;
+    // nglob, xglob are used only for prints
+
     ipar[0] = None; // parent of root box is -1
     level[0] = 1;  // root box level is 1
     ichild[0] = 1; // root has one child initially
     f[(0, 0)] = f0[(1, 0)];
 
     let mut par = 0_usize; // parent index is 0
-    let mut var = SVector::<f64, N>::repeat(0.0); // variability for dimensions initialized to 0
+    let mut var = [(0_usize, f64::NAN); N]; // variability for dimensions initialized to 0
 
-    // Iterate over each dimension
     for i in 0..N {
         // Set negative index for split information
         isplit[par] = -(i as isize) - 1;
@@ -201,20 +200,19 @@ pub fn initbox<const N: usize>(
             x0[(i, 2)],
         ];
 
-        let mut d = polint(&x0_arr, (&f0.column(i)).as_ref());
-        let mut xl = quadmin(u[i], v1, &d, &x0_arr); // left bound minimization
-        let mut fl = quadpol(xl, &d, &x0_arr); // compute function value
-        let mut xu = quadmin(u[i], v1, &[-d[0], -d[1], -d[2]], &x0_arr); // right bound minimization
-        let mut fu = quadpol(xu, &d, &x0_arr);  // compute function value
+        let d = polint(&x0_arr, (&f0.column(i)).as_ref());
+        let xl = quadmin(u[i], v1, &d, &x0_arr); // left bound minimization
+        let fl = quadpol(xl, &d, &x0_arr); // compute function value
+        let xu = quadmin(u[i], v1, &[-d[0], -d[1], -d[2]], &x0_arr); // right bound minimization
+        let fu = quadpol(xu, &d, &x0_arr);  // compute function value
 
         // Track which box the coordinate belongs to
         let mut par1 = 0;
-
         if istar[i] == 0 {
-            if xl < x0[(i, 0)] {
-                par1 = *nboxes;
+            par1 = if xl < x0[(i, 0)] {
+                *nboxes
             } else {
-                par1 = *nboxes + 1;
+                *nboxes + 1
             }
         }
 
@@ -228,30 +226,19 @@ pub fn initbox<const N: usize>(
             ipar[*nboxes] = Some(par);
             level[*nboxes] = level[par] + s;
             ichild[*nboxes] = -nchild;
-            f[(0, *nboxes)] = f0[(j, i)];  // assign function value
+            f[(0, *nboxes)] = f0[(j, i)];
 
             if j >= 1 {
                 if istar[i] == j {
-                    if xl <= x0[(i, j)] {
-                        par1 = *nboxes - 1; // nboxes is at least 1
+                    par1 = if xl <= x0[(i, j)] {
+                        *nboxes - 1 // nboxes is at least 1
                     } else {
-                        par1 = *nboxes;
+                        *nboxes
                     }
                 }
-                if j == 0 { // j can only be 0, not less (WTF)
-                    let x0_arr: [f64; 3] = [
-                        x0[(i, j)],     // First column
-                        x0[(i, j + 1)], // Second column
-                        x0[(i, j + 2)], // Third column
-                    ];
-                    d = polint(&x0_arr, (&f0.column(i)).as_ref());
-                    let u1 = v[i]; // j is always == 0
-
-                    xl = quadmin(x0[(i, j)], u1, &d, &x0_arr);
-                    fl = fl.min(quadpol(xl, &d, &x0_arr));
-                    xu = quadmin(x0[(i, j)], u1, &[-d[0], -d[1], -d[2]], &x0_arr);
-                    fu = fu.max(quadpol(xu, &d, &x0_arr));
-                }
+                // Matlab: j <= L(i)-2; L(3)===3 --> j <= 1,
+                // but upper in Matlab there is j >= 2
+                // thus, j <= 1 && j >= 2 never reached
             }
 
             *nboxes += 1;
@@ -285,26 +272,28 @@ pub fn initbox<const N: usize>(
         }
 
         // Variability across the ith component
-        var[i] = fu - fl;
+        var[i] = (i, fu - fl);
 
         // Mark the parent box as split
         level[par] = 0;
         par = par1;
+
+        // j1 sets splval, but it is used only for prints
     }
 
-    // Finding the best function value
-    let fbest = f0[(istar[N - 1], N - 1)];
+    // Equivalent to
+    // for i = 1:n
+    //   [var0,p(i)] = max(var);
+    //   var(p(i)) = -1;
+    //   xbest(i) = x0(i,istar(i));  % best point after the init. procedure
+    // end
+    var.sort_unstable_by(|(_, var_i), (_, var_j)| var_j.total_cmp(var_i));
 
-    let mut p = SVector::<usize, N>::zeros(); // stores the indices of best points
-    let mut xbest = SVector::<f64, N>::zeros(); // best point values
-
-    for i in 0..N {
-        (p[i], _) = var.iter().enumerate().max_by(|&(_, var_i), &(_, var_j)| var_i.total_cmp(var_j)).unwrap(); // find the maximum in var
-        var[p[i]] = -1.0; // mark as used
-        xbest[i] = x0[(i, istar[i])];  // store the best value of x at that index
-    }
-
-    (p, xbest, fbest)
+    (
+        SVector::<usize, N>::from_fn(|row, _| var[row].0),   // p
+        SVector::<f64, N>::from_fn(|row, _| x0[(row, istar[row])]), // xbest
+        f0[(istar[N - 1], N - 1)]
+    )
 }
 
 
@@ -315,8 +304,96 @@ mod tests {
     use nalgebra::Matrix2xX;
 
     #[test]
+    fn initbox_test() {
+        // Matlab equivalent test
+        //
+        // x0 = [
+        // [1110.0, 1.0, 10.0];
+        // [12323.0, 0.0, 1.0];
+        // [1011.0, 1.0, 20.0];
+        // [-14.0, -1.0, -10.0];
+        // [111.0, 5.0, 10.0];
+        // [201.0, -10.0, 10.0];
+        // ];
+        // f0 = [
+        //     [-0.62, -0.86, 1., -1., -0.3, -0.05];
+        //    [ -1.50, -0., 0.8, -0.86, -0.984122, -0.9];
+        //     [0.0, 0.09, 0.32, 0.02, 1.652, 0.377];
+        // ];
+        // l = ones(100)*2; % always 2
+        // L = ones(100)*3; % always 3
+        // istar = [1, 1, 1, 2, 3, 2];
+        // u = [-10.0, -1.0, 10.0, -14.0, 1.0, 20.0];
+        // v = [10.0, 1.0, 20.0, -10.0, 10.0, 10.0];
+        // prt = 0;
+        //
+        // format long g;
+        // [ipar_out,level_out,ichild_out,f_out,isplit_out,p_out,xbest_out,fbest_out]=initbox(x0,f0,l,L,istar,u,v,prt);
+        // sprintf('%.16g,', ipar_out)
+        // sprintf('%.16g,', level_out)
+        // sprintf('%.16g,', ichild_out)
+        // sprintf('%.16g,', isplit_out)
+        // sprintf('%.16g,', p_out)
+        // sprintf('%.16g,', xbest_out)
+        // fbest_out
+        // sprintf('%.16g,', f_out)
+        // nboxes
+
+        const INIT_VEC_CAPACITY: usize = 30;
+
+        let x0: SMatrix<f64, 6, 3> = SMatrix::from_row_slice(&[
+            1110.0, 1.0, 10.0,
+            12323.0, 0.0, 1.0,
+            1011.0, 1.0, 20.0,
+            -14.0, -1.0, -10.0,
+            111.0, 5.0, 10.0,
+            201.0, -10.0, 10.0,
+        ]);
+        let f0 = Matrix3xX::<f64>::from_row_slice(&[
+            -0.62, -0.86, 1., -1., -0.3, -0.05,
+            -1.50, -0., 0.8, -0.86, -0.984122, -0.9,
+            0.0, 0.09, 0.32, 0.02, 1.652, 0.377,
+        ]);
+        let istar = [0, 0, 0, 1, 2, 1];
+        let u = SVector::<f64, 6>::from_row_slice(&[-10.0, -1.0, 10.0, -14.0, 1.0, 20.0]);
+        let v = SVector::<f64, 6>::from_row_slice(&[10.0, 1.0, 20.0, -10.0, 10.0, 10.0]);
+
+        let mut isplit = vec![0_isize; INIT_VEC_CAPACITY];
+        let mut level = vec![0_usize; INIT_VEC_CAPACITY];
+        let mut ipar = vec![Some(0_usize); INIT_VEC_CAPACITY];
+        let mut ichild = vec![0_isize; INIT_VEC_CAPACITY];
+        let mut f = Matrix2xX::<f64>::zeros(INIT_VEC_CAPACITY);
+        let mut nboxes = 0_usize;
+
+        let (p, xbest, fbest) = initbox(&x0, &f0, &istar, &u, &v, &mut isplit, &mut level, &mut ipar, &mut ichild, &mut f, &mut nboxes);
+
+        // -1 from Matlab
+        let expected_ipar = [None, Some(0), Some(0), Some(0), Some(0), Some(0), Some(1), Some(1), Some(1), Some(1), Some(1), Some(6), Some(6), Some(6), Some(6), Some(6), Some(11), Some(11), Some(11), Some(11), Some(17), Some(17), Some(17), Some(17), Some(17), Some(24), Some(24), Some(24), Some(24), Some(24), ];
+        let expected_level = [0, 0, 3, 2, 2, 3, 0, 3, 4, 3, 4, 0, 5, 4, 5, 4, 5, 0, 5, 6, 7, 8, 7, 7, 0, 9, 10, 9, 9, 10];
+        let expected_ichild = [1, -1, -2, -3, -4, -5, -1, -2, -3, -4, -5, -1, -2, -3, -4, -5, -1, -2, -3, -4, -1, -2, -3, -4, -5, -1, -2, -3, -4, -5, ];
+        let expected_isplit = [-1, -2, 0, 0, 0, 0, -3, 0, 0, 0, 0, -4, 0, 0, 0, 0, 0, -5, 0, 0, 0, 0, 0, 0, -6, 0, 0, 0, 0, 0];
+        // -1 from Matlab
+        let expected_p = [4, 0, 3, 5, 2, 1];
+        let expected_xbest = [1110., 12323., 1011., -1., 10., -10.];
+        let expected_fbest = -0.9;
+        let expected_f = [-1.5, -0.62, -0.62, -1.5, -1.5, 0., -0.86, -0.86, -0., -0., 0.09, 1., 1., 0.8, 0.8, 0.32, -1., -0.86, -0.86, 0.02, -0.3, -0.3, -0.9841220000000001, -0.9841220000000001, 1.652, -0.05, -0.05, -0.9, -0.9, 0.377];
+        // -1 from Matlab
+        let expected_nboxes = 29;
+
+        assert_eq!(ipar, expected_ipar);
+        assert_eq!(level, expected_level);
+        assert_eq!(ichild, expected_ichild);
+        assert_eq!(isplit, expected_isplit);
+        assert_eq!(p.as_slice(), expected_p);
+        assert_eq!(xbest.as_slice(), expected_xbest);
+        assert_eq!(fbest, expected_fbest);
+        assert_eq!(f.row(0).into_owned().as_slice(), expected_f);
+        assert_eq!(nboxes, expected_nboxes);
+    }
+
+    #[test]
     fn initbox_test_0() {
-        const N: usize = 30;
+        const INIT_VEC_CAPACITY: usize = 30;
 
         let x0: SMatrix<f64, 6, 3> = SMatrix::from_row_slice(&[
             0.0, 0.5, 1.0,
@@ -334,42 +411,25 @@ mod tests {
         let istar = [0, 0, 1, 0, 1, 1];
         let u = SVector::<f64, 6>::from_row_slice(&[0.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
         let v = SVector::<f64, 6>::from_row_slice(&[1.0, 1.0, 1.0, 1.0, 1.0, 1.0]);
-        let mut isplit = vec![0_isize; N];
-        let mut level = vec![0_usize; N];
-        let mut ipar = vec![Some(0_usize); N];
-        let mut ichild = vec![0_isize; N];
-        let mut f = Matrix2xX::<f64>::zeros(N);
+        let mut isplit = vec![0_isize; INIT_VEC_CAPACITY];
+        let mut level = vec![0_usize; INIT_VEC_CAPACITY];
+        let mut ipar = vec![Some(0_usize); INIT_VEC_CAPACITY];
+        let mut ichild = vec![0_isize; INIT_VEC_CAPACITY];
+        let mut f = Matrix2xX::<f64>::zeros(INIT_VEC_CAPACITY);
         let mut nboxes = 0_usize;
 
         let (p, xbest, fbest) = initbox(&x0, &f0, &istar, &u, &v, &mut isplit, &mut level, &mut ipar, &mut ichild, &mut f, &mut nboxes);
 
-        let expected_ipar = [
-            None, Some(0), Some(0), Some(0), Some(0), Some(1), Some(1), Some(1), Some(1), Some(5), Some(5), Some(5), Some(5),
-            Some(10), Some(10), Some(10), Some(10), Some(13), Some(13), Some(13), Some(13), Some(19), Some(19), Some(19), Some(19), Some(0),
-            Some(0), Some(0), Some(0), Some(0)];
+        let expected_ipar = [None, Some(0), Some(0), Some(0), Some(0), Some(1), Some(1), Some(1), Some(1), Some(5), Some(5), Some(5), Some(5), Some(10), Some(10), Some(10), Some(10), Some(13), Some(13), Some(13), Some(13), Some(19), Some(19), Some(19), Some(19), Some(0), Some(0), Some(0), Some(0), Some(0)];
 
-        let expected_level = [
-            0, 0, 3, 2, 3, 0, 4, 3, 4, 5, 0, 4, 5, 0, 6, 5, 6,
-            7, 6, 0, 7, 8, 7, 7, 8, 0, 0, 0, 0, 0];
-        let expected_ichild = [
-            1, -1, -2, -3, -4, -1, -2, -3, -4, -1, -2, -3, -4,
-            -1, -2, -3, -4, -1, -2, -3, -4, -1, -2, -3, -4, 0,
-            0, 0, 0, 0,
-        ];
-        let expected_f = Matrix2xX::<f64>::from_row_slice(&[
-            -0.50531499, -0.62323147, -0.50531499, -0.50531499, -0.08793206, -0.86038255, -0.62323147, -0.62323147, -0.09355143, -0.5152638, -0.86038255, -0.86038255, -0.32139218, -0.98834122, -0.86038255, -0.86038255, -0.0251343, -0.37914019, -0.98834122, -0.98834122, -0.65273189, -0.05313547, -0.98834122, -0.98834122, -0.37750674, 0.0, 0.0, 0.0, 0.0, 0.0,
-            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
-        ]);
-        let expected_isplit = [
-            -1, -2, 0, 0, 0, -3, 0, 0, 0, 0, -4, 0, 0,
-            -5, 0, 0, 0, 0, 0, -6, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0,
-        ];
+        let expected_level = [0, 0, 3, 2, 3, 0, 4, 3, 4, 5, 0, 4, 5, 0, 6, 5, 6, 7, 6, 0, 7, 8, 7, 7, 8, 0, 0, 0, 0, 0];
+        let expected_ichild = [1, -1, -2, -3, -4, -1, -2, -3, -4, -1, -2, -3, -4, -1, -2, -3, -4, -1, -2, -3, -4, -1, -2, -3, -4, 0, 0, 0, 0, 0, ];
+        let expected_f = Matrix2xX::<f64>::from_row_slice(&[-0.50531499, -0.62323147, -0.50531499, -0.50531499, -0.08793206, -0.86038255, -0.62323147, -0.62323147, -0.09355143, -0.5152638, -0.86038255, -0.86038255, -0.32139218, -0.98834122, -0.86038255, -0.86038255, -0.0251343, -0.37914019, -0.98834122, -0.98834122, -0.65273189, -0.05313547, -0.98834122, -0.98834122, -0.37750674, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
+        let expected_isplit = [-1, -2, 0, 0, 0, -3, 0, 0, 0, 0, -4, 0, 0, -5, 0, 0, 0, 0, 0, -6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ];
         let expected_p = [3, 5, 1, 4, 2, 0];
         let expected_xbest = [0.0, 0.0, 0.5, 0.0, 0.5, 0.5];
         let expected_fbest = -0.98834122;
         let expected_nboxes = 24;
-
 
         assert_eq!(ipar, expected_ipar);
         assert_eq!(level, expected_level);
@@ -384,7 +444,7 @@ mod tests {
 
     #[test]
     fn initbox_test_1() {
-        const N: usize = 30;
+        const INIT_VEC_CAPACITY: usize = 30;
 
         let x0: SMatrix<f64, 6, 3> = SMatrix::from_row_slice(&[
             0., 1., 2.,
@@ -407,44 +467,23 @@ mod tests {
 
         let mut isplit = vec![-15, -14, -13, -12, -11, -10, -9, -8, -7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14];
         let mut level = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29];
-        let mut ipar = vec![Some(0_usize); N];
+        let mut ipar = vec![Some(0_usize); INIT_VEC_CAPACITY];
         ipar[0] = None;
         let mut ichild = vec![-15, -14, -13, -12, -11, -10, -9, -8, -7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14];
-        let mut f = Matrix2xX::<f64>::from_row_slice(&[
-            0., 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1., 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2., 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.9,
-            -1.5, -1.4, -1.3, -1.2, -1.1, -1., -0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0., 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1., 1.1, 1.2, 1.3, 1.4
-        ]);
+        let mut f = Matrix2xX::<f64>::from_row_slice(&[0., 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1., 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2., 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.9, -1.5, -1.4, -1.3, -1.2, -1.1, -1., -0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0., 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1., 1.1, 1.2, 1.3, 1.4]);
         let mut nboxes = 0_usize;
 
-        let (p, xbest, fbest) =
-            initbox(
-                &x0, &f0, &istar, &u, &v,
-                &mut isplit, &mut level, &mut ipar, &mut ichild,
-                &mut f,
-                &mut nboxes,
-            );
+        let (p, xbest, fbest) = initbox(&x0, &f0, &istar, &u, &v, &mut isplit, &mut level, &mut ipar, &mut ichild, &mut f, &mut nboxes);
 
-        let expected_ipar = [
-            None, Some(0), Some(0), Some(0), Some(0), Some(1), Some(1), Some(1), Some(1), Some(1), Some(7), Some(7), Some(7), Some(7), Some(7), Some(14), Some(14), Some(14), Some(14), Some(14), Some(15), Some(15), Some(15), Some(15), Some(15), Some(22), Some(22), Some(22), Some(22), Some(22)
-        ];
-        let expected_level = [
-            0, 0, 2, 3, 2, 4, 5, 0, 5, 4, 5, 6, 5, 6, 0, 0, 6, 7, 6, 7, 7, 7, 0, 7, 8, 9, 9, 10, 9, 10
-        ];
-        let expected_ichild = [
-            1, -1, -2, -3, -4, -1, -2, -3, -4, -5, -1, -2, -3, -4, -5, -1, -2, -3, -4, -5, -1, -2, -3, -4, -5, -1, -2, -3, -4, -5
-        ];
-        let expected_f = Matrix2xX::<f64>::from_row_slice(&[
-            -0.2, -0.1, -0.2, -0.2, -0.3, -1.1, -1.1, -2.2, -2.2, -3.3, -11.1, -11.1, -21.2, -21.2, -31.3, 0.1, 0.1, 0.2, 0.2, 0.3, 1.1, 1.1, 2.2, 2.2, 3.3, 11.1, 11.1, 21.2, 21.2, 31.3,
-            -1.5, -1.4, -1.3, -1.2, -1.1, -1.0, -0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4
-        ]);
-        let expected_isplit = [
-            -1, -2, -13, -12, -11, -10, -9, -3, -7, -6, -5, -4, -3, -2, -4, -5, 1, 2, 3, 4, 5, 6, -6, 8, 9, 10, 11, 12, 13, 14
-        ];
+        let expected_ipar = [None, Some(0), Some(0), Some(0), Some(0), Some(1), Some(1), Some(1), Some(1), Some(1), Some(7), Some(7), Some(7), Some(7), Some(7), Some(14), Some(14), Some(14), Some(14), Some(14), Some(15), Some(15), Some(15), Some(15), Some(15), Some(22), Some(22), Some(22), Some(22), Some(22)];
+        let expected_level = [0, 0, 2, 3, 2, 4, 5, 0, 5, 4, 5, 6, 5, 6, 0, 0, 6, 7, 6, 7, 7, 7, 0, 7, 8, 9, 9, 10, 9, 10];
+        let expected_ichild = [1, -1, -2, -3, -4, -1, -2, -3, -4, -5, -1, -2, -3, -4, -5, -1, -2, -3, -4, -5, -1, -2, -3, -4, -5, -1, -2, -3, -4, -5];
+        let expected_f = Matrix2xX::<f64>::from_row_slice(&[-0.2, -0.1, -0.2, -0.2, -0.3, -1.1, -1.1, -2.2, -2.2, -3.3, -11.1, -11.1, -21.2, -21.2, -31.3, 0.1, 0.1, 0.2, 0.2, 0.3, 1.1, 1.1, 2.2, 2.2, 3.3, 11.1, 11.1, 21.2, 21.2, 31.3, -1.5, -1.4, -1.3, -1.2, -1.1, -1.0, -0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4]);
+        let expected_isplit = [-1, -2, -13, -12, -11, -10, -9, -3, -7, -6, -5, -4, -3, -2, -4, -5, 1, 2, 3, 4, 5, 6, -6, 8, 9, 10, 11, 12, 13, 14];
         let expected_p = [2, 5, 4, 1, 3, 0];
         let expected_xbest = [0.0, 11.0, 22.0, 30.0, 41.0, 52.0];
         let expected_fbest = 31.3;
         let expected_nboxes = 29;
-
 
         assert_eq!(ipar, expected_ipar);
         assert_eq!(level, expected_level);
@@ -505,6 +544,51 @@ mod tests {
     }
 
     //---------------------------------------------------
+    #[test]
+    fn init_test_matlab_0() {
+        // Matlab equivalent test
+        //
+        // fcn="hm6";
+        // data = "hm6";
+        // x0 = [
+        //     [1.0, 2.0, 3.0];
+        //     [-1.1, -1.0, -2.0];
+        //     [1.4, 1.3, 1.1];
+        //     [11.0, 31.0, 41.0];
+        //     [-12.0, 0.23, -101.0];
+        //     [4.0, 3.0, -5.0];
+        // ];
+        // l = [2, 2, 2, 2, 2, 2]; % always full of 2
+        // L = [3,3,3,3,3,3]; % always full of 3
+        // n = 6; % Always 6 as Maxtix should have 6 rows to fit hm6() function
+        //
+        // [f0_out,istar_out,ncall_out] = init(fcn,data,x0,l,L,n);
+        //
+        // format long g;
+        //
+        // disp(f0_out);
+        // disp(istar_out);
+        // disp(ncall_out);
+
+        let x0 = SMatrix::<f64, 6, 3>::from_row_slice(&[
+            1.0, 2.0, 3.0,
+            -1.1, -1.0, -2.0,
+            1.4, 1.3, 1.1,
+            11.0, 31.0, 41.0,
+            -12.0, 0.23, -101.0,
+            4.0, 3.0, -5.0,
+        ]);
+
+        let (f0, istar, ncall) = init(hm6, &x0);
+
+        let expected_f0 = Matrix3xX::<f64>::from_column_slice(&[-4.233391131618164e-76, -3.7295715378230396e-76, -2.973035122710528e-76, -2.2672971762723364e-77, -4.233391131618164e-76, -1.014468515950181e-92, -7.24251448627543e-77, -4.233391131618164e-76, -5.215621541933745e-75, -3.540241400533224e-39, -5.215621541933745e-75, -5.923906705182671e-106, -0.0, -3.540241400533224e-39, -0.0, -1.372381712728418e-69, -3.540241400533224e-39, -1.1821123413448022e-233]);
+        let expected_istar = [0, 1, 2, 0, 1, 1]; // == [1, 2, 3, 1, 2, 2]
+
+        assert_eq!(f0, expected_f0);
+        assert_eq!(istar, expected_istar);
+        assert_eq!(ncall, 13);
+    }
+
     #[test]
     fn init_test_base_case() {
         let x0 = SMatrix::from_row_slice(&[
