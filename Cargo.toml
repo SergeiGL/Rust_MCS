@@ -3,17 +3,19 @@ name = "Rust_MCS"
 version = "0.1.0"
 edition = "2024"
 
+
 [dependencies]
 nalgebra = "*"
 
-#cargo flamegraph --unit-test -- tests::test_for_flamegraph_0
-#[profile.release]
-#debug = true
 
 [dev-dependencies]
-criterion = { version = "*", features = ["html_reports"] }
+divan = "*"
 approx = "*"
 
 [[bench]]
 name = "benchmarks"
 harness = false
+
+# For cargo flamegraph
+#[profile.release]
+#debug = true

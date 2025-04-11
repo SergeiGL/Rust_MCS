@@ -1,40 +1,28 @@
-use criterion::{criterion_group, criterion_main, Criterion};
-use nalgebra::SVector;
+use nalgebra::{SMatrix, SVector};
 use Rust_MCS::*;
 
-
-criterion_group! {
-    name = benches;
-    config = Criterion::default();
-    targets = bench_0
-}
-criterion_main!(benches);
-
-
-fn bench_0(c: &mut Criterion) {
-    use nalgebra::{SMatrix, SVector};
-
+#[divan::bench(
+    max_time = 200, // seconds
+)]
+fn bench_mcs() {
+    let u = SVector::<f64, 6>::from_row_slice(&[0.; 6]);
+    let v = SVector::<f64, 6>::from_row_slice(&[1.0; 6]);
     const SMAX: usize = 2_000;
-    let stop = StopStruct {
-        nsweeps: 200,                // maximum number of sweeps
-        freach: f64::NEG_INFINITY,   // target function value
-        nf: 2_000_000,               // maximum number of function evaluations
-    };
-    let iinit = IinitEnum::Zero;
+    let nsweeps = 1_000;  // maximum number of sweeps
+    let nf = 1_000_000; // maximum number of function evaluations
     let local = 200;
-    let gamma = 2e-7;
-    let u = SVector::<f64, 6>::from_row_slice(&[-6.506834377244, -0.5547628574185793, -0.4896101151981129, -4.167584856725679, -6.389642504060847, -5.528716818248636]);
-    let v = SVector::<f64, 6>::from_row_slice(&[0.6136260223676221, 3.3116327823744762, 1.815553122672147, 0.06874148889830267, 0.7052383406994288, 0.93288192217477]);
-    let hess = SMatrix::<f64, 6, 6>::from_row_slice(&[
-        0.8277209419820275, 0.35275501307855395, 0.252012633495165, 0.5667951361102919, 0.19630620226079598, 0.0648101272618129,
-        0.5081006457816327, 0.2660878681097819, 0.09782770288876363, 0.43830363933100314, 0.4746456902322366, 0.4661411009402323,
-        0.19980055789123086, 0.4986248326438728, 0.012620127489665345, 0.19089710870186494, 0.4362731501809838, 0.6063090941013247,
-        0.7310040262066118, 0.4204623417897273, 0.8664287267092771, 0.9742278318360923, 0.6386093993614557, 0.27981042978028847,
-        0.6800547697745852, 0.5742073425616279, 0.8821852581714857, 0.13408110711794174, 0.04935188705985705, 0.9987572981515097,
-        0.6187202250393025, 0.1377423026724791, 0.8070825819627165, 0.2817037864244687, 0.5842187774516107, 0.09751501025007547
-    ]);
+    let gamma = 2e-12;
+    let hess = SMatrix::<f64, 6, 6>::repeat(1.);
 
-    c.bench_function("bench_0", |b| b.iter(|| mcs::<SMAX, 6>(hm6, &u, &v, &stop, &iinit, local, gamma, &hess)));
+    // Use black_box to prevent the compiler from optimizing the function call away
+    divan::black_box(mcs::<SMAX, 6>(hm6, &u, &v, nsweeps, nf, local, gamma, &hess).unwrap());
+}
+
+
+fn main() {
+    // This runs all benchmarks annotated with #[divan::bench]
+    divan::main();
+    // ╰─ bench_mcs  3.868 s       │ 4.602 s       │ 4.149 s       │ 4.18 s        │ 60      │ 60
 }
 
 

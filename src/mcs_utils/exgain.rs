@@ -4,6 +4,7 @@ use nalgebra::{Matrix3xX, SVector};
 
 // l is always full of 1;
 // L is always full of 2
+#[inline]
 pub fn exgain<const N: usize>(
     n0: &SVector<usize, N>,
     x: &SVector<f64, N>,
@@ -15,21 +16,20 @@ pub fn exgain<const N: usize>(
     f1: &SVector<f64, N>,
     f2: &SVector<f64, N>,
 ) -> (
-    SVector<f64, N>,  // e
+    f64,       // emin = e.min()
     isize,     // isplit
     f64        // splval
 ) {
-    let mut e = SVector::<f64, N>::zeros();
     let mut emin = f64::INFINITY;
     let mut isplit = 0;
     let mut splval = f64::INFINITY;
 
     for i in 0..N {
         if n0[i] == 0 {
-            e[i] = f0.column(i).iter().fold(f64::INFINITY, |acc, &new_val| acc.min(new_val)) - f0[(1, i)];
+            let new_e = f0.column(i).iter().fold(f64::INFINITY, |acc, &new_val| acc.min(new_val)) - f0[(1, i)];
 
-            if e[i] < emin {
-                emin = e[i];
+            if new_e < emin {
+                emin = new_e;
                 isplit = i;
                 splval = f64::INFINITY;
             }
@@ -45,16 +45,16 @@ pub fn exgain<const N: usize>(
                 &d,
                 &z1,
             );
-            e[i] = quadpol(z, &d, &z1);
+            let new_e = quadpol(z, &d, &z1);
 
-            if e[i] < emin {
-                emin = e[i];
+            if new_e < emin {
+                emin = new_e;
                 isplit = i;
                 splval = z;
             }
         }
     }
-    (e, isplit as isize, splval)
+    (emin, isplit as isize, splval)
 }
 
 
@@ -78,9 +78,9 @@ mod tests {
         let f1 = SVector::<f64, 6>::from_row_slice(&[-0.62, -0.8, -0.5, -0.9, -0.38, -0.05]);
         let f2 = SVector::<f64, 6>::from_row_slice(&[-0.08, -0.09, -0.32, -0.025, -0.65, -0.37]);
 
-        let (e, isplit, splval) = exgain(&n0, &x, &y, &x1, &x2, fx, &f0, &f1, &f2);
+        let (e_min, isplit, splval) = exgain(&n0, &x, &y, &x1, &x2, fx, &f0, &f1, &f2);
 
-        assert_eq!(e.as_slice(), [-0.0832, -0.18000000000000005, 0.0, -0.09999999999999998, 0.0, 0.0]);
+        assert_eq!(e_min, -0.18000000000000005);
         assert_eq!(isplit, 1);
         assert_eq!(splval, f64::INFINITY);
     }
@@ -101,9 +101,9 @@ mod tests {
         let f1 = SVector::<f64, 4>::from_row_slice(&[-0.62, -0.8, -0.5, -0.9]);
         let f2 = SVector::<f64, 4>::from_row_slice(&[-0.08, -0.09, -0.32, -0.025]);
 
-        let (e, isplit, splval) = exgain(&n0, &x, &y, &x1, &x2, fx, &f0, &f1, &f2);
+        let (e_min, isplit, splval) = exgain(&n0, &x, &y, &x1, &x2, fx, &f0, &f1, &f2);
 
-        assert_eq!(e.as_slice(), [-0.0832, -0.18000000000000005, 0.0, -0.09999999999999998]);
+        assert_eq!(e_min, -0.18000000000000005);
         assert_eq!(isplit, 1);
         assert_eq!(splval, f64::INFINITY);
     }
@@ -124,9 +124,9 @@ mod tests {
         let f1 = SVector::<f64, 6>::from_row_slice(&[0.62, 0.8, 0.5, 0.9, 0.38, 0.05]);
         let f2 = SVector::<f64, 6>::from_row_slice(&[0.08, 0.09, 0.32, 0.025, 0.65, 0.37]);
 
-        let (e, isplit, splval) = exgain(&n0, &x, &y, &x1, &x2, fx, &f0, &f1, &f2);
+        let (e_min, isplit, splval) = exgain(&n0, &x, &y, &x1, &x2, fx, &f0, &f1, &f2);
 
-        assert_eq!(e.as_slice(), [0.24249600000000007, -0.18000000000000005, 0.37815, -0.09999999999999998, 0.31800000000000006, 0.0]);
+        assert_eq!(e_min, -0.18000000000000005);
         assert_eq!(isplit, 1);
         assert_eq!(splval, f64::INFINITY);
     }
@@ -147,9 +147,9 @@ mod tests {
         let f1 = SVector::<f64, 6>::from_row_slice(&[0.62, 0.8, 0.5, 0.9, 0.38, 0.05]);
         let f2 = SVector::<f64, 6>::from_row_slice(&[0.08, 0.09, 0.32, 0.025, 0.65, 0.37]);
 
-        let (e, isplit, splval) = exgain(&n0, &x, &y, &x1, &x2, fx, &f0, &f1, &f2);
+        let (e_min, isplit, splval) = exgain(&n0, &x, &y, &x1, &x2, fx, &f0, &f1, &f2);
 
-        assert_eq!(e.as_slice(), [0.24249600000000007, 0.5077000000000002, 0.37815, 0.5300000000000002, 0.31800000000000006, 0.19415000000000004]);
+        assert_eq!(e_min, 0.19415000000000004);
         assert_eq!(isplit, 5);
         assert_eq!(splval, -0.35);
     }

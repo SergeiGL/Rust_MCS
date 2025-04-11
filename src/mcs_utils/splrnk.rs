@@ -1,9 +1,9 @@
-use crate::mcs_utils::split_func::split2;
+use crate::mcs_utils::split::split2;
 use nalgebra::SVector;
 
 pub fn splrnk<const N: usize>(
     n0: &SVector<usize, N>,
-    p: &SVector<usize, N>,
+    p: &SVector<usize, N>, // -1 from Matlab
     x: &SVector<f64, N>,
     y: &SVector<f64, N>,
 ) -> (
@@ -13,7 +13,7 @@ pub fn splrnk<const N: usize>(
     let (mut isplit, mut n1, mut p1) = (0, n0[0], p[0]);
 
     // Find the splitting index
-    for i in 1..N {
+    for i in 1..N { // 2:n
         if n0[i] < n1 || (n0[i] == n1 && p[i] < p1) {
             isplit = i;
             n1 = n0[i];

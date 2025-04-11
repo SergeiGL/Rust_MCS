@@ -2,7 +2,7 @@ use nalgebra::SVector;
 
 #[inline]
 pub fn updtf<const N: usize>(
-    i: usize,
+    i: usize, // -1 from Matlab
     x1: &SVector<f64, N>,
     x2: &SVector<f64, N>,
     f1: &mut SVector<f64, N>,

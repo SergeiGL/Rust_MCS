@@ -1,9 +1,11 @@
 use nalgebra::SVector;
 
+#[inline]
 pub fn chkloc<const N: usize>(xloc: &[SVector<f64, N>], x: &SVector<f64, N>) -> bool {
     !xloc.iter().any(|x_i| x_i == x)
 }
 
+#[inline]
 pub fn fbestloc<const N: usize>(
     fmi: &Vec<f64>,
     fbest: &mut f64,

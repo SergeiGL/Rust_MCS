@@ -17,6 +17,9 @@ pub enum IerEnum {
     InputError,          // -1
 }
 
+
+const ONE_PLUS_HEPS: f64 = 1. + f64::EPSILON * 100.0;
+
 /// Minimizes an affine quadratic form subject to simple bounds,
 /// using coordinate searches and reduced subspace minimizations
 /// using LDL^T factorization updates
@@ -49,7 +52,7 @@ pub enum IerEnum {
 pub fn minq<const N: usize>(
     gam: f64,
     c: &SVector<f64, N>,
-    G: &mut SMatrix<f64, N, N>,
+    G: &SMatrix<f64, N, N>,
     xu: &SVector<f64, N>,
     xo: &SVector<f64, N>,
 ) -> (
@@ -68,11 +71,9 @@ where
     let mut x = SVector::<f64, N>::zeros();
 
     // Regularization for low rank problems // TODO: WTF
-    let hpeps = f64::EPSILON * 100.0;
-    for i in 0..N {
-        G[(i, i)] += hpeps * G[(i, i)];
-    }
-
+    // .clone() matrix with changed diag
+    let G = SMatrix::<f64, N, N>::from_fn(|row, col| if row != col { G[(row, col)] } else { ONE_PLUS_HEPS * G[(row, col)] });
+    
     let mut K = SVector::<bool, N>::repeat(false);
     // issparse() sparse matrices are used in MATLAB to efficiently store and operate on matrices that are mostly zeros -- no influence other than performance in Matlab
     let mut L = SMatrix::<f64, N, N>::identity();
@@ -95,7 +96,7 @@ where
     'main: loop {
         debug_assert!(!x.iter().any(|&val| val.is_infinite()));
 
-        g = *G * x + c;
+        g = G * x + c;
 
         let fctnew = gam + 0.5 * x.dot(&(c + g)); // .dot() does transpose first (i.e self.transpose() * rhs)
 
@@ -179,7 +180,7 @@ where
         nfree = free.iter().filter(|&&b| b).count();
 
         if unfix && nfree_old_option.map_or(false, |nfree_old| nfree_old == nfree) {
-            g = *G * x + c;
+            g = G * x + c;
             nitref += 1;
         } else {
             nitref = 0;
@@ -194,7 +195,7 @@ where
                 if nfree == 0 {
                     unfix = true;
                 } else {
-                    minqsub(&mut nsub, &mut free, &mut L, &mut d, &mut K, G, &mut g,
+                    minqsub(&mut nsub, &mut free, &mut L, &mut d, &mut K, &G, &mut g,
                             &mut x, xo, xu, &mut nfree, &mut unfix, &mut alp, &mut alpu, &mut alpo,
                             &mut lba, &mut uba, &mut ier);
 

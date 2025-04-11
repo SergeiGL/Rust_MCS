@@ -1,4 +1,3 @@
-use crate::mcs_utils::helper_funcs::update_flag;
 use nalgebra::SVector;
 use std::cmp::Ordering;
 
@@ -13,11 +12,11 @@ fn update_fbest_xbest_nsweepbest<const N: usize>(
 }
 
 
-// Helper function
-fn get_sorted_indices<const N: usize>(nbasket_plus_1: usize, x: &SVector<f64, N>, xmin: &Vec<SVector<f64, N>>) -> Vec<usize> {
+#[inline]
+fn get_sorted_indices<const N: usize>(nbasket: usize, x: &SVector<f64, N>, xmin: &Vec<SVector<f64, N>>) -> Vec<usize> {
     let xmin_len = xmin.len();
 
-    let mut indices: Vec<usize> = (0..nbasket_plus_1).collect();
+    let mut indices: Vec<usize> = (0..nbasket).collect();
     indices.sort_unstable_by(|&i, &j| {
         match (i >= xmin_len, j >= xmin_len) {
             (true, true) => Ordering::Equal,
@@ -63,9 +62,6 @@ fn get_sorted_indices<const N: usize>(nbasket_plus_1: usize, x: &SVector<f64, N>
 /// loc           = 0  candidate lies in the 'domain of attraction' of a
 /// 		     point in the shopping basket
 /// 		= 1  otherwise
-/// flag		= 0  the global minimum of a test function has been
-/// 		     found with the required accuracy relerr
-/// 		= 1  otherwise
 /// ncall		number of function calls used in the program
 pub fn basket<const N: usize>(
     func: fn(&SVector<f64, N>) -> f64,
@@ -75,26 +71,22 @@ pub fn basket<const N: usize>(
     fmi: &Vec<f64>,
     xbest: &mut SVector<f64, N>,
     fbest: &mut f64,
-    nsweeps: usize,
-    freach: f64,
-    nbasket: &Option<usize>,
+    nbasket: usize,
     nsweep: usize,
     nsweepbest: &mut usize,
-) -> (
-    bool,   // loc
-    bool,   // flag
-    usize,  // ncall
-) {
-    let (mut loc, mut flag, mut ncall) = (true, true, 0_usize);
+    ncall: &mut usize,
+) ->
+    bool   // loc
+{
+    // flag will always be true as nsweeps != 0 => no need
+    // ncall is passed by &mut and incremented => no need for buffer var
+
+    let mut loc = true;
     let (mut p, mut y1, mut y2): (SVector<f64, N>, SVector<f64, N>, SVector<f64, N>);
 
-    let nbasket_plus_1 = match nbasket {
-        Some(0) => return (loc, flag, ncall),
-        None => 0,
-        Some(n) => n + 1,
-    };
+    if nbasket == 0 { return loc; }
 
-    for i in get_sorted_indices(nbasket_plus_1, x, xmin) {
+    for i in get_sorted_indices(nbasket, x, xmin) {
         if fmi[i] <= *f {
             p = xmin[i] - *x;
 
@@ -103,7 +95,7 @@ pub fn basket<const N: usize>(
 
             // Evaluate f1
             let f1 = func(&y1);
-            ncall += 1;
+            *ncall += 1;
 
             if f1 <= *f {
                 // Compute y2 = x + 2/3 * p
@@ -111,7 +103,7 @@ pub fn basket<const N: usize>(
 
                 // Evaluate f2
                 let f2 = func(&y2);
-                ncall += 1;
+                *ncall += 1;
 
                 if f2 > f1.max(fmi[i]) {
                     if f1 < *f {
@@ -119,8 +111,6 @@ pub fn basket<const N: usize>(
                         *f = f1;
                         if *f < *fbest {
                             update_fbest_xbest_nsweepbest(fbest, xbest, nsweepbest, *f, x, nsweep);
-                            update_flag(&mut flag, *fbest, nsweeps, freach);
-                            if !flag { return (loc, flag, ncall); }
                         }
                     }
                 } else {
@@ -129,15 +119,11 @@ pub fn basket<const N: usize>(
                         *x = y1;
                         if *f < *fbest {
                             update_fbest_xbest_nsweepbest(fbest, xbest, nsweepbest, *f, x, nsweep);
-                            update_flag(&mut flag, *fbest, nsweeps, freach);
-                            if !flag { return (loc, flag, ncall); }
                         } else if f2 < f1.min(fmi[i]) {
                             *f = f2;
                             *x = y2;
                             if *f < *fbest {
                                 update_fbest_xbest_nsweepbest(fbest, xbest, nsweepbest, *f, x, nsweep);
-                                update_flag(&mut flag, *fbest, nsweeps, freach);
-                                if !flag { return (loc, flag, ncall); }
                             }
                         } else {
                             loc = false;
@@ -148,7 +134,7 @@ pub fn basket<const N: usize>(
             }
         }
     }
-    (loc, flag, ncall)
+    loc
 }
 
 
@@ -160,27 +146,22 @@ pub fn basket1<const N: usize>(
     fmi: &mut Vec<f64>,
     xbest: &mut SVector<f64, N>,
     fbest: &mut f64,
-    nsweeps: usize,
-    freach: f64,
-    nbasket: &Option<usize>,
+    nbasket: usize,
     nsweep: usize,
     nsweepbest: &mut usize,
-) -> (
-    bool,   // loc
-    bool,   // flag
-    usize,  // ncall
-) {
-    let (mut loc, mut flag, mut ncall) = (true, true, 0_usize);
+    ncall: &mut usize,
+) ->
+    bool   // loc
+{
+    // flag will always be true as nsweeps != 0 => no need
+    // ncall is passed by &mut and incremented => no need for buffer var
 
+    let mut loc = true;
 
-    let nbasket_plus_1 = match nbasket {
-        Some(0) => return (loc, flag, ncall),
-        None => 0,
-        Some(n) => n + 1,
-    };
+    if nbasket == 0 { return loc; }
 
     let (mut p, mut y1, mut y2): (SVector<f64, N>, SVector<f64, N>, SVector<f64, N>);
-    for i in get_sorted_indices(nbasket_plus_1, x, xmin) {
+    for i in get_sorted_indices(nbasket, x, xmin) {
         // Compute p = xmin[i] - x
         p = xmin[i] - x;
 
@@ -189,7 +170,7 @@ pub fn basket1<const N: usize>(
 
         // Evaluate f1
         let f1 = func(&y1);
-        ncall += 1;
+        *ncall += 1;
 
         if f1 <= fmi[i].max(f) {
             // Compute y2 = x + 2/3*p
@@ -197,7 +178,7 @@ pub fn basket1<const N: usize>(
 
             // Evaluate f2
             let f2 = func(&y2);
-            ncall += 1;
+            *ncall += 1;
 
             if f2 <= f1.max(fmi[i]) {
                 if f < f1.min(f2).min(fmi[i]) {
@@ -205,8 +186,6 @@ pub fn basket1<const N: usize>(
                     xmin[i] = *x;
                     if fmi[i] < *fbest {
                         update_fbest_xbest_nsweepbest(fbest, xbest, nsweepbest, fmi[i], &mut xmin[i], nsweep);
-                        update_flag(&mut flag, *fbest, nsweeps, freach);
-                        if !flag { return (loc, flag, ncall); }
                     }
                     loc = false;
                     break;
@@ -215,8 +194,6 @@ pub fn basket1<const N: usize>(
                     xmin[i] = y1;
                     if fmi[i] < *fbest {
                         update_fbest_xbest_nsweepbest(fbest, xbest, nsweepbest, fmi[i], &mut xmin[i], nsweep);
-                        update_flag(&mut flag, *fbest, nsweeps, freach);
-                        if !flag { return (loc, flag, ncall); }
                     }
                     loc = false;
                     break;
@@ -225,8 +202,6 @@ pub fn basket1<const N: usize>(
                     xmin[i] = y2;
                     if fmi[i] < *fbest {
                         update_fbest_xbest_nsweepbest(fbest, xbest, nsweepbest, fmi[i], &mut xmin[i], nsweep);
-                        update_flag(&mut flag, *fbest, nsweeps, freach);
-                        if !flag { return (loc, flag, ncall); }
                     }
                     loc = false;
                     break;
@@ -237,7 +212,7 @@ pub fn basket1<const N: usize>(
             }
         }
     }
-    (loc, flag, ncall)
+    loc
 }
 
 
@@ -262,13 +237,12 @@ mod tests {
         let mut fmi = vec![-300.0, -300.0, -300.0, -300.0, -300.0, -300.0];
         let mut xbest = SVector::<f64, 6>::from_row_slice(&[1.2, 0.15, 0.47, 0.27, 0.31, 0.65]);
         let mut fbest = 100_000.0;
-        let nsweeps = 18;
-        let freach = f64::NEG_INFINITY;
-        let nbasket: Option<usize> = Some(3);
+        let nbasket = 4;
         let nsweep = 15;
         let mut nsweepbest = 1;
+        let mut ncall = 0;
 
-        let (loc, flag, ncall) = basket(hm6, &mut x, &mut f, &mut xmin, &mut fmi, &mut xbest, &mut fbest, nsweeps, freach, &nbasket, nsweep, &mut nsweepbest);
+        let loc = basket(hm6, &mut x, &mut f, &mut xmin, &mut fmi, &mut xbest, &mut fbest, nbasket, nsweep, &mut nsweepbest, &mut ncall);
 
         assert_eq!(xbest.as_slice(), [0.06666666666666668, -0.2, -0.4, 0.05, -0.29, 0.20666666666666667]);
         assert_eq!(fbest, -0.00018095444596200413);
@@ -281,25 +255,24 @@ mod tests {
         assert_eq!(fmi, vec![-300.0, -300.0, -300., -300., -300., -300.]);
         assert_eq!(x.as_slice(), [0.06666666666666668, -0.2, -0.4, 0.05, -0.29, 0.20666666666666667]);
         assert_eq!(f, -0.00018095444596200413);
-        assert_eq!((loc, flag, ncall, nsweepbest), (true, true, 8, 15));
+        assert_eq!((loc, ncall, nsweepbest), (true, 8, 15));
     }
 
 
     #[test]
-    fn test_0() {
+    fn test_0_immediate_return() {
         let mut x = SVector::<f64, 6>::from_row_slice(&[0.2, 0.2, 0.4, 0.15, 0.29, 0.62]);
         let mut f = -2.8727241412052247;
         let mut xmin = vec![SVector::<f64, 6>::from_row_slice(&[0.2, 0.2, 0.4, 0.15, 0.29, 0.62]); 3];
         let mut fmi = vec![-3.3, -3.3, -3.1];
         let mut xbest = SVector::<f64, 6>::from_row_slice(&[0.2, 0.15, 0.47, 0.27, 0.31, 0.65]);
         let mut fbest = -3.3;
-        let nsweeps = 18;
-        let freach = f64::NEG_INFINITY;
-        let nbasket = Some(0);
+        let nbasket = 0;
         let nsweep = 15;
         let mut nsweepbest = 1;
+        let mut ncall = 0;
 
-        let (loc, flag, ncall) = basket(hm6, &mut x, &mut f, &mut xmin, &mut fmi, &mut xbest, &mut fbest, nsweeps, freach, &nbasket, nsweep, &mut nsweepbest);
+        let loc = basket(hm6, &mut x, &mut f, &mut xmin, &mut fmi, &mut xbest, &mut fbest, nbasket, nsweep, &mut nsweepbest, &mut ncall);
 
         assert_eq!(x.as_slice(), [0.2, 0.2, 0.4, 0.15, 0.29, 0.62]);
         assert_eq!(xbest.as_slice(), [0.2, 0.15, 0.47, 0.27, 0.31, 0.65]);
@@ -310,7 +283,7 @@ mod tests {
             SVector::<f64, 6>::from_row_slice(&[0.2, 0.2, 0.4, 0.15, 0.29, 0.62]),
         ]);
         assert_eq!(fmi, vec![-3.3, -3.3, -3.1]);
-        assert_eq!((loc, flag, ncall, nsweepbest), (true, true, 0, 1));
+        assert_eq!((loc, ncall, nsweepbest), (true, 0, 1));
     }
 
 
@@ -326,14 +299,12 @@ mod tests {
         let mut fmi = vec![-3.3, -3.2, -3.1];
         let mut xbest = SVector::<f64, 6>::from_row_slice(&[0.2, 0.15, 0.47, 0.27, 0.31, 0.65]);
         let mut fbest = -3.3;
-        let nsweeps = 1;
-        let freach = f64::NEG_INFINITY;
-        let nbasket = Some(2);
+        let nbasket = 3;
         let nsweep = 20;
         let mut nsweepbest = 2;
+        let mut ncall = 0;
 
-        let (loc, flag, ncall) = basket(hm6, &mut x, &mut f, &mut xmin, &mut fmi, &mut xbest, &mut fbest, nsweeps, freach, &nbasket, nsweep, &mut nsweepbest);
-
+        let loc = basket(hm6, &mut x, &mut f, &mut xmin, &mut fmi, &mut xbest, &mut fbest, nbasket, nsweep, &mut nsweepbest, &mut ncall);
 
         assert_eq!(x.as_slice(), [0.2, 0.2, 0.4, 0.15, 0.29, 0.62]);
         assert_eq!(xbest.as_slice(), [0.2, 0.15, 0.47, 0.27, 0.31, 0.65]);
@@ -344,7 +315,7 @@ mod tests {
             SVector::<f64, 6>::from_row_slice(&[0.2, 0.2, 0.4, 0.15, 0.37887001, 0.62]),
         ]);
         assert_eq!(fmi, vec![-3.3, -3.2, -3.1]);
-        assert_eq!((loc, flag, ncall, nsweepbest), (true, true, 4, 2));
+        assert_eq!((loc, ncall, nsweepbest), (true, 4, 2));
     }
 
 
@@ -356,20 +327,19 @@ mod tests {
         let mut fmi = vec![-2.9, -2.8, -2.7];
         let mut xbest = SVector::<f64, 6>::from_row_slice(&[0.15, 0.1, 0.3, 0.2, 0.25, 0.55]);
         let mut fbest = -2.9;
-        let nsweeps = 0;
-        let freach = f64::NEG_INFINITY;
-        let nbasket = Some(1);
+        let nbasket = 2;
         let nsweep = 10;
         let mut nsweepbest = 1;
+        let mut ncall = 0;
 
-        let (loc, flag, ncall) = basket(hm6, &mut x, &mut f, &mut xmin, &mut fmi, &mut xbest, &mut fbest, nsweeps, freach, &nbasket, nsweep, &mut nsweepbest);
+        let loc = basket(hm6, &mut x, &mut f, &mut xmin, &mut fmi, &mut xbest, &mut fbest, nbasket, nsweep, &mut nsweepbest, &mut ncall);
 
         assert_eq!(x.as_slice(), [0.2, 0.2, 0.4, 0.15, 0.29, 0.62]);
         assert_eq!(xbest.as_slice(), [0.15, 0.1, 0.3, 0.2, 0.25, 0.55]);
         assert_eq!(fbest, -2.9);
         assert_eq!(xmin, vec![SVector::<f64, 6>::from_row_slice(&[0.2, 0.2, 0.4, 0.15, 0.29, 0.62]); 3]);
         assert_eq!(fmi, vec![-2.9, -2.8, -2.7]);
-        assert_eq!((loc, flag, ncall, nsweepbest), (true, true, 1, 1));
+        assert_eq!((loc, ncall, nsweepbest), (true, 1, 1));
     }
 
 
@@ -385,13 +355,12 @@ mod tests {
         let mut fmi = vec![-1., -2., -35.5];
         let mut xbest = SVector::<f64, 6>::from_row_slice(&[-1.0, 0.15, 0.47, -0.27, 0.31, 0.65]);
         let mut fbest = -2.3;
-        let nsweeps = 18;
-        let freach = f64::NEG_INFINITY;
-        let nbasket = Some(2);
+        let nbasket = 3;
         let nsweep = 20;
         let mut nsweepbest = 20;
+        let mut ncall = 0;
 
-        let (loc, flag, ncall) = basket(hm6, &mut x, &mut f, &mut xmin, &mut fmi, &mut xbest, &mut fbest, nsweeps, freach, &nbasket, nsweep, &mut nsweepbest);
+        let loc = basket(hm6, &mut x, &mut f, &mut xmin, &mut fmi, &mut xbest, &mut fbest, nbasket, nsweep, &mut nsweepbest, &mut ncall);
 
         assert_eq!(x.as_slice(), [-0.2, 0., -0.1, -10.15, -0.29, -0.62]);
         assert_eq!(xbest.as_slice(), [-1., 0.15, 0.47, -0.27, 0.31, 0.65]);
@@ -402,7 +371,7 @@ mod tests {
             SVector::<f64, 6>::from_row_slice(&[0.2, 0.2, 0.4, 0.15, 0.37887001, 0.62])
         ]);
         assert_eq!(fmi, vec![-1., -2., -35.5]);
-        assert_eq!((loc, flag, ncall, nsweepbest), (true, true, 6, 20));
+        assert_eq!((loc, ncall, nsweepbest), (true, 6, 20));
     }
 
     #[test]
@@ -417,13 +386,12 @@ mod tests {
         let mut fmi = vec![100.; 3];
         let mut xbest = SVector::<f64, 6>::from_row_slice(&[-1.0, 0.15, 0.47, -0.27, 0.31, 0.65]);
         let mut fbest = 100.;
-        let nsweeps = 18;
-        let freach = f64::NEG_INFINITY;
-        let nbasket = Some(2);
+        let nbasket = 2;
         let nsweep = 20;
         let mut nsweepbest = 20;
+        let mut ncall = 0;
 
-        let (loc, flag, ncall) = basket(hm6, &mut x, &mut f, &mut xmin, &mut fmi, &mut xbest, &mut fbest, nsweeps, freach, &nbasket, nsweep, &mut nsweepbest);
+        let loc = basket(hm6, &mut x, &mut f, &mut xmin, &mut fmi, &mut xbest, &mut fbest, nbasket, nsweep, &mut nsweepbest, &mut ncall);
 
         assert_eq!(f, 0.01);
         assert_eq!(x, SVector::<f64, 6>::from_row_slice(&[-0.2, 0.0, -0.1, -10.15, -0.29, -0.62]));
@@ -435,7 +403,7 @@ mod tests {
             SVector::<f64, 6>::from_row_slice(&[0.2, 0.2, 0.4, 0.15, 0.37887001, 0.62])
         ]);
         assert_eq!(fmi, vec![100.0, 100.0, 100.0]);
-        assert_eq!((loc, flag, ncall, nsweepbest), (true, true, 0, 20));
+        assert_eq!((loc, ncall, nsweepbest), (true, 0, 20));
     }
 
     #[test]
@@ -450,13 +418,12 @@ mod tests {
         let mut fmi = vec![100.; 3];
         let mut xbest = SVector::<f64, 6>::from_row_slice(&[-1.0, 0.15, 0.47, -0.27, 0.31, 0.65]);
         let mut fbest = 100.;
-        let nsweeps = 18;
-        let freach = f64::NEG_INFINITY;
-        let nbasket = Some(2);
+        let nbasket = 3;
         let nsweep = 20;
         let mut nsweepbest = 20;
+        let mut ncall = 0;
 
-        let (loc, flag, ncall) = basket(hm6, &mut x, &mut f, &mut xmin, &mut fmi, &mut xbest, &mut fbest, nsweeps, freach, &nbasket, nsweep, &mut nsweepbest);
+        let loc = basket(hm6, &mut x, &mut f, &mut xmin, &mut fmi, &mut xbest, &mut fbest, nbasket, nsweep, &mut nsweepbest, &mut ncall);
 
         assert_eq!(f, -8.490701428811232e-25);
         assert_eq!(x, SVector::<f64, 6>::from_row_slice(&[-3.466666666666667, 0.3333333333333333, -0.11, -3.366666666666667, -0.29666666666666663, -0.63]));
@@ -468,24 +435,23 @@ mod tests {
             SVector::<f64, 6>::from_row_slice(&[0.2, 0.2, 0.4, 0.15, 0.37887001, 0.62])
         ]);
         assert_eq!(fmi, vec![100.0, 100.0, 100.0]);
-        assert_eq!((loc, flag, ncall, nsweepbest), (true, true, 6, 20));
+        assert_eq!((loc, ncall, nsweepbest), (true, 6, 20));
     }
 
     #[test]
-    fn test_0_bask1() {
+    fn test_0_bask1_immediate_return() {
         let x = SVector::<f64, 6>::from_row_slice(&[0.2, 0.2, 0.4, 0.15, 0.29, 0.62]);
         let f = -2.8727241412052247;
         let mut xmin = vec![SVector::<f64, 6>::from_row_slice(&[0.2, 0.2, 0.4, 0.15, 0.29, 0.62]); 3];
         let mut fmi = vec![-3.3, -3.3, -3.1];
         let mut xbest = SVector::<f64, 6>::from_row_slice(&[0.2, 0.15, 0.47, 0.27, 0.31, 0.65]);
         let mut fbest = -3.3;
-        let nsweeps = 18;
-        let freach = f64::NEG_INFINITY;
-        let nbasket = Some(0);
+        let nbasket = 0;
         let nsweep = 15;
         let mut nsweepbest = 1;
+        let mut ncall = 0;
 
-        let (loc, flag, ncall) = basket1(hm6, &x, f, &mut xmin, &mut fmi, &mut xbest, &mut fbest, nsweeps, freach, &nbasket, nsweep, &mut nsweepbest);
+        let loc = basket1(hm6, &x, f, &mut xmin, &mut fmi, &mut xbest, &mut fbest, nbasket, nsweep, &mut nsweepbest, &mut ncall);
 
         assert_eq!(xbest, SVector::<f64, 6>::from_row_slice(&[0.2, 0.15, 0.47, 0.27, 0.31, 0.65]));
         assert_eq!(fbest, -3.3);
@@ -495,7 +461,7 @@ mod tests {
             SVector::<f64, 6>::from_row_slice(&[0.2, 0.2, 0.4, 0.15, 0.29, 0.62]),
         ]);
         assert_eq!(fmi, vec![-3.3, -3.3, -3.1]);
-        assert_eq!((loc, flag, ncall, nsweepbest), (true, true, 0, 1));
+        assert_eq!((loc, ncall, nsweepbest), (true, 0, 1));
     }
     #[test]
     fn test_1_backet_1() {
@@ -509,13 +475,12 @@ mod tests {
         let mut fmi = vec![-3.3, -3.2, -3.1];
         let mut xbest = SVector::<f64, 6>::from_row_slice(&[0.2, 0.15, 0.47, 0.27, 0.31, 0.65]);
         let mut fbest = -3.3;
-        let nsweeps = 1;
-        let freach = f64::NEG_INFINITY;
-        let nbasket = Some(2);
+        let nbasket = 3;
         let nsweep = 20;
         let mut nsweepbest = 2;
+        let mut ncall = 0;
 
-        let (loc, flag, ncall) = basket1(hm6, &x, f, &mut xmin, &mut fmi, &mut xbest, &mut fbest, nsweeps, freach, &nbasket, nsweep, &mut nsweepbest);
+        let loc = basket1(hm6, &x, f, &mut xmin, &mut fmi, &mut xbest, &mut fbest, nbasket, nsweep, &mut nsweepbest, &mut ncall);
 
         assert_eq!(xbest, SVector::<f64, 6>::from_row_slice(&[0.2, 0.15, 0.47, 0.27, 0.31, 0.65]));
         assert_eq!(fbest, -3.3);
@@ -525,7 +490,7 @@ mod tests {
             SVector::<f64, 6>::from_row_slice(&[0.2, 0.2, 0.4, 0.15, 0.37887001, 0.62]),
         ]);
         assert_eq!(fmi, vec![-3.3, -3.2, -3.1]);
-        assert_eq!((loc, flag, ncall, nsweepbest), (false, true, 4, 2));
+        assert_eq!((loc, ncall, nsweepbest), (false, 4, 2));
     }
     #[test]
     fn test_2_backet_1() {
@@ -535,19 +500,18 @@ mod tests {
         let mut fmi = vec![-2.9, -2.8, -2.7];
         let mut xbest = SVector::<f64, 6>::from_row_slice(&[0.15, 0.1, 0.3, 0.2, 0.25, 0.55]);
         let mut fbest = -2.9;
-        let nsweeps = 0;
-        let freach = f64::NEG_INFINITY;
-        let nbasket = Some(1);
+        let nbasket = 2;
         let nsweep = 10;
         let mut nsweepbest = 1;
+        let mut ncall = 0;
 
-        let (loc, flag, ncall) = basket1(hm6, &x, f, &mut xmin, &mut fmi, &mut xbest, &mut fbest, nsweeps, freach, &nbasket, nsweep, &mut nsweepbest);
+        let loc = basket1(hm6, &x, f, &mut xmin, &mut fmi, &mut xbest, &mut fbest, nbasket, nsweep, &mut nsweepbest, &mut ncall);
 
         assert_eq!(xbest, SVector::<f64, 6>::from_row_slice(&[0.15, 0.1, 0.3, 0.2, 0.25, 0.55]));
         assert_eq!(fbest, -2.9);
         assert_eq!(xmin, vec![SVector::<f64, 6>::from_row_slice(&[0.2, 0.2, 0.4, 0.15, 0.29, 0.62]); 3]);
         assert_eq!(fmi, vec![-2.9, -2.8, -2.7]);
-        assert_eq!((loc, flag, ncall, nsweepbest), (true, true, 2, 1));
+        assert_eq!((loc, ncall, nsweepbest), (true, 2, 1));
     }
     #[test]
     fn test_3_basket1() {
@@ -561,13 +525,12 @@ mod tests {
         let mut fmi = vec![-1., -2., -35.5];
         let mut xbest = SVector::<f64, 6>::from_row_slice(&[-1.0, 0.15, 0.47, -0.27, 0.31, 0.65]);
         let mut fbest = -2.3;
-        let nsweeps = 18;
-        let freach = f64::NEG_INFINITY;
-        let nbasket = Some(2);
+        let nbasket = 3;
         let nsweep = 20;
         let mut nsweepbest = 20;
+        let mut ncall = 0;
 
-        let (loc, flag, ncall) = basket1(hm6, &x, f, &mut xmin, &mut fmi, &mut xbest, &mut fbest, nsweeps, freach, &nbasket, nsweep, &mut nsweepbest);
+        let loc = basket1(hm6, &x, f, &mut xmin, &mut fmi, &mut xbest, &mut fbest, nbasket, nsweep, &mut nsweepbest, &mut ncall);
 
         assert_eq!(xbest, SVector::<f64, 6>::from_row_slice(&[-1., 0.15, 0.47, -0.27, 0.31, 0.65]));
         assert_eq!(fbest, -2.3);
@@ -577,7 +540,7 @@ mod tests {
             SVector::<f64, 6>::from_row_slice(&[0.2, 0.2, 0.4, 0.15, 0.37887001, 0.62])
         ]);
         assert_eq!(fmi, vec![-1., -2., -35.5]);
-        assert_eq!((loc, flag, ncall, nsweepbest), (false, true, 2, 20));
+        assert_eq!((loc, ncall, nsweepbest), (false, 2, 20));
     }
 
     #[test]
@@ -592,13 +555,12 @@ mod tests {
         let mut fmi = vec![100.; 3];
         let mut xbest = SVector::<f64, 6>::from_row_slice(&[-1.0, 0.15, 0.47, -0.27, 0.31, 0.65]);
         let mut fbest = -2.3;
-        let nsweeps = 18;
-        let freach = f64::NEG_INFINITY;
-        let nbasket = Some(2);
+        let nbasket = 3;
         let nsweep = 20;
         let mut nsweepbest = 20;
+        let mut ncall = 0;
 
-        let (loc, flag, ncall) = basket1(hm6, &x, f, &mut xmin, &mut fmi, &mut xbest, &mut fbest, nsweeps, freach, &nbasket, nsweep, &mut nsweepbest);
+        let loc = basket1(hm6, &x, f, &mut xmin, &mut fmi, &mut xbest, &mut fbest, nbasket, nsweep, &mut nsweepbest, &mut ncall);
 
         assert_eq!(xbest, SVector::<f64, 6>::from_row_slice(&[-1.0, 0.15, 0.47, -0.27, 0.31, 0.65]));
         assert_eq!(fbest, -2.3);
@@ -608,7 +570,7 @@ mod tests {
              SVector::<f64, 6>::from_row_slice(&[0.2, 0.2, 0.4, 0.15, 0.37887001, 0.62])
         ].as_slice() , epsilon = TOLERANCE);
         assert_eq!(fmi, vec![100.0, -8.594107654969967e-08, 100.0]);
-        assert_eq!((loc, flag, ncall, nsweepbest), (false, true, 2, 20));
+        assert_eq!((loc, ncall, nsweepbest), (false, 2, 20));
     }
 
 
@@ -625,13 +587,12 @@ mod tests {
         let mut fmi = vec![-300.0, -300.0, -300.0, -300.0, -300.0, -300.0];
         let mut xbest = SVector::<f64, 6>::from_row_slice(&[1.2, 0.15, 0.47, 0.27, 0.31, 0.65]);
         let mut fbest = 100_000.0;
-        let nsweeps = 18;
-        let freach = f64::NEG_INFINITY;
-        let nbasket = Some(3);
+        let nbasket = 4;
         let nsweep = 15;
         let mut nsweepbest = 1;
+        let mut ncall = 0;
 
-        let (loc, flag, ncall) = basket1(hm6, &x, f, &mut xmin, &mut fmi, &mut xbest, &mut fbest, nsweeps, freach, &nbasket, nsweep, &mut nsweepbest);
+        let loc = basket1(hm6, &x, f, &mut xmin, &mut fmi, &mut xbest, &mut fbest, nbasket, nsweep, &mut nsweepbest, &mut ncall);
 
         assert_eq!(xbest, SVector::<f64, 6>::from_row_slice(&[1.2, 0.15, 0.47, 0.27, 0.31, 0.65]));
         assert_eq!(fbest, 100000.0);
@@ -642,6 +603,6 @@ mod tests {
             SVector::<f64, 6>::from_row_slice(&[0.2, 0.2, 0.4, 0.15, 0.29, 0.62])
         ]);
         assert_eq!(fmi, vec![-300.0, -300.0, -300., -300., -300., -300.]);
-        assert_eq!((loc, flag, ncall, nsweepbest), (false, true, 2, 1));
+        assert_eq!((loc, ncall, nsweepbest), (false, 2, 1));
     }
 }

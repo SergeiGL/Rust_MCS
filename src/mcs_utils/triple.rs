@@ -1,6 +1,7 @@
 use crate::mcs_utils::{hessian::hessian, polint::polint1};
 use nalgebra::{SMatrix, SVector};
 
+#[inline]
 pub fn triple<const N: usize>(
     func: fn(&SVector<f64, N>) -> f64,
     x: &SVector<f64, N>,
@@ -12,13 +13,13 @@ pub fn triple<const N: usize>(
     hess: &SMatrix<f64, N, N>,
     G: &mut SMatrix<f64, N, N>,
     setG: bool,
+    ncall: &mut usize,
 ) -> (
     SVector<f64, N>,   // xtrip
     f64,               // ftrip
     SVector<f64, N>,   // g
-    usize              // nf
 ) {
-    let (mut nf, mut nargin_lower_10) = (0_usize, false);
+    let mut nargin_lower_10 = false;
     let mut g = SVector::<f64, N>::zeros();
 
     if setG {
@@ -47,7 +48,7 @@ pub fn triple<const N: usize>(
             g[i] = 1.0;
             G[(i, i)] = 1.0;
         }
-        return (xtrip, ftrip, g, nf);
+        return (xtrip, ftrip, g);
     }
 
     if setG {
@@ -65,7 +66,7 @@ pub fn triple<const N: usize>(
 
         x[i] = x2[i];
         let f2 = func(&x);
-        nf += 2;
+        *ncall += 2;
 
         (g[i], G[(i, i)]) = polint1(
             &[xtrip[i], x1[i], x2[i]],
@@ -109,7 +110,7 @@ pub fn triple<const N: usize>(
                         }
 
                         let f12 = func(&x);
-                        nf += 1;
+                        *ncall += 1;
 
                         // println!("{}\n{i} {k}, {x:?}, {xtrip:?}, {f12}, {ftrip}, {g}, {G:?}", G[(1, 4)]);
                         G[(i, k)] = hessian(i, k, &x, &xtrip, f12, ftrip, &g, G);
@@ -159,7 +160,7 @@ pub fn triple<const N: usize>(
         // println!("end {g:?}");
     }
 
-    (xtrip, ftrip, g, nf)
+    (xtrip, ftrip, g)
 }
 
 
@@ -179,8 +180,9 @@ mod tests {
         let hess = SMatrix::<f64, 6, 6>::repeat(0.);
         let mut G = SMatrix::<f64, 6, 6>::repeat(5.);
         let setG = true;
+        let mut ncall = 0;
 
-        let (xtrip, ftrip, g, nf) = triple(hm6, &x, f, &mut x1, &mut x2, &u, &v, &hess, &mut G, setG);
+        let (xtrip, ftrip, g) = triple(hm6, &x, f, &mut x1, &mut x2, &u, &v, &hess, &mut G, setG, &mut ncall);
 
         let expected_xtrip = [0.4336535629633933, 0.8420919980334169, 0.7176915876351339, 0.4916640711647772, 0.18103716080657348, 0.028904813816976117];
         let expected_ftrip = -2.908187629699183;
@@ -200,7 +202,7 @@ mod tests {
         assert_eq!(G, expected_G);
         assert_eq!(x1.as_slice(), expected_x1);
         assert_eq!(x2.as_slice(), expected_x2);
-        assert_eq!(nf, expected_nf);
+        assert_eq!(ncall, expected_nf);
     }
 
     #[test]
@@ -214,8 +216,9 @@ mod tests {
         let hess = SMatrix::<f64, 6, 6>::repeat(1.);
         let mut G = SMatrix::<f64, 6, 6>::repeat(154765865.);
         let setG = true;
+        let mut ncall = 0;
 
-        let (xtrip, ftrip, g, nf) = triple(hm6, &x, f, &mut x1, &mut x2, &u, &v, &hess, &mut G, setG);
+        let (xtrip, ftrip, g) = triple(hm6, &x, f, &mut x1, &mut x2, &u, &v, &hess, &mut G, setG, &mut ncall);
 
         let expected_xtrip = [0.43365356296339325, 0.8420919980334169, 0.7176915876351337, 0.4916640711647772, 0.1810371608065735, 0.028904813816976235];
         let expected_ftrip = -2.908187629699183;
@@ -234,7 +237,7 @@ mod tests {
         assert_eq!(G, expected_G);
         assert_eq!(x1.as_slice(), expected_x1);
         assert_eq!(x2.as_slice(), expected_x2);
-        assert_eq!(nf, expected_nf);
+        assert_eq!(ncall, expected_nf);
     }
 
 
@@ -249,9 +252,9 @@ mod tests {
         let hess = SMatrix::<f64, 6, 6>::repeat(1.);
         let mut G = SMatrix::<f64, 6, 6>::repeat(154765865.);
         let setG = true;
+        let mut ncall = 0;
 
-
-        let (xtrip, ftrip, g, nf) = triple(hm6, &x, f, &mut x1, &mut x2, &u, &v, &hess, &mut G, setG);
+        let (xtrip, ftrip, g) = triple(hm6, &x, f, &mut x1, &mut x2, &u, &v, &hess, &mut G, setG, &mut ncall);
 
         let expected_xtrip = [0.4336535629633933, 0.8420919980334169, 0.7176915876351339, 0.4916640711647772, 0.18103716080657348, 0.028904813816976117];
         let expected_ftrip = -2.908187629699183;
@@ -271,7 +274,7 @@ mod tests {
         assert_eq!(G, expected_G);
         assert_eq!(x1.as_slice(), expected_x1);
         assert_eq!(x2.as_slice(), expected_x2);
-        assert_eq!(nf, expected_nf);
+        assert_eq!(ncall, expected_nf);
     }
 
 
@@ -300,8 +303,9 @@ mod tests {
             -1.0, -1.0, -1.0, -1.0, -1.0, -1.0,
         ]);
         let setG = false;
+        let mut ncall = 0;
 
-        let (xtrip, ftrip, g, nf) = triple(hm6, &x, f, &mut x1, &mut x2, &u, &v, &hess, &mut G, setG);
+        let (xtrip, ftrip, g) = triple(hm6, &x, f, &mut x1, &mut x2, &u, &v, &hess, &mut G, setG, &mut ncall);
 
         let expected_xtrip = [0.1, 0.2, 0.4, 0.4, 0.3, 0.6];
         let expected_ftrip = -2.630060151483446;
@@ -331,7 +335,7 @@ mod tests {
         assert_eq!(G, expected_G);
         assert_eq!(x1.as_slice(), expected_x1);
         assert_eq!(x2.as_slice(), expected_x2);
-        assert_eq!(nf, expected_nf);
+        assert_eq!(ncall, expected_nf);
     }
 
     #[test]
@@ -359,8 +363,9 @@ mod tests {
             2.5, 2.5, 2.5, 2.5, 2.5, 2.5,
         ]);
         let setG = false;
+        let mut ncall = 0;
 
-        let (xtrip, ftrip, g, nf) = triple(hm6, &x, f, &mut x1, &mut x2, &u, &v, &hess, &mut G, setG);
+        let (xtrip, ftrip, g) = triple(hm6, &x, f, &mut x1, &mut x2, &u, &v, &hess, &mut G, setG, &mut ncall);
 
         let expected_xtrip = [-0.2, 0.15, 1.023, 0.0, 3.0, -10.0];
         let expected_ftrip = -0.4;
@@ -390,7 +395,7 @@ mod tests {
         assert_eq!(G, expected_G);
         assert_eq!(x1.as_slice(), expected_x1);
         assert_eq!(x2.as_slice(), expected_x2);
-        assert_eq!(nf, expected_nf);
+        assert_eq!(ncall, expected_nf);
     }
 
     #[test]
@@ -418,8 +423,9 @@ mod tests {
             5.6, 5.6, 5.6, 5.6, 5.6, 5.6,
         ]);
         let setG = false;
+        let mut ncall = 0;
 
-        let (xtrip, ftrip, g, nf) = triple(hm6, &x, f, &mut x1, &mut x2, &u, &v, &hess, &mut G, setG);
+        let (xtrip, ftrip, g) = triple(hm6, &x, f, &mut x1, &mut x2, &u, &v, &hess, &mut G, setG, &mut ncall);
 
         let expected_xtrip = [0.1, 0.15, -0.02, 0.1, 0.0, -0.4];
         let expected_ftrip = -1.2;
@@ -449,7 +455,7 @@ mod tests {
         assert_eq!(G, expected_G);
         assert_eq!(x1.as_slice(), expected_x1);
         assert_eq!(x2.as_slice(), expected_x2);
-        assert_eq!(nf, expected_nf);
+        assert_eq!(ncall, expected_nf);
     }
 
     #[test]
@@ -477,8 +483,9 @@ mod tests {
             -2.0, -2.0, -2.0, -2.0, -2.0, -2.0,
         ]);
         let setG = true;
+        let mut ncall = 0;
 
-        let (xtrip, ftrip, g, nf) = triple(hm6, &x, f, &mut x1, &mut x2, &u, &v, &hess, &mut G, setG);
+        let (xtrip, ftrip, g) = triple(hm6, &x, f, &mut x1, &mut x2, &u, &v, &hess, &mut G, setG, &mut ncall);
 
         let expected_xtrip = [0.112, -0.1, -0.32, 0.0, 10.0, -0.4];
         let expected_ftrip = -4.5;
@@ -508,7 +515,7 @@ mod tests {
         assert_eq!(G, expected_G);
         assert_eq!(x1.as_slice(), expected_x1);
         assert_eq!(x2.as_slice(), expected_x2);
-        assert_eq!(nf, expected_nf);
+        assert_eq!(ncall, expected_nf);
     }
 
     #[test]
@@ -536,8 +543,9 @@ mod tests {
             10.0, 10.0, 10.0, 10.0, 10.0, 10.0,
         ]);
         let setG = false;
+        let mut ncall = 0;
 
-        let (xtrip, ftrip, g, nf) = triple(hm6, &x, f, &mut x1, &mut x2, &u, &v, &hess, &mut G, setG);
+        let (xtrip, ftrip, g) = triple(hm6, &x, f, &mut x1, &mut x2, &u, &v, &hess, &mut G, setG, &mut ncall);
 
         let expected_xtrip = [0.202, 0.15, 0.476, 0.273, 0.31, 0.656];
         let expected_ftrip = -3.3220115127770096;
@@ -567,7 +575,7 @@ mod tests {
         assert_eq!(G, expected_G);
         assert_eq!(x1.as_slice(), expected_x1);
         assert_eq!(x2.as_slice(), expected_x2);
-        assert_eq!(nf, expected_nf);
+        assert_eq!(ncall, expected_nf);
     }
 
     #[test]
@@ -595,8 +603,9 @@ mod tests {
             0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
         ]);
         let setG = false;
+        let mut ncall = 0;
 
-        let (xtrip, ftrip, g, nf) = triple(hm6, &x, f, &mut x1, &mut x2, &u, &v, &hess, &mut G, setG);
+        let (xtrip, ftrip, g) = triple(hm6, &x, f, &mut x1, &mut x2, &u, &v, &hess, &mut G, setG, &mut ncall);
 
         let expected_xtrip = [0.0, 1.0, 0.0, 1.0, 0.0, 1.0];
         let expected_ftrip = -3.32;
@@ -621,7 +630,7 @@ mod tests {
         assert_eq!(G, expected_G);
         assert_eq!(x1.as_slice(), expected_x1);
         assert_eq!(x2.as_slice(), expected_x2);
-        assert_eq!(nf, expected_nf);
+        assert_eq!(ncall, expected_nf);
     }
 
     #[test]
@@ -649,8 +658,9 @@ mod tests {
             0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
         ]);
         let setG = true;
+        let mut ncall = 0;
 
-        let (xtrip, ftrip, g, nf) = triple(hm6, &x, f, &mut x1, &mut x2, &u, &v, &hess, &mut G, setG);
+        let (xtrip, ftrip, g) = triple(hm6, &x, f, &mut x1, &mut x2, &u, &v, &hess, &mut G, setG, &mut ncall);
 
         let expected_xtrip = [-0.1, 1.1, -0.1, 1.1, -0.1, 1.1];
         let expected_ftrip = -3.32;
@@ -675,6 +685,6 @@ mod tests {
         assert_eq!(G, expected_G);
         assert_eq!(x1.as_slice(), expected_x1);
         assert_eq!(x2.as_slice(), expected_x2);
-        assert_eq!(nf, expected_nf);
+        assert_eq!(ncall, expected_nf);
     }
 }

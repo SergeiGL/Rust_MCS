@@ -3,6 +3,8 @@ use crate::mcs_utils::{csearch::csearch, helper_funcs::*, neighbor::neighbor, tr
 use crate::minq::minq;
 use nalgebra::{Const, DimMin, SMatrix, SVector};
 
+const EPS_POW_1_3: f64 = 0.000006055454452393343;
+
 pub fn lsearch<const N: usize>(
     func: fn(&SVector<f64, N>) -> f64,
     x: &SVector<f64, N>,
@@ -11,23 +13,23 @@ pub fn lsearch<const N: usize>(
     u: &SVector<f64, N>,
     v: &SVector<f64, N>,
     nf_left: Option<usize>,
-    nsweeps: usize,
-    freach: f64,
-    maxstep: usize,
+    local: usize,
     gamma: f64,
     hess: &SMatrix<f64, N, N>,
 ) -> (
     SVector<f64, N>, // xmin
     f64,             // fmi
     usize,           // ncall
-    bool,            // flag
 )
 where
     Const<N>: DimMin<Const<N>, Output=Const<N>>,
 {
-    let EPS_POW_1_3 = f64::EPSILON.powf(1.0 / 3.0);
 
-    let (mut eps0, mut ncall, nloc, small, smaxls, mut flag) = (0.001, 0_usize, 1, 0.1, 15, true);
+    // flag will always be true as nsweeps != 0 => no need
+    let (mut ncall, nloc, small, smaxls) = (0_usize, 1, 0.1, 15);
+
+    let mut x0: SVector<f64, N> = SVector::zeros();
+    clamp_SVector_mut(&mut x0, u, v);
 
     let (mut xmin, mut fmi, mut g, mut G, nfcsearch) = csearch(func, x, f, u, v);
     clamp_SVector_mut(&mut xmin, u, v);
@@ -35,14 +37,7 @@ where
     ncall += nfcsearch;
 
     let mut xold = xmin.clone();
-    let mut fold = fmi.clone();
-
-    update_flag(&mut flag, fmi, nsweeps, freach);
-
-    if !flag { return (xmin, fmi, ncall, flag); }
-
-    let mut x0: SVector<f64, N> = SVector::zeros();
-    clamp_SVector_mut(&mut x0, u, v);
+    let mut fold = fmi;
 
     let mut d: SVector<f64, N> = (xmin - u) // Component-wise subtraction
         .zip_map(&(v - xmin), f64::min)  // Parallel minimum operation
@@ -51,20 +46,18 @@ where
             f64::min,
         );
 
-    let (mut p, _, _) = minq(fmi, &g, &mut G, &-d, &d);
+    let (mut p, _, _) = minq(fmi, &g, &G, &-d, &d);
 
-    let mut x_new = xmin + p;
-    clamp_SVector_mut(&mut x_new, u, v);
+    let mut x = xmin + p;
+    clamp_SVector_mut(&mut x, u, v);
 
-    p = x_new - xmin;
-
-    let norm = p.norm();
+    p = x - xmin;
 
     let mut alist;
     let mut flist;
 
-    let (mut gain, mut r) = if norm != 0.0 {
-        let f1 = func(&x_new);
+    let mut r = if p.norm() != 0.0 {
+        let f1 = func(&x);
         ncall += 1;
 
         alist = Vec::from([0.0, 1.0]);
@@ -87,23 +80,20 @@ where
             fmi = fminew;
         }
 
-        // Update xmin
-        for (x_ref, &p_scaled) in xmin.iter_mut().zip(&p.scale(alist[i])) {
-            *x_ref += p_scaled;
-        };
-
+        xmin += p.scale(alist[i]);
         clamp_SVector_mut(&mut xmin, u, v);
 
-        update_flag(&mut flag, fmi, nsweeps, freach);
-
-        if !flag {
-            return (xmin, fmi, ncall, flag);
+        if fold == fmi {
+            0.0
+        } else if fold == fpred {
+            0.5
+        } else {
+            (fold - fmi) / (fold - fpred)
         }
-
-        (f - fmi, if fold == fmi { 0.0 } else if fold == fpred { 0.5 } else { (fold - fmi) / (fold - fpred) })
     } else {
-        (f - fmi, 0.0)
+        0.0
     };
+    let mut gain = f - fmi;
 
     let mut diag = false;
 
@@ -112,20 +102,15 @@ where
         .filter(|&i| u[i] < xmin[i] && xmin[i] < v[i])
         .count();
 
-    let dot_right: SVector<f64, N> = SVector::<f64, N>::from_fn(|i, _| xmin[i].abs().max(xold[i].abs()));
-
-    let mut b = g.abs().dot(&dot_right);
+    let max_vector = xmin.abs().zip_map(&xold.abs(), f64::max);
+    let mut b = g.abs().dot(&max_vector);
     let mut nstep = 0;
 
-    // Compute minusd and mind
-    let mut minusd: SVector<f64, N>;
-    let mut mind: SVector<f64, N>;
-
     while (nf_left.is_some() && ncall < nf_left.unwrap())
-        && (nstep < maxstep)
+        && (nstep < local)
         && (
         (diag || ind_len < N)
-            || (nsweeps == 0 && fmi - gain <= freach)
+            // || (nsweeps == 0 && fmi - gain <= freach) //nsweeps cannot be 0
             || (b >= gamma * (f0 - f) && gain > 0.0)
     )
     {
@@ -140,124 +125,98 @@ where
         let (mut x1, mut x2) = neighbor(&xmin, &delta, u, v);
         f = fmi;
 
-        if ind_len < N && (b < gamma * (f0 - f) || gain == 0.0) {
-            let mut ind1: Vec<Option<usize>> = u.iter()
-                .zip(v.iter())
+        if ind_len < N && (b < gamma * (f0 - f) || gain.abs() < f64::EPSILON) {
+            let mut ind1 = u.iter().zip(v)
                 .enumerate()
                 .filter_map(|(i, (&u_i, &v_i))| {
                     if xmin[i] == u_i || xmin[i] == v_i {
-                        Some(Some(i))
+                        Some(i)
                     } else {
                         None
                     }
-                })
-                .collect();
+                }).collect::<Vec<usize>>();
 
-            p = SVector::<f64, N>::zeros();
-            for k in 0..ind1.len() {
-                if let Some(i) = ind1[k] {
-                    let mut x = xmin.clone();
-                    x[i] = if xmin[i] == u[i] { x2[i] } else { x1[i] };
-                    let f1 = func(&x);
-                    ncall += 1;
+            for ind1_mut_ref in ind1.iter_mut() {
+                let i = *ind1_mut_ref;
+                x = xmin.clone();
+                x[i] = if xmin[i] == u[i] { x2[i] } else { x1[i] };
+                let f1 = func(&x);
+                ncall += 1;
 
-                    if f1 < fmi {
-                        alist = Vec::from([0.0, x[i], -xmin[i]]);
-                        flist = Vec::from([fmi, f1]);
+                if f1 < fmi {
+                    alist = Vec::from([0.0, x[i] - xmin[i]]);
+                    flist = Vec::from([fmi, f1]);
+                    p = SVector::<f64, N>::zeros();
+                    p[i] = 1.0;
+                    ncall += gls(func, &xmin, &p, &mut alist, &mut flist, u, v, nloc, small, 6);
 
-                        p[i] = 1.0;
-                        ncall += gls(func, &xmin, &p, &mut alist, &mut flist, u, v, nloc, small, 6);
-                        p[i] = 0.0;
+                    let (mut j, &fminew) = flist
+                        .iter()
+                        .enumerate()
+                        .min_by(|(_, a), (_, b)| a.total_cmp(b))
+                        .unwrap();
 
-                        let (mut j, &fminew) = flist
-                            .iter()
-                            .enumerate()
-                            .min_by(|(_, a), (_, b)| a.total_cmp(b))
-                            .unwrap();
-
-                        if fminew == fmi {
-                            j = alist.iter().position(|&a| a == 0.0).unwrap();
-                        } else {
-                            fmi = fminew;
-                        }
-
-                        xmin[i] += alist[j];
+                    if fminew == fmi {
+                        j = alist.iter().position(|&a| a == 0.0).unwrap();
                     } else {
-                        ind1[k] = None;
+                        fmi = fminew;
                     }
+
+                    xmin[i] += alist[j];
+                } else {
+                    *ind1_mut_ref = 0;
                 }
             }
 
             clamp_SVector_mut(&mut xmin, u, v);
 
             // if not sum(ind1):
-            if ind1.iter().fold(ind1.len(), |acc, x| {
-                match x {
-                    Some(x_usize) => acc + x_usize,
-                    None => acc - 1,
-                }
-            }) == ind1.len() {
+            if ind1.iter().fold(0, |acc, &ind1_i| acc + ind1_i) == 0 {
                 break;
             }
 
             delta = xmin.abs().scale(EPS_POW_1_3);
 
             for delta_i in delta.iter_mut() {
-                if *delta_i == 0.0 {
+                if *delta_i < f64::EPSILON {
                     *delta_i = EPS_POW_1_3;
                 }
             }
             (x1, x2) = neighbor(&xmin, &delta, u, v);
         }
 
-        let nftriple;
         // println!("before triple {xmin:?}\n{fmi}\n{x1:?}\n{x2:?}\n{hess:.15}, {G:.15}");
-        diag = if (r - 1.0).abs() > 0.25 || gain == 0.0 || b < gamma * (f0 - f) {
-            (xmin, fmi, g, nftriple) = triple(func, &xmin, fmi, &mut x1, &mut x2, u, v, hess, &mut G, true);
-            ncall += nftriple;
+        diag = if (r - 1.0).abs() > 0.25 || gain.abs() < f64::EPSILON || b < gamma * (f0 - f) {
+            (xmin, fmi, g) = triple(func, &xmin, fmi, &mut x1, &mut x2, u, v, hess, &mut G, true, &mut ncall);
             false
         } else {
-            (xmin, fmi, g, nftriple) = triple(func, &xmin, fmi, &mut x1, &mut x2, u, v, hess, &mut G, false);
-            ncall += nftriple;
+            (xmin, fmi, g) = triple(func, &xmin, fmi, &mut x1, &mut x2, u, v, hess, &mut G, false, &mut ncall);
             true
         };
-
-        // println!("after triple {g:?}");
 
         xold = xmin.clone();
         fold = fmi;
 
-        update_flag(&mut flag, fmi, nsweeps, freach);
-
-        if !flag {
-            return (xmin, fmi, ncall, flag);
-        }
-
-        // Adjust d based on r
         if r < 0.25 {
-            for d_i in &mut d {
-                *d_i *= 0.5;
-            }
+            d.scale_mut(0.5)
         } else if r > 0.75 {
-            for d_i in &mut d {
-                *d_i *= 2.0;
-            }
+            d.scale_mut(2.0)
         }
 
-        // Compute minusd and mind
-        minusd = (u - xmin).zip_map(&d, |diff, d_val| diff.max(-d_val));
-        mind = (v - xmin).zip_map(&d, |diff, d_val| diff.min(d_val));
+        (p, _, _) = minq(fmi, &g,
+                         &G,
+                         &(u - xmin).zip_map(&-d, f64::max),
+                         &(v - xmin).zip_map(&d, f64::min));
 
-        (p, _, _) = minq(fmi, &g, &mut G, &minusd, &mind);
         let norm = p.norm();
-
-        if norm == 0.0 && !diag && ind_len == N {
+        if norm.abs() < f64::EPSILON && !diag && ind_len == N {
             break;
         }
 
-        if norm != 0.0 {
+        if norm >= f64::EPSILON {
             let fpred = fmi + g.dot(&p) + 0.5 * p.dot(&(G * p));
-            let f1 = func(&(xmin + p));
+            x = xmin + p;
+            let f1 = func(&x);
             ncall += 1;
 
             alist = Vec::from([0.0, 1.0]);
@@ -275,12 +234,6 @@ where
             xmin = xmin + alist[argmin] * p;
             clamp_SVector_mut(&mut xmin, u, v);
 
-            update_flag(&mut flag, fmi, nsweeps, freach);
-
-            if !flag {
-                return (xmin, fmi, ncall, flag);
-            }
-
             // Compute gain and r
             gain = f - fmi;
             r = if fold == fmi {
@@ -290,26 +243,20 @@ where
             } else {
                 (fold - fmi) / (fold - fpred)
             };
-
-            if fmi < fold {
-                eps0 = ((1.0 - 1.0 / r).abs() * eps0).min(0.001).max(f64::EPSILON);
-            } else {
-                eps0 = 0.001;
-            }
         } else {
             gain = f - fmi;
-            if gain == 0.0 {
-                eps0 = 0.001;
+            if gain.abs() < f64::EPSILON {
                 r = 0.0;
             }
         }
 
         ind_len = (0..N).filter(|&inx| u[inx] < xmin[inx] && xmin[inx] < v[inx]).count();
 
-        b = g.abs().dot(&SVector::<f64, N>::from_fn(|i, _| xmin[i].abs().max(xold[i].abs())));
+        let max_vector = xmin.abs().zip_map(&xold.abs(), f64::max);
+        b = g.abs().dot(&max_vector);
     }
 
-    (xmin, fmi, ncall, flag)
+    (xmin, fmi, ncall)
 }
 
 
@@ -321,74 +268,85 @@ mod tests {
 
     static TOLERANCE: f64 = 1e-5;
 
-    #[test]
-    fn test_0() {
-        let x = SVector::<f64, 6>::from_row_slice(&[0.20601133, 0.20601133, 0.45913871, 0.15954294, 0.37887001, 0.62112999]);
-        let f = -2.728684905407648;
-        let f0 = -0.9883412202327723;
-        let u = SVector::<f64, 6>::from_row_slice(&[0.0; 6]);
-        let v = SVector::<f64, 6>::from_row_slice(&[1.0; 6]);
-        let nf_left = None;
-        let nsweeps = 18;
-        let freach = f64::NEG_INFINITY;
-        let maxstep = 50;
-        let gamma = f64::EPSILON;
-        let hess: SMatrix<f64, 6, 6> = SMatrix::repeat(1.0);
-
-        let (xmin, fmi, ncall, flag) = lsearch(hm6, &x, f, f0, &u, &v, nf_left, nsweeps, freach, maxstep, gamma, &hess);
-
-        let expected_xmin = [0.20290601266983127, 0.14223984340198792, 0.4775778674570614, 0.2700662542458104, 0.3104183680708858, 0.6594579515964624];
-
-        assert_eq!(ncall, 56);
-        assert_eq!(flag, true);
-        assert_relative_eq!(xmin.as_slice(), expected_xmin.as_slice(), epsilon = TOLERANCE);
-        assert_relative_eq!(fmi, -3.320610466393837, epsilon = TOLERANCE);
-    }
 
     #[test]
     fn test_1() {
+        // Matlab equivalent test
+        //
+        // clearvars;
+        // clear global;
+        // fcn = "feval";  % do not change
+        // data = "hm6";  % do not change
+        // stop = [1000]; % do not change
+        // x = [0.20601133; 0.20601133; 0.45913871; 0.15954294; 0.37887001; 0.62112999];
+        // f = -2.728684905407648;
+        // f0 = -0.9883412202327723;
+        // u =[0.0; 0.0; 0.0; 0.0; 0.0; 0.0; ];
+        // v =[1.0; 1.0; 1.0; 1.0; 1.0; 1.0; ];
+        // nf_left = 95;
+        // local = 50;
+        // gamma = 2e-6;
+        // hess = ones(6,6);
+        //
+        // format long g;
+        // [xmin,fmi,ncall,flag] = lsearch(fcn,data,x,f,f0,u,v,nf_left,stop,local,gamma,hess)
+
         let x = SVector::<f64, 6>::from_row_slice(&[0.20601133, 0.20601133, 0.45913871, 0.15954294, 0.37887001, 0.62112999]);
         let f = -2.728684905407648;
         let f0 = -0.9883412202327723;
         let u = SVector::<f64, 6>::from_row_slice(&[0.0; 6]);
         let v = SVector::<f64, 6>::from_row_slice(&[1.0; 6]);
         let nf_left = Some(95);
-        let nsweeps = 18;
-        let freach = f64::NEG_INFINITY;
-        let maxstep = 50;
+        let local = 50;
         let gamma = 2e-6;
         let hess: SMatrix<f64, 6, 6> = SMatrix::repeat(1.0);
 
-        let (xmin, fmi, ncall, flag) = lsearch(hm6, &x, f, f0, &u, &v, nf_left, nsweeps, freach, maxstep, gamma, &hess);
+        let (xmin, fmi, ncall) = lsearch(hm6, &x, f, f0, &u, &v, nf_left, local, gamma, &hess);
 
-        let expected_xmin = [0.20169016858295652, 0.1500100239040133, 0.4768726575742668, 0.2753321620932197, 0.31165307086540384, 0.6572993388248786];
+        let expected_xmin = [0.201690168374353, 0.150010022862184, 0.476872657786236, 0.275332161789012, 0.311653070783851, 0.657299338893286];
 
         assert_eq!(ncall, 107);
-        assert_eq!(flag, true);
-        assert_relative_eq!(fmi, -3.322368011243928, epsilon = TOLERANCE);
+        assert_relative_eq!(fmi, -3.32236801124393, epsilon = TOLERANCE);
         assert_relative_eq!(xmin.as_slice(), expected_xmin.as_slice(), epsilon = TOLERANCE);
     }
 
     #[test]
     fn test_2() {
+        // Matlab equivalent test
+        //
+        // clearvars;
+        // clear global;
+        // fcn = "feval";  % do not change
+        // data = "hm6";  % do not change
+        // stop = [1000]; % do not change
+        // x = [-0.2; 0.0; 0.4; 0.5; 1.0; 1.7];
+        // f = -2.7;
+        // f0 = -0.9;
+        // u =[0.0; 0.0; 0.0; 0.0; 0.0; 0.0; ];
+        // v =[1.0; 1.0; 1.0; 1.0; 1.0; 1.0; ];
+        // nf_left = 95;
+        // local = 50;
+        // gamma = 2e-6;
+        // hess = ones(6,6);
+        //
+        // format long g;
+        // [xmin,fmi,ncall,flag] = lsearch(fcn,data,x,f,f0,u,v,nf_left,stop,local,gamma,hess)
+
         let x = SVector::<f64, 6>::from_row_slice(&[-0.2, 0.0, 0.4, 0.5, 1.0, 1.7]);
         let f = -2.7;
         let f0 = -0.9;
         let u = SVector::<f64, 6>::from_row_slice(&[0.0; 6]);
         let v = SVector::<f64, 6>::from_row_slice(&[1.0; 6]);
         let nf_left = Some(95);
-        let nsweeps = 18;
-        let freach = f64::NEG_INFINITY;
-        let maxstep = 50;
+        let local = 50;
         let gamma = 2e-6;
         let hess: SMatrix<f64, 6, 6> = SMatrix::repeat(1.0);
 
-        let (xmin, fmi, ncall, flag) = lsearch(hm6, &x, f, f0, &u, &v, nf_left, nsweeps, freach, maxstep, gamma, &hess);
+        let (xmin, fmi, ncall) = lsearch(hm6, &x, f, f0, &u, &v, nf_left, local, gamma, &hess);
 
         let expected_xmin = [0.0, 0.0, 0.4, 0.5, 1.0, 1.0];
 
-        assert_eq!(ncall, 98);
-        assert_eq!(flag, true);
+        assert_eq!(ncall, 54);
         assert_relative_eq!(fmi, -2.7, epsilon = TOLERANCE);
         assert_relative_eq!(xmin.as_slice(), expected_xmin.as_slice(), epsilon = TOLERANCE);
     }
@@ -396,26 +354,84 @@ mod tests {
 
     #[test]
     fn test_3() {
+        // Matlab equivalent test
+        //
+        // clearvars;
+        // clear global;
+        // fcn = "feval";  % do not change
+        // data = "hm6";  % do not change
+        // stop = [1000]; % do not change
+        // x = [0.0; 1.8; -0.4; -0.5; -1.0; -1.7];
+        // f =  2.1;
+        // f0 = 0.8;
+        // u =[0.0; 0.0; 0.0; 0.0; 0.0; 0.0; ];
+        // v =[1.0; 1.0; 1.0; 1.0; 1.0; 1.0; ];
+        // nf_left = 90;
+        // local = 100;
+        // gamma = 2e-6;
+        // hess = ones(6,6);
+        //
+        // format long g;
+        // [xmin,fmi,ncall,flag] = lsearch(fcn,data,x,f,f0,u,v,nf_left,stop,local,gamma,hess)
+
         let x = SVector::<f64, 6>::from_row_slice(&[0.0, 1.8, -0.4, -0.5, -1.0, -1.7]);
         let f = 2.1;
         let f0 = 0.8;
         let u = SVector::<f64, 6>::from_row_slice(&[0.0; 6]);
         let v = SVector::<f64, 6>::from_row_slice(&[1.0; 6]);
         let nf_left = Some(90);
-
-        let nsweeps = 20;
-        let freach = f64::NEG_INFINITY;
-        let maxstep = 100;
+        let local = 100;
         let gamma = 2e-6;
         let hess: SMatrix<f64, 6, 6> = SMatrix::repeat(1.0);
 
-        let (xmin, fmi, ncall, flag) = lsearch(hm6, &x, f, f0, &u, &v, nf_left, nsweeps, freach, maxstep, gamma, &hess);
+        let (xmin, fmi, ncall) = lsearch(hm6, &x, f, f0, &u, &v, nf_left, local, gamma, &hess);
 
-        let expected_xmin = [0.40466193295801317, 0.8824636278527813, 0.8464090444977177, 0.5740213137874376, 0.13816034855820664, 0.0384741244365488];
+        let expected_xmin = [0.404661968210107, 0.882463280195061, 0.846412514807172, 0.574020996351391, 0.138156075633913, 0.0384746993988985, ];
 
         assert_eq!(ncall, 101);
-        assert_eq!(flag, true);
-        assert_relative_eq!(fmi, -3.2031616661534357, epsilon = TOLERANCE);
+        assert_relative_eq!(fmi, -3.20316166578478, epsilon = TOLERANCE);
         assert_relative_eq!(xmin.as_slice(), expected_xmin.as_slice(), epsilon = TOLERANCE);
+    }
+
+
+    #[test]
+    fn test_0() {
+        // Matlab equivalent test
+        //
+        // clearvars;
+        // clear global;
+        // fcn = "feval";  % do not change
+        // data = "hm6";  % do not change
+        // stop = [1000]; % do not change
+        // x = [0.20601133; 0.20601133; 0.45913871; 0.15954294; 0.37887001; 0.62112999];
+        // f = -2.728684905407648;
+        // f0 = -0.9883412202327723;
+        // u =[0.0; 0.0; 0.0; 0.0; 0.0; 0.0; ];
+        // v =[1.0; 1.0; 1.0; 1.0; 1.0; 1.0; ];
+        // nf_left = 1;
+        // local = 100;
+        // gamma = 2e-8;
+        // hess = ones(6,6);
+        //
+        // format long g;
+        // [xmin,fmi,ncall,flag] = lsearch(fcn,data,x,f,f0,u,v,nf_left,stop,local,gamma,hess)
+
+        let x = SVector::<f64, 6>::from_row_slice(&[0.20601133, 0.20601133, 0.45913871, 0.15954294, 0.37887001, 0.62112999]);
+        let f = -2.728684905407648;
+        let f0 = -0.9883412202327723;
+        let u = SVector::<f64, 6>::from_row_slice(&[0.0; 6]);
+        let v = SVector::<f64, 6>::from_row_slice(&[1.0; 6]);
+        let nf_left = Some(1);
+        let local = 100;
+        let gamma = 2e-8;
+        let hess: SMatrix<f64, 6, 6> = SMatrix::repeat(1.0);
+
+        let (xmin, fmi, ncall) = lsearch(hm6, &x, f, f0, &u, &v, nf_left, local, gamma, &hess);
+
+        let expected_xmin = [0.202906012669831, 0.142239843401988, 0.477577867457062, 0.270066254245811, 0.310418368070886, 0.659457951596462, ];
+
+        assert_eq!(ncall, 56);
+        assert_relative_eq!(xmin.as_slice(), expected_xmin.as_slice(), epsilon = TOLERANCE);
+        assert_relative_eq!(fmi, -3.32061046639384, epsilon = TOLERANCE);
     }
 }

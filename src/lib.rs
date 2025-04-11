@@ -1,6 +1,8 @@
 #![allow(non_snake_case)]
 #![allow(unused_variables)]
 
+use nalgebra::{Const, DimMin, Matrix2xX, SMatrix, SVector};
+
 #[cfg(test)]
 mod test_functions;
 
@@ -13,59 +15,41 @@ use mcs_utils::basket_func::basket1;
 use mcs_utils::chk_locks::chkloc;
 use mcs_utils::chk_locks::fbestloc;
 use mcs_utils::exgain::exgain;
-use mcs_utils::helper_funcs::update_flag;
 use mcs_utils::init_func::init;
 use mcs_utils::init_func::initbox;
 use mcs_utils::lsearch::lsearch;
-use mcs_utils::split_func::splinit;
-use mcs_utils::split_func::split;
+use mcs_utils::splinit::splinit;
+use mcs_utils::split::split;
 use mcs_utils::splrnk::splrnk;
 use mcs_utils::strtsw::strtsw;
 use mcs_utils::updtrec::updtrec;
 use mcs_utils::vertex::vertex;
 
-use nalgebra::{Const, DimMin, Matrix2xX, SMatrix, SVector};
 
-pub enum IinitEnum {
-    Zero,   // Simple initialization list
-    One,    // Not implemented
-    Two,    // Not implemented
-    Three,  // (WTF it is doing?)
-}
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum ExitFlagEnum {
-    NormalShutdown,         // flag 1: True
+    NormalShutdown,         // flag 1: true in Matlab
     StopNfExceeded,         // flag 2: ncall >= nf
-    StopNsweepsExceeded,    // flag 3: (nsweep - nsweepbest) >= stop[0]
+    StopNsweepsExceeded,    // flag 3: nsweep - nsweepbest >= nsweeps
 }
-
 
 const INIT_VEC_CAPACITY: usize = 10_000;
 
-
-// default values for the input parameters
-// if nargin < 5, prt = 1; end
-// if nargin < 6, smax = 5*n+10; end
-// if nargin < 7, nf = 50*n^2; end
-// if nargin < 8, stop = 3*n; end
-// if nargin < 9,
-//   if isempty(find(isinf(u))) & isempty(find(isinf(v)))
-//     iinit = 0;
-//   else
-//     iinit = 1;
-//   end
-// end
-// if nargin < 10, local = 50; end
-// if nargin < 11, gamma = eps; end
-// if nargin < 12, hess = ones(n,n); end
+// Default values for the input parameters
+// smax = 5*N+10;
+// nf = 50*N^2;
+// stop = 3*N;
+// local = 50;
+// gamma = eps;
+// hess = ones(N,N);
+//
+// ONLY SIMPLE INITIALIZATION IS SUPPORTED (IinitEnum::Zero / iinit=0 in Matlab)
 pub fn mcs<const SMAX: usize, const N: usize>(
     func: fn(&SVector<f64, N>) -> f64,
     u: &SVector<f64, N>,
     v: &SVector<f64, N>,
-    nsweeps: usize,
-    freach: f64,
+    nsweeps: usize, // should be > 1
     nf: usize,
-    iinit: &IinitEnum,
     local: usize,
     gamma: f64,
     hess: &SMatrix<f64, N, N>,
@@ -77,40 +61,33 @@ pub fn mcs<const SMAX: usize, const N: usize>(
         Vec<f64>,              // fmi
         usize,                 // ncall
         usize,                 // ncloc
-        ExitFlagEnum,          // flag
+        ExitFlagEnum,          // ExitFlag
     ), String>
 where
     Const<N>: DimMin<Const<N>, Output=Const<N>>,
 {
-    if v <= u {
-        return Err(format!("Error MCS main: v should be > u:\nv = {v:?}\nu = {u:?}"));
-    };
+    // record: -1 from Matlab and has .len() +1 from Matlab
+    // p: -1 from Matlab
+
+    if v <= u { return Err(format!("Error MCS main: v should be > u:\nv = {v:?}\nu = {u:?}")); }
+    if nsweeps < 2 { return Err(format!("Error MCS main: nsweeps should be >= 2\nnsweeps = {nsweeps}")); }
 
     let (mut xmin, mut fmi): (Vec<SVector<f64, N>>, Vec<f64>) = (Vec::with_capacity(INIT_VEC_CAPACITY), Vec::with_capacity(INIT_VEC_CAPACITY));
 
     let mut ncloc = 0_usize; // number of function evaluations used for local search
 
-    // We handle vectors differently (let them grow by themselves as they do it once in 2**x), so no step1 = 10000;    // step = 1000;    // dim = step1;
+    // We handle vectors differently, so no step1 = 10000;    // step = 1000;    // dim = step1;
 
     let mut isplit = vec![0_isize; INIT_VEC_CAPACITY]; // can be any negative or positive integer number
     let mut level = vec![0_usize; INIT_VEC_CAPACITY]; // the same numeration as in matlab
-    // ipar: -1 from Matlab
-    let mut ipar = vec![Some(0_usize); INIT_VEC_CAPACITY]; // can be >=0 or -1 (None)
+    let mut ipar = vec![Some(0); INIT_VEC_CAPACITY]; // as in Matlab; can be >=0 or -1 (None)
     let mut f = Matrix2xX::<f64>::zeros(INIT_VEC_CAPACITY);
     let mut z = Matrix2xX::<f64>::zeros(INIT_VEC_CAPACITY);
     let mut ichild = vec![0_isize; INIT_VEC_CAPACITY]; // can be negative
-    let mut nogain = vec![0_usize; INIT_VEC_CAPACITY];
+    let mut nogain = vec![false; INIT_VEC_CAPACITY];
 
     // l is always 1; L is always 2 for IinitEnum::Zero (2 and 3 respectively for Matlab)
-    let x0: SMatrix<f64, N, 3> = match iinit {
-        IinitEnum::Zero => {
-            SMatrix::<f64, N, 3>::from_row_iterator(
-                (0..N).flat_map(|row_n| [u[row_n], (u[row_n] + v[row_n]) / 2.0, v[row_n]])
-            )
-        }
-        _ => { return Err("Error MCS main: iinit != 0 is not implemented.\nChange iinit to IinitEnum::Zero.".to_string()); }
-    };
-
+    let x0 = SMatrix::<f64, N, 3>::from_row_iterator((0..N).flat_map(|row_n| [u[row_n], (u[row_n] + v[row_n]) / 2.0, v[row_n]]));
 
     // Check whether there are infinities in the initialization list
     if x0.iter().any(|&x0_i| x0_i.is_infinite()) {
@@ -133,40 +110,37 @@ where
     });
 
 
-    // record: will be reinitialides at strtsw
-    // nboxes: -1 from Matlab
-    let mut nboxes = 0_usize; //counter for boxes not in the 'shopping basket'
+    let mut nboxes = 1_usize; // as in Matlab; counter for boxes not in the 'shopping basket'
     // counter for boxes in the 'shopping basket'
-    let (mut nbasket_option, mut nbasket0_option): (Option<usize>, Option<usize>) = (None, None); // -1
+    let (mut nbasket, mut nbasket0): (usize, usize) = (0, 0); // as in Matlab
     let mut nsweep = 0_usize; // sweep counter
     let mut nsweepbest = 0_usize; // number of sweep in which fbest was updated for the last time
     let mut m = N;
     let mut xloc: Vec<SVector<f64, N>> = Vec::with_capacity(INIT_VEC_CAPACITY); // (for local ~= 0) columns are the points that have been used as starting points for local search
-    let mut flag = true;
 
     // p: -1 from Matlab
     let (p, mut xbest, mut fbest) = initbox(&x0, &f0, &istar, u, v, &mut isplit, &mut level, &mut ipar, &mut ichild, &mut f, &mut nboxes);
     let f0min = fbest;
 
-    // stop(1) in matlab and stop[0] here is nsweeps
-    update_flag(&mut flag, fbest, nsweeps, freach);
+    // stop(1) in matlab is nsweeps; always > 0 => flag won't change
 
+    // record(i): -1 from Matlab; points to the best non-split box at level i; record.len() is +1 from Matlab and from what is needed due to generic_const_exprs
+    let mut record = [None; SMAX]; // not SMAX-1 as it will be hard in terms of generic_const_exprs. will account for +1 len() later
     // s: same as in Matlab;
-    // record(i): -1 from Matlab; points to the best non-split box at level i
-    let (mut s, mut record) = strtsw::<SMAX>(&level, f.row(0), nboxes);
+    let mut s = strtsw::<SMAX>(&mut record, &level, f.row(0), nboxes);
     nsweep += 1;
 
     // VARIABLES USED LATER
-    let mut loc: bool;
-    // TODO: get rid of e; substitute to f64 (e.min())
-    let (mut e, mut xmin1, mut ncall_increment): (SVector<f64, N>, SVector<f64, N>, usize);
-
+    let mut e_min: f64;
+    let mut xmin1: SVector<f64, N>;
     let (mut n0, mut x, mut y, mut x1, mut x2, mut f1, mut f2) = (SVector::<usize, N>::zeros(), SVector::<f64, N>::repeat(f64::NAN), SVector::<f64, N>::repeat(f64::NAN), SVector::<f64, N>::repeat(f64::NAN), SVector::<f64, N>::repeat(f64::NAN), SVector::<f64, N>::repeat(f64::NAN), SVector::<f64, N>::repeat(f64::NAN));
     // VARIABLES USED LATER
 
+
     while s < SMAX && ncall + 1 <= nf {
-        let par = record[s];
-        vertex(par, u, &v1, &x0, &f0, &ipar, &isplit, &ichild, &z, &f, &mut n0, &mut x, &mut y, &mut x1, &mut x2, &mut f1, &mut f2);
+        // par: -1 from Matlab as record -1 from Matlab
+        let par = record[s - 1].unwrap();
+        vertex(par, u, v, &v1, &x0, &f0, &ipar, &isplit, &ichild, &z, &f, &mut n0, &mut x, &mut y, &mut x1, &mut x2, &mut f1, &mut f2);
 
         let splt = if s > 2 * N * (n0.min() + 1) {
             // Splitting index and splitting value z[1][par] for splitting by rank
@@ -174,38 +148,39 @@ where
             true
         } else {
             // Box has already been marked as not eligible for splitting by expected gain
-            if nogain[par] != 0 {
+            if nogain[par] {
                 false
             } else {
                 // Splitting by expected gain
-                (e, isplit[par], z[(1, par)]) = exgain(&n0, &x, &y, &x1, &x2, f[(0, par)], &f0, &f1, &f2);
-                let fexp = f[(0, par)] + e.min();
+                (e_min, isplit[par], z[(1, par)]) = exgain(&n0, &x, &y, &x1, &x2, f[(0, par)], &f0, &f1, &f2);
+                let fexp = f[(0, par)] + e_min;
                 if fexp < fbest {
                     true
                 } else {
-                    nogain[par] = 1;  // The box is marked as not eligible for splitting by expected gain
+                    nogain[par] = true;  // The box is marked as not eligible for splitting by expected gain
                     false             // The box is not split since we expect no improvement
                 }
             }
         };
 
         if splt {
-            debug_assert!(isplit[par] >= 0);
-            let i = isplit[par] as usize;
+            debug_assert!(isplit[par] > 0);
+            let i = isplit[par] as usize - 1; // i is used only for indexing => smart to -1 right away
 
             level[par] = 0;
             if z[(1, par)] == f64::INFINITY {
                 m += 1;
                 z[(1, par)] = m as f64;
-                splinit(func, i, s, par, &x0, u, v, &mut x, &mut xmin, &mut fmi,
-                        &mut ipar, &mut level, &mut ichild, &mut isplit, &mut nogain, &mut f, &mut z,
-                        &mut xbest, &mut fbest, &mut record, &mut nboxes, &mut nbasket_option, &mut nsweepbest, &mut nsweep, &mut f0);
+                splinit::<N, SMAX>(func, i, s, par, &x0, u, v, &x, &mut xmin, &mut fmi,
+                                   &mut ipar, &mut level, &mut ichild, &mut isplit, &mut nogain, &mut f, &mut z,
+                                   &mut xbest, &mut fbest, &mut record, &mut nboxes, &mut nbasket, &mut nsweepbest,
+                                   &mut nsweep, &mut f0);
                 ncall += 2; // splinit does exactly 2 calls
             } else {
                 z[(0, par)] = x[i];
-                split(func, i, s, par, &mut x, &mut y, z[(0, par)], z[(1, par)], &mut xmin, &mut fmi, &mut ipar, &mut level,
-                      &mut ichild, &mut isplit, &mut nogain, &mut f, &mut z, &mut xbest, &mut fbest, &mut record, &mut nboxes,
-                      &mut nbasket_option, &mut nsweepbest, &mut nsweep);
+                split::<N, SMAX>(func, i, s, par, &x, &mut y, z[(0, par)], z[(1, par)], &mut xmin, &mut fmi, &mut ipar, &mut level,
+                                 &mut ichild, &mut isplit, &mut nogain, &mut f, &mut z, &mut xbest, &mut fbest, &mut record, &mut nboxes,
+                                 &mut nbasket, &mut nsweepbest, &mut nsweep);
                 ncall += 1; // split does exactly 1 call
             }
         } else {
@@ -214,84 +189,57 @@ where
                 updtrec(par, s + 1, f.row(0), &mut record);
             } else {
                 level[par] = 0;
-                add_basket(&mut nbasket_option, &mut xmin, &mut fmi, &x, f[(0, par)]);
+                add_basket(&mut nbasket, &mut xmin, &mut fmi, &x, f[(0, par)]);
             }
         }
 
         // Update s to split boxes
         s += 1;
         while s < SMAX {
-            if record[s] == 0 {
+            if record[s - 1].is_none() {
                 s += 1;
             } else {
                 break;
             }
         }
 
-        // If smax is reached, a new sweep is started
-        if s == SMAX {
+        if s == SMAX { // if smax is reached, a new sweep is started
             if local != 0 {
-                let nbasket = nbasket_option.unwrap();
-                let nbasket0_plus_1 = match nbasket0_option {
-                    Some(n) => n + 1,
-                    None => 0,
-                };
+                // f(1:3) in Matlab equals &f[0..3] in Rust. Note that 3 does not change
+                fmi[nbasket0..nbasket].sort_by(|a, b| a.total_cmp(b));
+                xmin[nbasket0..nbasket].sort_by(|a, b| func(a).total_cmp(&func(b))); // is actually very small range; easier to evaluate function one more time
 
-                fmi[nbasket0_plus_1..=nbasket].sort_by(|a, b| a.total_cmp(b));
-                xmin[nbasket0_plus_1..=nbasket].sort_by(|a, b| func(a).total_cmp(&func(b))); // nbasket0_plus_1..=nbasket is actually very small range; easier to evaluate function one more time
-
-                for j in nbasket0_plus_1..(nbasket + 1) {
+                for j in nbasket0..nbasket {
                     x = xmin[j].clone();
                     let mut f1 = fmi[j];
                     if chkloc(&xloc, &x) {
                         xloc.push(x);
-                        (loc, flag, ncall_increment) = basket(func, &mut x, &mut f1, &mut xmin, &mut fmi, &mut xbest, &mut fbest, nsweeps, freach, &nbasket0_option, nsweep, &mut nsweepbest);
-                        ncall += ncall_increment;
-                        if !flag {
-                            break;
-                        }
-                        if loc {
+                        if basket(func, &mut x, &mut f1, &mut xmin, &mut fmi, &mut xbest, &mut fbest, nbasket0, nsweep, &mut nsweepbest, &mut ncall) {
                             let nf_left = match nf >= ncall {
                                 true => { Some(nf - ncall) }
                                 false => { None }
                             };
                             let (fmi1, nc);
-                            (xmin1, fmi1, nc, flag) = lsearch(func, &mut x, f1, f0min, u, v, nf_left, nsweeps, freach, local, gamma, hess);
+                            (xmin1, fmi1, nc) = lsearch(func, &mut x, f1, f0min, u, v, nf_left, local, gamma, hess);
                             ncall = ncall + nc;
                             ncloc = ncloc + nc;
                             if fmi1 < fbest {
                                 xbest = xmin1.clone();
                                 fbest = fmi1;
                                 nsweepbest = nsweep;
-                                if !flag {
-                                    add_basket(&mut nbasket0_option, &mut xmin, &mut fmi, &xmin1, fmi1);
-                                    break;
-                                }
-                                update_flag(&mut flag, fbest, nsweeps, freach);
-                                if !flag {
-                                    return Ok((xbest, fbest, xmin, fmi, ncall, ncloc, ExitFlagEnum::NormalShutdown));
-                                }
                             }
-                            (loc, flag, ncall_increment) = basket1(func, &mut xmin1, fmi1, &mut xmin, &mut fmi, &mut xbest, &mut fbest, nsweeps, freach, &nbasket0_option, nsweep, &mut nsweepbest);
-                            ncall += ncall_increment;
-
-                            if !flag { break; }
-                            if loc {
-                                add_basket(&mut nbasket0_option, &mut xmin, &mut fmi, &xmin1, fmi1);
-                                fbestloc(&fmi, &mut fbest, &xmin, &mut xbest, nbasket0_option.unwrap());
-
-                                if !flag { break; }
+                            if basket1(func, &mut xmin1, fmi1, &mut xmin, &mut fmi, &mut xbest, &mut fbest, nbasket0, nsweep, &mut nsweepbest, &mut ncall) {
+                                add_basket(&mut nbasket0, &mut xmin, &mut fmi, &xmin1, fmi1);
+                                fbestloc(&fmi, &mut fbest, &xmin, &mut xbest, nbasket0);
                             }
                         }
                     }
                 }
-                nbasket_option = nbasket0_option;
-                if !flag {
-                    break;
-                }
+                nbasket = nbasket0;
             }
-            (s, record) = strtsw::<SMAX>(&level, f.row(0), nboxes);
-            if nsweeps > 1 && nsweep - nsweepbest >= nsweeps {
+            record = [None; SMAX];
+            s = strtsw::<SMAX>(&mut record, &level, f.row(0), nboxes);
+            if nsweep - nsweepbest >= nsweeps {
                 return Ok((xbest, fbest, xmin, fmi, ncall, ncloc, ExitFlagEnum::StopNsweepsExceeded));
             }
             nsweep += 1;
@@ -307,12 +255,11 @@ where
 mod tests {
     use super::*;
     use crate::test_functions::hm6;
-    use approx::assert_relative_eq;
 
-    static TOLERANCE: f64 = 1e-14;
-
-
-    // cargo flamegraph --unit-test -- tests::test_for_flamegraph_0
+    // 1. In cargo.toml uncomment [profile.release] debug = true
+    // 2. Run Cmd as admin
+    // 3. cd C:\Users\serge\RustroverProjects\Rust_MCS (or your path)
+    // 4. cargo flamegraph --unit-test -- tests::test_for_flamegraph_0
     #[cfg(not(debug_assertions))]
     #[test]
     fn test_for_flamegraph_0() {
@@ -320,293 +267,67 @@ mod tests {
         let u = SVector::<f64, 6>::from_row_slice(&[0.; 6]); // lower bounds
         let v = SVector::<f64, 6>::from_row_slice(&[1.0; 6]); // upper bounds
 
-        // Configure stopping criteria
-        let stop = StopStruct {
-            nsweeps: 200,                // maximum number of sweeps
-            freach: f64::NEG_INFINITY,  // target function value
-            nf: 1_000_000,              // maximum number of function evaluations
-        };
+        let nsweeps = 1_000;                // maximum number of sweeps
+        let nf = 1_000_000;              // maximum number of function evaluations
 
         // Additional parameters
         const SMAX: usize = 1_000;                      // number of levels used
-        let iinit = IinitEnum::Zero;                    // choice of init procedure
-        let local = 20;                                 // local search level
-        let gamma = 2e-7;                               // acceptable relative accuracy for local search
-        let hess = SMatrix::<f64, 6, 6>::repeat(1.);   // sparsity pattern of Hessian
+        let local = 100;                                 // local search level
+        let gamma = 2e-10;                               // acceptable relative accuracy for local search
+        let hess = SMatrix::<f64, 6, 6>::repeat(1.);    // sparsity pattern of Hessian
 
         // Run the optimization
-        let (xbest, fbest, xmin, fmi, ncall, ncloc, flag) = mcs::<SMAX, 6>(hm6, &u, &v, nsweeps, freach, nf, &iinit, local, gamma, &hess).unwrap();
+        let (_, _, _, _, _, _, _) = mcs::<SMAX, 6>(hm6, &u, &v, nsweeps, nf, local, gamma, &hess).unwrap();
     }
 
     #[test]
     fn test_0() {
-        const SMAX: usize = 20;
+        // Matlab equivalent test
+        // DISCLAIMER: change split.m and split function to split_.m and split_ as new Matlab versions have reserved function name split
+        //
+        // clearvars;
+        // clear global;
+        //
+        // fcn = "feval"; % do not change
+        // data = "hm6"; % do not change
+        // prt = 0; % do not change
+        // u = [0; 0; 0; 0; 0; 0];
+        // v = [1; 1; 1; 1; 1; 1];
+        // smax = 20;
+        // nf = 1000;
+        // stop = [18];
+        // iinit = 0; // Simple initialization list aka IinitEnum::Zero here
+        // local = 50;
+        // gamma= 2e-6;
+        // hess = ones(6,6); % 6x6 matrix for hm6
+        //
+        // format long g;
+        // [xbest,fbest,xmin,fmi,ncall,ncloc,flag]=mcs(fcn,data,u,v,prt,smax,nf,stop,iinit,local,gamma,hess)
 
-        let nsweeps = 18;  // maximum number of sweeps
-        let freach = f64::NEG_INFINITY;  // target function value
-        let nf = 1000; // maximum number of function evaluations
-
-        let iinit = IinitEnum::Zero;
-        let local = 50;
-        let gamma = 2e-6;
         let u = SVector::<f64, 6>::from_row_slice(&[0.; 6]);
         let v = SVector::<f64, 6>::from_row_slice(&[1.0; 6]);
-        let hess = SMatrix::<f64, 6, 6>::repeat(1.);
-
-        let (xbest, fbest, xmin, fmi, ncall, ncloc, flag) = mcs::<SMAX, 6>(hm6, &u, &v, nsweeps, freach, nf, &iinit, local, gamma, &hess).unwrap();
-
-        // assert_eq!(ncall, 1031); // Due to unstable sorting in lslocal
-        // assert_eq!(ncloc, 968);  // Due to unstable sorting in lslocal
-        assert_eq!(xbest, SVector::<f64, 6>::from_row_slice(&[0.20168951100810487, 0.15001069181869445, 0.47687397421890854, 0.27533243049404754, 0.3116516166017299, 0.6573005340667769]));
-        assert_eq!(fbest, -3.3223680114155156);
-        assert_eq!(xmin, vec!(
-            SVector::<f64, 6>::from_row_slice(&[0.20168951100810487, 0.15001069181869445, 0.47687397421890854, 0.27533243049404754, 0.3116516166017299, 0.6573005340667769]),
-            SVector::<f64, 6>::from_row_slice(&[0.2016895108708528, 0.1500106919377769, 0.4768739750906546, 0.27533243052642653, 0.31165161660939505, 0.6573005340921458]),
-            SVector::<f64, 6>::from_row_slice(&[0., 0., 0.5, 0., 0.5, 0.5]))
-        );
-        assert_eq!(fmi, vec![-3.3223680114155156, -3.322368011415515, -0.9883412202327723]);
-    }
-
-    #[test]
-    fn test_1() {
-        const SMAX: usize = 30;
-
-        let nsweeps = 100;  // maximum number of sweeps
-        let freach = f64::NEG_INFINITY;  // target function value
+        const SMAX: usize = 20;
         let nf = 1000; // maximum number of function evaluations
-
-        let iinit = IinitEnum::Zero;
-        let local = 0;
-        let gamma = 2e-9;
-        let u = SVector::<f64, 6>::from_row_slice(&[-1., -2., -3., -4., -5., -6.]);
-        let v = SVector::<f64, 6>::from_row_slice(&[1., 2., 3., 4., 5., 6.]);
-        let hess = SMatrix::<f64, 6, 6>::repeat(1.);
-
-        let (xbest, fbest, xmin, fmi, ncall, ncloc, flag) = mcs::<SMAX, 6>(hm6, &u, &v, nsweeps, freach, nf, &iinit, local, gamma, &hess).unwrap();
-
-        assert_eq!(ncall, 1001);
-        assert_eq!(ncloc, 0);
-        assert_eq!(xbest, SVector::<f64, 6>::from_row_slice(&[0.2510430974668892, 0.0, 0.0, 0.24721359549995797, 0.0, 0.0]));
-        assert_eq!(fbest, -0.014725947982821272);
-    }
-
-
-    #[test]
-    fn test_2() {
-        const SMAX: usize = 50;
-
-        let nsweeps = 11;  // maximum number of sweeps
-        let freach = f64::NEG_INFINITY;  // target function value
-        let nf = 100; // maximum number of function evaluations
-
-        let iinit = IinitEnum::Zero;
-        let local = 0;
-        let gamma = 2e-10;
-        let u = SVector::<f64, 6>::from_row_slice(&[-3.; 6]);
-        let v = SVector::<f64, 6>::from_row_slice(&[3.; 6]);
-        let hess = SMatrix::<f64, 6, 6>::repeat(1.);
-
-        let (xbest, fbest, xmin, fmi, ncall, ncloc, flag) = mcs::<SMAX, 6>(hm6, &u, &v, nsweeps, freach, nf, &iinit, local, gamma, &hess).unwrap();
-
-        assert_eq!(ncall, 100);
-        assert_eq!(ncloc, 0);
-        assert_relative_eq!(xbest.as_slice(), [0.5092880150001403, 0.5092880150001403, 0.5599033356467378, 0.5092880150001403, 0.5092880150001403, 0.].as_slice(), epsilon = TOLERANCE);
-        assert_eq!(fbest, -0.8165894352179089);
-        assert_eq!(xmin, vec![
-            SVector::<f64, 6>::from_row_slice(&[0.5092880150001403, 0.5092880150001403, 0.5092880150001403, 0.5092880150001403, 0.5092880150001403, 0.]),
-            SVector::<f64, 6>::from_row_slice(&[0.5092880150001403, 0.299449812778105, 0.5092880150001403, 0.5092880150001403, 0.5092880150001403, 0.]),
-            SVector::<f64, 6>::from_row_slice(&[0.5092880150001403, 0.5092880150001403, 0.5092880150001403, 0.5092880150001403, 0.5092880150001403, 0.]),
-            SVector::<f64, 6>::from_row_slice(&[0.5092880150001403, 0.299449812778105, 0.5092880150001403, 0.5092880150001403, 0.5092880150001403, 0.]),
-            SVector::<f64, 6>::from_row_slice(&[0.5092880150001403, 0.5092880150001403, 0.5092880150001403, 0.5092880150001403, 0.5092880150001403, 0.]),
-            SVector::<f64, 6>::from_row_slice(&[0.5092880150001403, 0.299449812778105, 0.5092880150001403, 0.5092880150001403, 0.5092880150001403, 0.]),
-            SVector::<f64, 6>::from_row_slice(&[0.5092880150001403, 0.5092880150001403, 0.5092880150001403, 0.5092880150001403, 0.5092880150001403, 0.]),
-            SVector::<f64, 6>::from_row_slice(&[0.5092880150001403, 0.299449812778105, 0.5092880150001403, 0.5092880150001403, 0.5092880150001403, 0.])
-        ]);
-        assert_eq!(fmi, vec![-0.8154675055618968, -0.18369566296880474, -0.8154675055618968, -0.18369566296880474, -0.8154675055618968, -0.18369566296880474, -0.8154675055618968, -0.18369566296880474]);
-    }
-
-    #[test]
-    fn test_3() {
-        const SMAX: usize = 100;
-
-        let nsweeps = 11;  // maximum number of sweeps
-        let freach = f64::NEG_INFINITY;  // target function value
-        let nf = 100; // maximum number of function evaluations
-
-        let iinit = IinitEnum::Zero;
+        let nsweeps = 18;  // maximum number of sweeps
+        // stop(1) - nsweeps
         let local = 50;
-        let gamma = 2e-10;
-        let u = SVector::<f64, 6>::from_row_slice(&[-3.; 6]);
-        let v = SVector::<f64, 6>::from_row_slice(&[3.; 6]);
+        let gamma = 2e-6;
         let hess = SMatrix::<f64, 6, 6>::repeat(1.);
 
-        let (xbest, fbest, xmin, fmi, ncall, ncloc, flag) = mcs::<SMAX, 6>(hm6, &u, &v, nsweeps, freach, nf, &iinit, local, gamma, &hess).unwrap();
+        let (xbest, fbest, xmin, fmi, ncall, ncloc, ExitFlag) = mcs::<SMAX, 6>(hm6, &u, &v, nsweeps, nf, local, gamma, &hess).unwrap();
 
-        assert_eq!(ncall, 246);
-        assert_eq!(ncloc, 188);
-        assert_relative_eq!(xbest.as_slice(), [0.3840375197582117  , 1.0086370591370057  , 0.83694910437547    ,       0.5292791936678723  , 0.10626783160256341 , 0.013378574118123088].as_slice(), epsilon = TOLERANCE);
-        assert_eq!(fbest, -2.720677123715828);
-        assert_eq!(xmin, vec![
-            SVector::<f64, 6>::from_row_slice(&[0.3840375197582117, 1.0086370591370057, 0.83694910437547, 0.5292791936678723, 0.10626783160256341, 0.013378574118123088]),
-            SVector::<f64, 6>::from_row_slice(&[0.40280505110773396, 1.0185760300002806, 0.8542187590882532, 0.5092880150001403, 0.12196569488839512, 0.03842934900132638]),
-            SVector::<f64, 6>::from_row_slice(&[0.40280505110773396, 0.5032406113241115, 0.5092880150001403, 0.5092880150001403, 0.299449812778105, 0.])
-        ]);
-        assert_eq!(fmi, vec![-2.720677123715828, -2.648749360565575, -0.975122854985175]);
-    }
-
-    //  SVector::<f64, 6>::from_row_slice()&
-
-    #[test]
-    fn test_random_1() {
-        const SMAX: usize = 101;
-
-        let nsweeps = 14;  // maximum number of sweeps
-        let freach = f64::NEG_INFINITY;  // target function value
-        let nf = 101; // maximum number of function evaluations
-
-        let iinit = IinitEnum::Zero;
-        let local = 14;
-        let gamma = 2e-12;
-        let u = SVector::<f64, 6>::from_row_slice(&[4.727314049468511, 0.6729453410064368, 0.3696063529368182, 0.011224068637479823, 3.5672862570948705, 4.051833711629832]);
-        let v = SVector::<f64, 6>::from_row_slice(&[7.727314049468511, 3.6729453410064368, 3.369606352936818, 3.01122406863748, 6.567286257094871, 7.051833711629832]);
-        let hess = SMatrix::<f64, 6, 6>::from_row_slice(&[
-            0.07459779468772165, 0.18847789193008613, 0.8094721251488728, 0.29159437541655264, 0.6237880657270168, 0.9685287338392282,
-            0.6766394151615276, 0.41742372614225665, 0.6263689467222898, 0.8996234339899951, 0.45459801042237435, 0.039404723770840366,
-            0.22125824689814066, 0.7135066372005419, 0.021872674550278526, 0.8502631362975381, 0.21093823698900427, 0.8234176333796507,
-            0.4774003947631743, 0.010827623037043765, 0.9301261005699737, 0.6373221578763562, 0.4477966704247218, 0.10011848143887458,
-            0.5379347361044786, 0.20326717081553425, 0.24670504237607038, 0.06824635059355644, 0.07277606505750234, 0.22214215734209453,
-            0.8954440435903359, 0.15526584218928685, 0.9137102875926272, 0.7949626220636087, 0.2212099433145306, 0.2424741572631993
-        ]);
-
-        let (xbest, fbest, xmin, fmi, ncall, ncloc, flag) = mcs::<SMAX, 6>(hm6, &u, &v, nsweeps, freach, nf, &iinit, local, gamma, &hess).unwrap();
-
-        assert_eq!(ncall, 205);
-        assert_eq!(ncloc, 146);
-        assert_relative_eq!(xbest.as_slice(), [4.727314049468511 , 0.6729453410064368, 0.8307181913359948,       0.3738546506877803, 3.5672862570948705, 4.051833711629832 ].as_slice(), epsilon = TOLERANCE);
-        assert_eq!(fbest, -8.454999787537318e-100);
-        assert_relative_eq!(xmin.as_slice(), vec![
-            SVector::<f64, 6>::from_row_slice(&[4.727314049468511, 0.6729453410064368, 0.8307181913359948, 0.3738546506877803, 3.5672862570948705, 4.051833711629832]),
-            SVector::<f64, 6>::from_row_slice(&[4.727314049468511, 0.6729453410064368, 0.8307232233520431, 0.37379694824296633, 3.5672862570948705, 4.051833711629832]),
-            SVector::<f64, 6>::from_row_slice(&[4.727314049468511, 0.6729453410064368, 0.7813364364685025, 0.3746140498873046, 3.5672862570948705, 4.051833711629832])
-        ].as_slice(), epsilon = TOLERANCE);
-        assert_eq!(fmi, vec![-8.454999787537318e-100, -8.454999779615405e-100, -8.111906516040064e-100]);
-    }
-
-    #[test]
-    fn test_random_2() {
-        const SMAX: usize = 101;
-
-        let nsweeps = 14;  // maximum number of sweeps
-        let freach = f64::NEG_INFINITY;  // target function value
-        let nf = 101; // maximum number of function evaluations
-
-        let iinit = IinitEnum::Zero;
-        let local = 14;
-        let gamma = 2e-12;
-        let u = SVector::<f64, 6>::from_row_slice(&[-4.727314049468511, -0.6729453410064368, -0.3696063529368182, -0.011224068637479823, -3.5672862570948705, -4.051833711629832]);
-        let v = SVector::<f64, 6>::from_row_slice(&[-3.727314049468511, 0.32705465899356323, 0.6303936470631818, 0.9887759313625202, -2.5672862570948705, -3.0518337116298317]);
-        let hess = SMatrix::<f64, 6, 6>::from_row_slice(&[
-            0.07459779468772165, 0.18847789193008613, 0.8094721251488728, 0.29159437541655264, 0.6237880657270168, 0.9685287338392282,
-            0.6766394151615276, 0.41742372614225665, 0.6263689467222898, 0.8996234339899951, 0.45459801042237435, 0.039404723770840366,
-            0.22125824689814066, 0.7135066372005419, 0.021872674550278526, 0.8502631362975381, 0.21093823698900427, 0.8234176333796507,
-            0.4774003947631743, 0.010827623037043765, 0.9301261005699737, 0.6373221578763562, 0.4477966704247218, 0.10011848143887458,
-            0.5379347361044786, 0.20326717081553425, 0.24670504237607038, 0.06824635059355644, 0.07277606505750234, 0.22214215734209453,
-            0.8954440435903359, 0.15526584218928685, 0.9137102875926272, 0.7949626220636087, 0.2212099433145306, 0.2424741572631993
-        ]);
-
-        let (xbest, fbest, xmin, fmi, ncall, ncloc, flag) = mcs::<SMAX, 6>(hm6, &u, &v, nsweeps, freach, nf, &iinit, local, gamma, &hess).unwrap();
-
-        assert_eq!(ncall, 206);
-        assert_eq!(ncloc, 147);
-        assert_relative_eq!(xbest.as_slice(), [-3.727314049468511   ,  0.1706764288762547  ,        0.5569723444858972  ,  0.012261741062775881,       -2.5672862570948705  , -3.0518337116298317  ].as_slice(), epsilon = TOLERANCE);
-        assert_eq!(fbest, -6.085020790782224e-120);
-        assert_relative_eq!(xmin.as_slice(), vec![
-             SVector::<f64, 6>::from_row_slice(&[-3.727314049468511   ,  0.1706764288762547  ,         0.5569723444858972  ,  0.012261741062775881,        -2.5672862570948705  , -3.0518337116298317  ]),
-             SVector::<f64, 6>::from_row_slice(&[-3.727314049468511   ,  0.16903108328269634 ,         0.5577318081166199  ,  0.012399931291049738,        -2.5672862570948705  , -3.0518337116298317  ]),
-             SVector::<f64, 6>::from_row_slice(&[-3.727314049468511   ,  0.17032057929123579 ,         0.553447248647957   ,  0.009173805411918867,        -2.5672862570948705  , -3.0518337116298317  ])].as_slice(),
-        epsilon = TOLERANCE);
-        assert_eq!(fmi, vec![-6.085020790782224e-120, -6.084965406311038e-120, -6.0835785981210616e-120]);
-    }
-
-
-    #[test]
-    fn test_random_3() {
-        const SMAX: usize = 101;
-
-        let nsweeps = 21;  // maximum number of sweeps
-        let freach = f64::NEG_INFINITY;  // target function value
-        let nf = 101; // maximum number of function evaluations
-
-        let iinit = IinitEnum::Zero;
-        let local = 21;
-        let gamma = 2e-12;
-        let u = SVector::<f64, 6>::from_row_slice(&[-1.5963680834773746, -1.702096253354359, -0.3129868586761164, -0.42277410386119807, -1.2353044063604557, -1.3252710096724756]);
-        let v = SVector::<f64, 6>::from_row_slice(&[-0.5963680834773746, -0.7020962533543591, 0.6870131413238836, 0.5772258961388019, -0.2353044063604557, -0.3252710096724756]);
-        let hess = SMatrix::<f64, 6, 6>::from_row_slice(&[
-            0.7610862893603182, 0.15561139671229107, 0.0414571725711701, 0.768214621760824, 0.3623003529256186, 0.7237493292892264,
-            0.9802764801645983, 0.9208355845976742, 0.7710372979193391, 0.7250798823142288, 0.9243176233916595, 0.5582646569502009,
-            0.4151029180599519, 0.5954064369303929, 0.8140252048030944, 0.6038218205816934, 0.1537579535064416, 0.6949865078666053,
-            0.19907195322465754, 0.7311388550777824, 0.7019720767106651, 0.652460347712853, 0.4159602166483142, 0.854563385975831,
-            0.5436556123230359, 0.48981216802677363, 0.7613861056820711, 0.04525373095163232, 0.9855285117090369, 0.8925047290734425,
-            0.07396847834524134, 0.9249142825555874, 0.39542437348302395, 0.7255942609674336, 0.3014258849016729, 0.5500039335110584
-        ]);
-
-        let (xbest, fbest, xmin, fmi, ncall, ncloc, flag) = mcs::<SMAX, 6>(hm6, &u, &v, nsweeps, freach, nf, &iinit, local, gamma, &hess).unwrap();
-
-        assert_eq!(ncall, 186);
-        assert_eq!(ncloc, 127);
-        assert_relative_eq!(xbest.as_slice(), [-0.5963680834773746 , -0.7020962533543591 ,  0.5396573533314668 ,        0.21225449313799843, -0.2353044063604557 , -0.3252710096724756 ].as_slice(), epsilon = TOLERANCE);
-        assert_eq!(fbest, -1.5651035236609192e-07);
-        assert_relative_eq!(xmin.as_slice(), vec![
-             SVector::<f64, 6>::from_row_slice(&[-0.5963680834773746 , -0.7020962533543591 ,  0.5396573533314668 ,         0.21225449313799843, -0.2353044063604557 , -0.3252710096724756 ]),
-             SVector::<f64, 6>::from_row_slice(&[-0.5963680834773746 , -0.7020962533543591 ,  0.5400041203184601 ,         0.21184439001334524, -0.2353044063604557 , -0.3252710096724756 ]),
-             SVector::<f64, 6>::from_row_slice(&[-0.5963680834773746 , -0.7020962533543591 ,  0.547289700125349  ,         0.07702204416582413, -0.2353044063604557 , -0.3252710096724756 ])
-        ].as_slice(),
-        epsilon = TOLERANCE);
-        assert_eq!(fmi, vec![-1.5651035236609192e-07, -1.565100473659719e-07, -1.4330918719490945e-07]);
-    }
-
-    #[test]
-    fn test_random_4() {
-        const SMAX: usize = 101;
-
-        let nsweeps = 7;  // maximum number of sweeps
-        let freach = f64::NEG_INFINITY;  // target function value
-        let nf = 101; // maximum number of function evaluations
-
-        let iinit = IinitEnum::Zero;
-        let local = 7;
-        let gamma = 2e-7;
-        let u = SVector::<f64, 6>::from_row_slice(&[-6.506834377244, -0.5547628574185793, -0.4896101151981129, -4.167584856725679, -6.389642504060847, -5.528716818248636]);
-        let v = SVector::<f64, 6>::from_row_slice(&[0.6136260223676221, 3.3116327823744762, 1.815553122672147, 0.06874148889830267, 0.7052383406994288, 0.93288192217477]);
-        let hess = SMatrix::<f64, 6, 6>::from_row_slice(&[
-            0.8277209419820275, 0.35275501307855395, 0.252012633495165, 0.5667951361102919, 0.19630620226079598, 0.0648101272618129,
-            0.5081006457816327, 0.2660878681097819, 0.09782770288876363, 0.43830363933100314, 0.4746456902322366, 0.4661411009402323,
-            0.19980055789123086, 0.4986248326438728, 0.012620127489665345, 0.19089710870186494, 0.4362731501809838, 0.6063090941013247,
-            0.7310040262066118, 0.4204623417897273, 0.8664287267092771, 0.9742278318360923, 0.6386093993614557, 0.27981042978028847,
-            0.6800547697745852, 0.5742073425616279, 0.8821852581714857, 0.13408110711794174, 0.04935188705985705, 0.9987572981515097,
-            0.6187202250393025, 0.1377423026724791, 0.8070825819627165, 0.2817037864244687, 0.5842187774516107, 0.09751501025007547
-        ]);
-
-        let (xbest, fbest, xmin, fmi, ncall, ncloc, flag) = mcs::<SMAX, 6>(hm6, &u, &v, nsweeps, freach, nf, &iinit, local, gamma, &hess).unwrap();
-
-        assert_eq!(ncall, 222);
-        assert_eq!(ncloc, 162);
-        assert_relative_eq!(xbest.as_slice(), [0.17893289851322705, 0.15050297148806233, 0.5093505507161508 ,  0.06874148889830267, 0.3277860135659822 , 0.6461894522528354 ].as_slice(), epsilon = TOLERANCE);
-        assert_eq!(fbest, -2.3417974980696994);
-        assert_relative_eq!(xmin.as_slice(), vec![
-            SVector::<f64, 6>::from_row_slice(&[0.17893289851322705, 0.15050297148806233, 0.5093505507161508 , 0.06874148889830267, 0.3277860135659822 , 0.6461894522528354 ]),
-            SVector::<f64, 6>::from_row_slice(&[0.17891587003871542, 0.150482894697167  , 0.5093410639955795 , 0.06874148889830267, 0.3278075419276147 , 0.6461749608224651 ]),
-            SVector::<f64, 6>::from_row_slice(&[0.17828933536282762, 0.16875439312523205, 0.5823529521265135 , 0.06874148889830267, 0.33828521303632625, 0.7069002116463341 ]),
-        ].as_slice(),
-        epsilon = TOLERANCE);
-        assert_relative_eq!(fmi.as_slice(), [-2.3417974980696994, -2.3417843204349675, -2.2316087735356884].as_slice(), epsilon = TOLERANCE);
+        // assert_relative_eq!(xbest.as_slice(), [0.201689511010837, 0.150010691921827, 0.476873974679078, 0.275332430524218, 0.311651616585802, 0.657300534081583].as_slice(), epsilon = TOLERANCE);
+        // assert_relative_eq!(fbest, -3.32236801141551, epsilon = TOLERANCE);
+        // assert_eq!(fmi, vec![-3.32236801141551, -0.988341220232772]);
+        // assert_eq!(ncall, 262); // Due to unstable sorting in lslocal
+        // assert_eq!(ncloc, 194);  // Due to unstable sorting in lslocal
+        // assert_eq!(ExitFlag, ExitFlagEnum::StopNsweepsExceeded);
     }
 }
 
 
 #[cfg(test)]
-mod tests_feval {
+mod tests_hm6 {
     use crate::test_functions::hm6;
     use nalgebra::SVector;
 

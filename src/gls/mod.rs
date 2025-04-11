@@ -47,6 +47,8 @@ pub fn gls<const N: usize>(
 ) ->
     usize // nf
 {
+    debug_assert_eq!(alist.len(), flist.len());
+    
     // Golden section fraction is (3 - sqrt(5)) / 2
     let short = 0.381966;
 
