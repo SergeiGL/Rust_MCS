@@ -24,13 +24,13 @@ pub fn exgain<const N: usize>(
     let mut isplit = 0;
     let mut splval = f64::INFINITY;
 
-    for i in 0..N {
+    for i in 0..N { // i: -1 from Matlab
         if n0[i] == 0 {
             let new_e = f0.column(i).iter().fold(f64::INFINITY, |acc, &new_val| acc.min(new_val)) - f0[(1, i)];
 
             if new_e < emin {
                 emin = new_e;
-                isplit = i;
+                isplit = i + 1; // i: -1 from Matlab; isplit should be as in Matlab
                 splval = f64::INFINITY;
             }
         } else {
@@ -49,7 +49,7 @@ pub fn exgain<const N: usize>(
 
             if new_e < emin {
                 emin = new_e;
-                isplit = i;
+                isplit = i + 1; // i: -1 from Matlab; isplit should be as in Matlab
                 splval = z;
             }
         }
@@ -81,7 +81,7 @@ mod tests {
         let (e_min, isplit, splval) = exgain(&n0, &x, &y, &x1, &x2, fx, &f0, &f1, &f2);
 
         assert_eq!(e_min, -0.18000000000000005);
-        assert_eq!(isplit, 1);
+        assert_eq!(isplit, 2);
         assert_eq!(splval, f64::INFINITY);
     }
 
@@ -104,7 +104,7 @@ mod tests {
         let (e_min, isplit, splval) = exgain(&n0, &x, &y, &x1, &x2, fx, &f0, &f1, &f2);
 
         assert_eq!(e_min, -0.18000000000000005);
-        assert_eq!(isplit, 1);
+        assert_eq!(isplit, 2);
         assert_eq!(splval, f64::INFINITY);
     }
 
@@ -127,7 +127,7 @@ mod tests {
         let (e_min, isplit, splval) = exgain(&n0, &x, &y, &x1, &x2, fx, &f0, &f1, &f2);
 
         assert_eq!(e_min, -0.18000000000000005);
-        assert_eq!(isplit, 1);
+        assert_eq!(isplit, 2);
         assert_eq!(splval, f64::INFINITY);
     }
 
@@ -150,7 +150,7 @@ mod tests {
         let (e_min, isplit, splval) = exgain(&n0, &x, &y, &x1, &x2, fx, &f0, &f1, &f2);
 
         assert_eq!(e_min, 0.19415000000000004);
-        assert_eq!(isplit, 5);
+        assert_eq!(isplit, 6);
         assert_eq!(splval, -0.35);
     }
 }

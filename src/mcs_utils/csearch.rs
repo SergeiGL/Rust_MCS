@@ -42,7 +42,6 @@ pub fn csearch<const N: usize>(
 
         if xmin[i] <= u[i] {
             f1 = func(&(xmin + delta * p));
-
             nfcsearch += 1;
             if f1 >= fmi {
                 f2 = func(&(xmin + 2.0 * delta * p));
@@ -89,7 +88,6 @@ pub fn csearch<const N: usize>(
         if linesearch {
             nfcsearch += gls(func, &xmin, &p, &mut alist, &mut flist, u, v, 1, small, smaxls);
 
-            // Find the index of the minimum in flist
             let (mut j, min_f) = flist
                 .iter()
                 .enumerate()

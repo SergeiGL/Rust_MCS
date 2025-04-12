@@ -1,7 +1,13 @@
 use nalgebra::SVector;
 
 #[inline]
-pub fn chkloc<const N: usize>(xloc: &[SVector<f64, N>], x: &SVector<f64, N>) -> bool {
+pub fn chkloc<const N: usize>(
+    xloc: &[SVector<f64, N>],
+    x: &SVector<f64, N>,
+) ->
+    bool // loc
+{
+    // debug_assert!(xloc.len() == nloc);
     !xloc.iter().any(|x_i| x_i == x)
 }
 
@@ -13,9 +19,11 @@ pub fn fbestloc<const N: usize>(
     xbest: &mut SVector<f64, N>,
     nbasket0: usize,
 ) {
-    if fmi[nbasket0] < *fbest {
-        *fbest = fmi[nbasket0];
-        *xbest = xmin[nbasket0];
+    // nbasket0 is as in Matlab => adjust index
+    if fmi[nbasket0 - 1] < *fbest {
+        *fbest = fmi[nbasket0 - 1];
+        *xbest = xmin[nbasket0 - 1];
+        // No need for chrelerr
     }
 }
 
@@ -55,12 +63,12 @@ mod tests {
         let mut fbest = 2.0;
         let xmin = vec![SVector::<f64, 2>::from_row_slice(&[1.0, 2.0]), SVector::<f64, 2>::from_row_slice(&[3.0, 4.0]), SVector::<f64, 2>::from_row_slice(&[5.0, 6.0])];
         let mut xbest = SVector::<f64, 2>::from_row_slice(&[3.0, 4.0]);
-        let nbasket0 = 0_usize;
+        let nbasket0 = 1_usize;
 
         fbestloc(&fmi, &mut fbest, &xmin, &mut xbest, nbasket0);
 
-        assert_eq!(fbest, fmi[nbasket0]);
-        assert_eq!(xbest, xmin[nbasket0]);
+        assert_eq!(fbest, fmi[0]);
+        assert_eq!(xbest, xmin[0]);
     }
 
     #[test]
@@ -69,7 +77,7 @@ mod tests {
         let mut fbest = 2.0;
         let xmin = vec![SVector::<f64, 2>::from_row_slice(&[1.0, 2.0]), SVector::<f64, 2>::from_row_slice(&[3.0, 4.0]), SVector::<f64, 2>::from_row_slice(&[5.0, 6.0])];
         let mut xbest = SVector::<f64, 2>::from_row_slice(&[7.0, 8.0]);
-        let nbasket0 = 0_usize;
+        let nbasket0 = 1_usize;
 
         fbestloc(&fmi, &mut fbest, &xmin, &mut xbest, nbasket0);
 
@@ -83,7 +91,7 @@ mod tests {
         let mut fbest = 2.0;
         let xmin = vec![SVector::<f64, 2>::from_row_slice(&[1.0, 2.0]), SVector::<f64, 2>::from_row_slice(&[3.0, 4.0]), SVector::<f64, 2>::from_row_slice(&[5.0, 6.0])];
         let mut xbest = SVector::<f64, 2>::from_row_slice(&[7.0, 8.0]);
-        let nbasket0 = 0_usize;
+        let nbasket0 = 1_usize;
 
         fbestloc(&fmi, &mut fbest, &xmin, &mut xbest, nbasket0);
 
@@ -97,7 +105,7 @@ mod tests {
         let mut fbest = 2.0;
         let xmin = vec![SVector::<f64, 2>::from_row_slice(&[1.0, 2.0]), SVector::<f64, 2>::from_row_slice(&[3.0, 4.0]), SVector::<f64, 2>::from_row_slice(&[5.0, 6.0])];
         let mut xbest = SVector::<f64, 2>::from_row_slice(&[3.0, 4.0]);
-        let nbasket0 = 0_usize;
+        let nbasket0 = 1_usize;
 
         fbestloc(&fmi, &mut fbest, &xmin, &mut xbest, nbasket0);
 
@@ -111,7 +119,7 @@ mod tests {
         let mut fbest = f64::NAN;
         let xmin = vec![SVector::<f64, 2>::from_row_slice(&[1.0, 2.0]), SVector::<f64, 2>::from_row_slice(&[3.0, 4.0]), SVector::<f64, 2>::from_row_slice(&[5.0, 6.0])];
         let mut xbest = SVector::<f64, 2>::from_row_slice(&[3.0, 4.0]);
-        let nbasket0 = 0_usize;
+        let nbasket0 = 1_usize;
 
         fbestloc(&fmi, &mut fbest, &xmin, &mut xbest, nbasket0);
 

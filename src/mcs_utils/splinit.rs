@@ -43,7 +43,7 @@ pub fn splinit<const N: usize, const SMAX: usize>(
     // flag will always be true as nsweeps != 0 => no need
 
     for j in 0..3 {
-        if j != 1 {
+        if j != 1 { // j is -1 from Matlab
             x[i] = x0[(i, j)];
             f0[(j, f0_col_indx)] = func(&x);
             // Exactly 2 calls, no need for  ncall += 1
@@ -54,7 +54,13 @@ pub fn splinit<const N: usize, const SMAX: usize>(
             }
         } else { f0[(1, f0_col_indx)] = f[(0, par)] }
     }
-
+    // Useless as splval1 and splval2 will never be used:
+    // [fm,i1] = min(f0);
+    // if i1 > 1
+    // ...
+    // else
+    //   splval2 = v(i);
+    // end
     if s + 1 < SMAX {
         let mut nchild: usize = 0;
 
@@ -62,7 +68,7 @@ pub fn splinit<const N: usize, const SMAX: usize>(
             nchild += 1;
             genbox(nboxes, ipar, level, ichild, isplit, nogain, f, z, par, s + 1, -(nchild as isize), f0[(0, f0_col_indx)], record);
         };
-        for j in 0..2 {
+        for j in 0..2 { // j: -1 from Matlab
             nchild += 1;
             if (f0[(j, f0_col_indx)] <= f0[(j + 1, f0_col_indx)]) || (s + 2 < SMAX) {
                 let level0 = if f0[(j, f0_col_indx)] <= f0[(j + 1, f0_col_indx)] { s + 1 } else { s + 2 };

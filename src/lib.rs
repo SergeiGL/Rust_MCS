@@ -136,7 +136,6 @@ where
     let (mut n0, mut x, mut y, mut x1, mut x2, mut f1, mut f2) = (SVector::<usize, N>::zeros(), SVector::<f64, N>::repeat(f64::NAN), SVector::<f64, N>::repeat(f64::NAN), SVector::<f64, N>::repeat(f64::NAN), SVector::<f64, N>::repeat(f64::NAN), SVector::<f64, N>::repeat(f64::NAN), SVector::<f64, N>::repeat(f64::NAN));
     // VARIABLES USED LATER
 
-
     while s < SMAX && ncall + 1 <= nf {
         // par: -1 from Matlab as record -1 from Matlab
         let par = record[s - 1].unwrap();
@@ -208,21 +207,20 @@ where
                 // f(1:3) in Matlab equals &f[0..3] in Rust. Note that 3 does not change
                 fmi[nbasket0..nbasket].sort_by(|a, b| a.total_cmp(b));
                 xmin[nbasket0..nbasket].sort_by(|a, b| func(a).total_cmp(&func(b))); // is actually very small range; easier to evaluate function one more time
-
                 for j in nbasket0..nbasket {
                     x = xmin[j].clone();
                     let mut f1 = fmi[j];
+                    // chkloc() resets loc; nloc === xloc.len()
                     if chkloc(&xloc, &x) {
+                        // addloc
+                        // nloc === xloc.len()
                         xloc.push(x);
                         if basket(func, &mut x, &mut f1, &mut xmin, &mut fmi, &mut xbest, &mut fbest, nbasket0, nsweep, &mut nsweepbest, &mut ncall) {
-                            let nf_left = match nf >= ncall {
-                                true => { Some(nf - ncall) }
-                                false => { None }
-                            };
+                            let nf_left = if nf > ncall { nf - ncall } else { 0 };
                             let (fmi1, nc);
                             (xmin1, fmi1, nc) = lsearch(func, &mut x, f1, f0min, u, v, nf_left, local, gamma, hess);
-                            ncall = ncall + nc;
-                            ncloc = ncloc + nc;
+                            ncall += nc;
+                            ncloc += nc;
                             if fmi1 < fbest {
                                 xbest = xmin1.clone();
                                 fbest = fmi1;
@@ -247,6 +245,11 @@ where
     }
 
     let exit_flag = if ncall >= nf { ExitFlagEnum::StopNfExceeded } else { ExitFlagEnum::NormalShutdown };
+    if local != 0 && fmi.len() > nbasket {
+        debug_assert_eq!(fmi.len(), xmin.len());
+        xmin.truncate(nbasket);
+        fmi.truncate(nbasket);
+    }
     Ok((xbest, fbest, xmin, fmi, ncall, ncloc, exit_flag))
 }
 
@@ -255,9 +258,12 @@ where
 mod tests {
     use super::*;
     use crate::test_functions::hm6;
+    use approx::assert_relative_eq;
+
+    static TOLERANCE: f64 = 1e-11;
 
     // 1. In cargo.toml uncomment [profile.release] debug = true
-    // 2. Run Cmd as admin
+    // 2. Run cmd as admin
     // 3. cd C:\Users\serge\RustroverProjects\Rust_MCS (or your path)
     // 4. cargo flamegraph --unit-test -- tests::test_for_flamegraph_0
     #[cfg(not(debug_assertions))]
@@ -267,17 +273,87 @@ mod tests {
         let u = SVector::<f64, 6>::from_row_slice(&[0.; 6]); // lower bounds
         let v = SVector::<f64, 6>::from_row_slice(&[1.0; 6]); // upper bounds
 
-        let nsweeps = 1_000;                // maximum number of sweeps
-        let nf = 1_000_000;              // maximum number of function evaluations
+        let nsweeps = 1_000;  // maximum number of sweeps
+        let nf = 1_000_000;   // maximum number of function evaluations
 
         // Additional parameters
         const SMAX: usize = 1_000;                      // number of levels used
-        let local = 100;                                 // local search level
-        let gamma = 2e-10;                               // acceptable relative accuracy for local search
+        let local = 100;                                // local search level
+        let gamma = 2e-10;                              // acceptable relative accuracy for local search
         let hess = SMatrix::<f64, 6, 6>::repeat(1.);    // sparsity pattern of Hessian
 
+        #[inline]
+        fn func<const N: usize>(x: &SVector<f64, N>) -> f64 {
+            1.
+        }
+
         // Run the optimization
-        let (_, _, _, _, _, _, _) = mcs::<SMAX, 6>(hm6, &u, &v, nsweeps, nf, local, gamma, &hess).unwrap();
+        let _ = mcs::<SMAX, 6>(func, &u, &v, nsweeps, nf, local, gamma, &hess).unwrap();
+    }
+
+    #[test]
+    fn test_GUI_example() {
+        // Matlab equivalent test
+        // DISCLAIMER: change split.m and split function to split_.m and split_ as new Matlab versions have reserved function name split
+        //
+        // own.m file:
+        // function f = hm6(x)
+        // f = sum((x- 0.12345).^2)
+
+        // clearvars;
+        // clear global;
+        //
+        // path(path,'jones');
+        // fcn = "feval"; % do not change
+        // data = "own"; % the only place where "own"
+        // prt = 0; % do not change
+        // iinit = 0; % do not change; Simple initialization list aka IinitEnum::Zero here
+        // u = [0; 0; 0; 0; 0; 0];
+        // v = [1; 1; 1; 1; 1; 1];
+        // smax = 1000;
+        // nf = 20000;
+        // stop = [100]; % nsweeps
+        // local = 50;
+        // gamma= 2e-14;
+        // hess = ones(6,6); % 6x6 matrix for hm6
+        //
+        // format long g;
+        // [xbest,fbest,xmin,fmi,ncall,ncloc,flag]=mcs(fcn,data,u,v,prt,smax,nf,stop,iinit,local,gamma,hess)
+
+        const SMAX: usize = 1_000; // number of levels used
+        const N: usize = 6; // number of dimensions
+
+        // Optimization Bounds:
+        let u = SVector::<f64, N>::from_row_slice(&[0.0; N]); // lower bound
+        let v = SVector::<f64, N>::from_row_slice(&[1.0; N]); // upper bound
+
+        let nsweeps = 100; // maximum number of sweeps
+        let nf = 20_000; // maximum number of function evaluations
+
+        let local = 50;    // local search level
+        let gamma = 2e-14; // acceptable relative accuracy for local search
+
+        let hess = SMatrix::<f64, N, N>::repeat(1.); // sparsity pattern of Hessian
+
+        #[inline]
+        fn func<const N: usize>(x: &SVector<f64, N>) -> f64 {
+            let mut sum = 0.0;
+            for i in 0..N {
+                sum += (x[i] - 0.12345).powi(2);
+            }
+            sum
+        }
+
+        let (xbest, fbest, xmin, fmi, ncall, ncloc, ExitFlag) = mcs::<SMAX, 6>(func, &u, &v, nsweeps, nf, local, gamma, &hess).unwrap();
+
+        assert_relative_eq!(xbest.as_slice(), [0.12345, 0.12345, 0.12345, 0.12345, 0.12345, 0.12345].as_slice(), epsilon = TOLERANCE);
+        assert_relative_eq!(fbest, 0.0, epsilon = TOLERANCE);
+        assert_eq!(xmin.len(), 1);
+        assert_relative_eq!(xmin[0].as_slice(), [0.12345, 0.12345, 0.12345, 0.12345, 0.12345, 0.12345].as_slice(), epsilon = TOLERANCE);
+        assert_eq!(fmi, vec![0.0]);
+        assert_eq!(ncall, 20000);
+        assert_eq!(ncloc, 54); // IN FACT 53; but in csearch gls() function inputs flist -4.345e-33 insted of  1.15e-33 (floating point error)
+        assert_eq!(ExitFlag, ExitFlagEnum::StopNfExceeded);
     }
 
     #[test]
@@ -291,12 +367,12 @@ mod tests {
         // fcn = "feval"; % do not change
         // data = "hm6"; % do not change
         // prt = 0; % do not change
+        // iinit = 0; % do not change; Simple initialization list aka IinitEnum::Zero here
         // u = [0; 0; 0; 0; 0; 0];
         // v = [1; 1; 1; 1; 1; 1];
         // smax = 20;
         // nf = 1000;
         // stop = [18];
-        // iinit = 0; // Simple initialization list aka IinitEnum::Zero here
         // local = 50;
         // gamma= 2e-6;
         // hess = ones(6,6); % 6x6 matrix for hm6
@@ -316,12 +392,12 @@ mod tests {
 
         let (xbest, fbest, xmin, fmi, ncall, ncloc, ExitFlag) = mcs::<SMAX, 6>(hm6, &u, &v, nsweeps, nf, local, gamma, &hess).unwrap();
 
-        // assert_relative_eq!(xbest.as_slice(), [0.201689511010837, 0.150010691921827, 0.476873974679078, 0.275332430524218, 0.311651616585802, 0.657300534081583].as_slice(), epsilon = TOLERANCE);
-        // assert_relative_eq!(fbest, -3.32236801141551, epsilon = TOLERANCE);
-        // assert_eq!(fmi, vec![-3.32236801141551, -0.988341220232772]);
-        // assert_eq!(ncall, 262); // Due to unstable sorting in lslocal
-        // assert_eq!(ncloc, 194);  // Due to unstable sorting in lslocal
-        // assert_eq!(ExitFlag, ExitFlagEnum::StopNsweepsExceeded);
+        assert_relative_eq!(xbest.as_slice(), [0.201689511010837, 0.150010691921827, 0.476873974679078, 0.275332430524218, 0.311651616585802, 0.657300534081583].as_slice(), epsilon = TOLERANCE);
+        assert_relative_eq!(fbest, -3.32236801141551, epsilon = TOLERANCE);
+        assert_relative_eq!(fmi.as_slice(), [-3.32236801141551, -0.988341220232772].as_slice(), epsilon = TOLERANCE);
+        assert_eq!(ncall, 262);
+        assert_eq!(ncloc, 194);
+        assert_eq!(ExitFlag, ExitFlagEnum::StopNsweepsExceeded);
     }
 }
 

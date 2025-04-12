@@ -12,8 +12,8 @@ pub fn lsearch<const N: usize>(
     f0: f64,
     u: &SVector<f64, N>,
     v: &SVector<f64, N>,
-    nf_left: Option<usize>,
-    local: usize,
+    nf: usize,
+    maxstep: usize,
     gamma: f64,
     hess: &SMatrix<f64, N, N>,
 ) -> (
@@ -26,8 +26,11 @@ where
 {
 
     // flag will always be true as nsweeps != 0 => no need
-    let (mut ncall, nloc, small, smaxls) = (0_usize, 1, 0.1, 15);
-
+    // ncloc: === 1;
+    // smaxls: === 15;
+    // small: === 0.1;
+    let mut ncall = 0_usize;
+    
     let mut x0: SVector<f64, N> = SVector::zeros();
     clamp_SVector_mut(&mut x0, u, v);
 
@@ -65,7 +68,7 @@ where
 
         let fpred = fmi + g.dot(&p) + 0.5 * (p.dot(&(G * p)));
 
-        ncall += gls(func, &xmin, &p, &mut alist, &mut flist, u, v, nloc, small, smaxls);
+        ncall += gls(func, &xmin, &p, &mut alist, &mut flist, u, v, 1, 0.1, 15);
 
         // Find the minimum
         let (mut i, &fminew) = flist
@@ -106,13 +109,9 @@ where
     let mut b = g.abs().dot(&max_vector);
     let mut nstep = 0;
 
-    while (nf_left.is_some() && ncall < nf_left.unwrap())
-        && (nstep < local)
-        && (
-        (diag || ind_len < N)
-            // || (nsweeps == 0 && fmi - gain <= freach) //nsweeps cannot be 0
-            || (b >= gamma * (f0 - f) && gain > 0.0)
-    )
+    while (ncall < nf)
+        && (nstep < maxstep)
+        && (diag || ind_len < N || (b >= gamma * (f0 - f) && gain > 0.0))  // || (nsweeps == 0 && fmi - gain <= freach) //nsweeps cannot be 0
     {
         nstep += 1;
         let mut delta = xmin.abs().scale(EPS_POW_1_3);
@@ -148,7 +147,7 @@ where
                     flist = Vec::from([fmi, f1]);
                     p = SVector::<f64, N>::zeros();
                     p[i] = 1.0;
-                    ncall += gls(func, &xmin, &p, &mut alist, &mut flist, u, v, nloc, small, 6);
+                    ncall += gls(func, &xmin, &p, &mut alist, &mut flist, u, v, 1, 0.1, 6);
 
                     let (mut j, &fminew) = flist
                         .iter()
@@ -222,7 +221,7 @@ where
             alist = Vec::from([0.0, 1.0]);
             flist = Vec::from([fmi, f1]);
 
-            ncall += gls(func, &xmin, &p, &mut alist, &mut flist, u, v, nloc, small, smaxls);
+            ncall += gls(func, &xmin, &p, &mut alist, &mut flist, u, v, 1, 0.1, 15);
 
             let (argmin, &fmi_new) = flist
                 .iter()
@@ -296,7 +295,7 @@ mod tests {
         let f0 = -0.9883412202327723;
         let u = SVector::<f64, 6>::from_row_slice(&[0.0; 6]);
         let v = SVector::<f64, 6>::from_row_slice(&[1.0; 6]);
-        let nf_left = Some(95);
+        let nf_left = 95;
         let local = 50;
         let gamma = 2e-6;
         let hess: SMatrix<f64, 6, 6> = SMatrix::repeat(1.0);
@@ -337,7 +336,7 @@ mod tests {
         let f0 = -0.9;
         let u = SVector::<f64, 6>::from_row_slice(&[0.0; 6]);
         let v = SVector::<f64, 6>::from_row_slice(&[1.0; 6]);
-        let nf_left = Some(95);
+        let nf_left = 95;
         let local = 50;
         let gamma = 2e-6;
         let hess: SMatrix<f64, 6, 6> = SMatrix::repeat(1.0);
@@ -379,7 +378,7 @@ mod tests {
         let f0 = 0.8;
         let u = SVector::<f64, 6>::from_row_slice(&[0.0; 6]);
         let v = SVector::<f64, 6>::from_row_slice(&[1.0; 6]);
-        let nf_left = Some(90);
+        let nf_left = 90;
         let local = 100;
         let gamma = 2e-6;
         let hess: SMatrix<f64, 6, 6> = SMatrix::repeat(1.0);
@@ -421,7 +420,7 @@ mod tests {
         let f0 = -0.9883412202327723;
         let u = SVector::<f64, 6>::from_row_slice(&[0.0; 6]);
         let v = SVector::<f64, 6>::from_row_slice(&[1.0; 6]);
-        let nf_left = Some(1);
+        let nf_left = 1;
         let local = 100;
         let gamma = 2e-8;
         let hess: SMatrix<f64, 6, 6> = SMatrix::repeat(1.0);

@@ -81,6 +81,7 @@ pub fn split<const N: usize, const SMAX: usize>(
 }
 
 
+#[inline]
 pub fn split1(x1: f64, x2: f64, f1: f64, f2: f64) -> f64 {
     if f1 <= f2 {
         x1 + 0.5 * (-1.0 + SQRT_5) * (x2 - x1)
@@ -89,6 +90,7 @@ pub fn split1(x1: f64, x2: f64, f1: f64, f2: f64) -> f64 {
     }
 }
 
+#[inline]
 pub fn split2(x: f64, y: f64) -> f64 {
     let mut x2 = y;
     if x == 0.0 && y.abs() > 1000.0 {

@@ -1,6 +1,7 @@
 use crate::mcs_utils::split::split2;
 use nalgebra::SVector;
 
+#[inline]
 pub fn splrnk<const N: usize>(
     n0: &SVector<usize, N>,
     p: &SVector<usize, N>, // -1 from Matlab
@@ -10,19 +11,20 @@ pub fn splrnk<const N: usize>(
     isize,  // isplit
     f64     // splval
 ) {
-    let (mut isplit, mut n1, mut p1) = (0, n0[0], p[0]);
+    let mut isplit = 1; // as in Matlab
+    let (mut n1, mut p1) = (n0[0], p[0]);
 
     // Find the splitting index
-    for i in 1..N { // 2:n
+    for i in 1..N { // 2:n; -1 from Matlab
         if n0[i] < n1 || (n0[i] == n1 && p[i] < p1) {
-            isplit = i;
+            isplit = i + 1; // isplit: as in Matlab; i:-1 from Matlab
             n1 = n0[i];
             p1 = p[i];
         }
     }
 
     let splval = if n1 > 0 {
-        split2(x[isplit], y[isplit])
+        split2(x[isplit - 1], y[isplit - 1])
     } else {
         f64::INFINITY
     };
@@ -42,7 +44,7 @@ mod tests {
         let p = SVector::<usize, 2>::from_row_slice(&[4, 5]);
         let x = SVector::<f64, 2>::from_row_slice(&[7.0, 8.0]);
         let y = SVector::<f64, 2>::from_row_slice(&[1.0, 2.0]);
-        assert_eq!(splrnk(&n0, &p, &x, &y), (0, f64::INFINITY));
+        assert_eq!(splrnk(&n0, &p, &x, &y), (1, f64::INFINITY));
     }
 
     #[test]
@@ -51,7 +53,7 @@ mod tests {
         let p = SVector::<usize, 6>::from_row_slice(&[3, 5, 1, 4, 2, 0]);
         let x = SVector::<f64, 6>::from_row_slice(&[0.20, 0.20, 0.46, 0.16, 0.30, 0.62]);
         let y = SVector::<f64, 6>::from_row_slice(&[0.07, 0.07, 0.45, 0.06, 0.42131067, 0.67]);
-        assert_eq!(splrnk(&n0, &p, &x, &y), (4, 0.38087378));
+        assert_eq!(splrnk(&n0, &p, &x, &y), (5, 0.38087378));
     }
 
     #[test]
@@ -60,7 +62,7 @@ mod tests {
         let p = SVector::<usize, 4>::from_row_slice(&[3, 5, 1, 4]);
         let x = SVector::<f64, 4>::from_row_slice(&[0.20, 0.20, 0.46, 0.16]);
         let y = SVector::<f64, 4>::from_row_slice(&[0.07, 0.07, 0.45, 0.06]);
-        assert_eq!(splrnk(&n0, &p, &x, &y), (0, 0.11333333333333334));
+        assert_eq!(splrnk(&n0, &p, &x, &y), (1, 0.11333333333333334));
     }
 
     #[test]
@@ -69,6 +71,6 @@ mod tests {
         let p = SVector::<usize, 6>::from_row_slice(&[3, 5, 1, 4, 2, 0]);
         let x = SVector::<f64, 6>::from_row_slice(&[-0.20, 0.20, -0.46, 0.16, -0.30, 0.62]);
         let y = SVector::<f64, 6>::from_row_slice(&[-0.07, 0.07, -0.45, 0.06, -0.42131067, -0.67]);
-        assert_eq!(splrnk(&n0, &p, &x, &y), (4, -0.38087378));
+        assert_eq!(splrnk(&n0, &p, &x, &y), (5, -0.38087378));
     }
 }

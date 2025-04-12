@@ -1,6 +1,5 @@
 use crate::mcs_utils::updtrec::updtrec;
 use nalgebra::Matrix2xX;
-use std::cmp::Ordering;
 
 #[inline]
 pub fn genbox<const SMAX: usize>(
@@ -18,29 +17,29 @@ pub fn genbox<const SMAX: usize>(
     f_upd: f64,
     record: &mut [Option<usize>; SMAX],
 ) {
-    match (*nboxes + 1).cmp(&level.capacity()) {
-        Ordering::Less => {}
-        Ordering::Equal | Ordering::Greater => {
-            let new_capacity = level.capacity() * 2;
+    // Do [*nboxes] before *nboxes += 1
+    // nboxes: -1 from Matlab
+    if *nboxes <= ipar.len() - 1 {
+        ipar[*nboxes] = Some(ipar_upd + 1); // ipar_upd -1 from Matlab as comes from record, ipar as in Matlab
+        level[*nboxes] = level_upd;
+        ichild[*nboxes] = ichild_upd;
+        f[(0, *nboxes)] = f_upd;
+    } else { // perform allocation; by default *2 from current
+        ipar.push(Some(ipar_upd + 1)); // ipar_upd -1 from Matlab as comes from record, ipar as in Matlab
+        level.push(level_upd);
+        ichild.push(ichild_upd);
 
-            level.resize(new_capacity, 0_usize);
-            ipar.resize(new_capacity, Some(0));
-            isplit.resize(new_capacity, 0isize);
-            ichild.resize(new_capacity, 0_isize);
-            nogain.resize(new_capacity, false);
+        let new_cap = ipar.capacity();
+        nogain.resize(new_cap, false);
+        isplit.resize(new_cap, 0_isize);
 
-            f.resize_horizontally_mut(new_capacity, 1.0);
-            z.resize_horizontally_mut(new_capacity, 1.0);
-        }
+        f.resize_horizontally_mut(new_cap, 1.0);
+        z.resize_horizontally_mut(new_cap, 1.0);
+
+        f[(0, *nboxes)] = f_upd;
     }
-    
-    // Do [] before incrementing *nboxes += 1; so at this point rust nboxes = matlab nboxes -1 ;
-    ipar[*nboxes] = Some(ipar_upd + 1); // ipar_upd -1 from Matlab as comes from record, ipar as in Matlab
-    level[*nboxes] = level_upd;
-    ichild[*nboxes] = ichild_upd;
-    f[(0, *nboxes)] = f_upd;
 
     updtrec(*nboxes, level[*nboxes], f.row(0), record);
 
-    *nboxes += 1;
+    *nboxes += 1; // nboxes: consistent with matlab again
 }
