@@ -19,89 +19,84 @@ For detailed information about the algorithm, refer to the [original paper](http
 - Written in pure Rust for maximum performance
 - Uses recently added const generics for compile-time dimension checking
 - Supports arbitrary N-dimensional optimization problems
-- Includes comprehensive tests
-- Includes benchmarking suite
+- Includes 400+ tests
+- Includes benchmarking
 - Provides performance analysis tools
 
-## Implementing Your Own Function
+## GUI interface:
+If you are familiar with `Docker`, download user-friendly browser interface:
 
-Modify the release_func in `feval.rs`:
+[Rust_MCS_web](https://github.com/SergeiGL/Rust_MCS_web)
 
-```rust
-#[inline]
-fn release_func<const N: usize>(_x: &SVector<f64, N>) -> f64 {
-    1. // Implement your function here
-}
+
+## Manual Setup:
+- Add the crate to your `Cargo.toml`
+```toml
+[dependencies]
+Rust_MCS = { git = "https://github.com/SergeiGL/Rust_MCS" }
 ```
-
-## Usage
-
-Do not forget to update the `feval.rs` file with your own function or compile in a test mode to use the default one.
-
-Read the [Implementing Your Own Function](#implementing-your-own-function) section for more info.
-
-Usage example:
-
+- Example usage in `main.rs` file:
 ```rust
 use nalgebra::{SVector, SMatrix};
-use Rust_MCS::{mcs, StopStruct, IinitEnum, ExitFlagEnum};
+use Rust_MCS::*;
 
-// Define your optimization bounds
-let u = SVector::<f64, 6 >::from_row_slice(& [0.; 6]); // lower bounds
-let v = SVector::<f64, 6 >::from_row_slice(& [1.0; 6]); // upper bounds
+fn main() {
+    const SMAX: usize = 1_000; // number of levels used
+    const N: usize = 6; // number of dimensions
 
-// Configure stopping criteria
-let stop = StopStruct {
-nsweeps: 70,                // maximum number of sweeps
-freach: f64::NEG_INFINITY,  // target function value
-nf: 1_000_000,              // maximum number of function evaluations
-};
+    // Optimization Bounds:
+    let u = SVector::<f64, N>::from_row_slice(&[0.0; N]); // lower bound
+    let v = SVector::<f64, N>::from_row_slice(&[1.0; N]); // upper bound
 
-// Additional parameters
-const SMAX: usize = 1_000;                      // number of levels used
-let iinit = IinitEnum::Zero;                    // choice of init procedure
-let local = 20;                                 // local search level
-let gamma = 2e-7;                               // acceptable relative accuracy for local search
-let hess = SMatrix::<f64, 6, 6 >::repeat(1.);   // sparsity pattern of Hessian
+    let nsweeps = 100;   // maximum number of sweeps
+    let nf = 100_000; // maximum number of function evaluations
 
-// Run the optimization
-let (xbest, fbest, xmin, fmi, ncall, ncloc, flag) = mcs::<SMAX, 6 > ( & u, & v, & stop, & iinit, local, gamma, & hess);
+    let local = 50;    // local search level
+    let gamma = 2e-14; // acceptable relative accuracy for local search
+
+    let hess = SMatrix::<f64, N, N>::repeat(1.); // sparsity pattern of Hessian
+    
+    #[inline]
+    fn func<const N: usize>(x: &SVector<f64, N>) -> f64 {
+        // Implement your function here
+    }
+    
+    let (xbest, fbest, _, _, _, _, exitflag) = mcs::<SMAX, N>(func, &u, &v, nsweeps, nf, local, gamma, &hess).unwrap();
+}
 ```
 
 ## API Reference
 
 ### Main Function
-
 ```rust
+// ONLY SIMPLE INITIALIZATION IS SUPPORTED (IinitEnum::Zero / iinit=0 in Matlab)
 pub fn mcs<const SMAX: usize, const N: usize>(
-    u: &SVector<f64, N>,           // Lower bounds
-    v: &SVector<f64, N>,           // Upper bounds
-    stop_struct: &StopStruct,      // Stopping criteria
-    iinit: &IinitEnum,             // Initialization method
-    local: usize,                  // Local search level
-    gamma: f64,                    // Acceptable relative accuracy for local search
-    hess: &SMatrix<f64, N, N>,     // Sparsity pattern of Hessian
-) -> (
-    SVector<f64, N>,              // Best solution found
-    f64,                          // Corresponding best function value
-    Vec<SVector<f64, N>>,         // Local minima coordinates
-    Vec<f64>,                     // Corresponding minima values
-    usize,                        // Number of function calls
-    usize,                        // Number of local searches
-    ExitFlagEnum,                 // Exit status
-)
+    func: fn(&SVector<f64, N>) -> f64, // Function to optimize
+    u: &SVector<f64, N>, // Lower bounds
+    v: &SVector<f64, N>, // Upper bounds
+    nsweeps: usize, // max number of sweeps; should be > 1
+    nf: usize, // max number of function calls
+    local: usize, // local search level
+    gamma: f64,  // acceptable relative accuracy for local search
+    hess: &SMatrix<f64, N, N>, // sparsity pattern of Hessian
+) ->
+    Result<(
+        SVector<f64, N>,       // xbest; Best solution found
+        f64,                   // fbest; Corresponding best function value
+        Vec<SVector<f64, N>>,  // xmin; Local minima coordinates
+        Vec<f64>,              // fmi; Corresponding minima values
+        usize,                 // ncall; Number of function calls
+        usize,                 // ncloc; Number of local searches
+        ExitFlagEnum,          // ExitFlag; Exit status
+    ), String>
+where
+    Const<N>: DimMin<Const<N>, Output=Const<N>>,
+{...}
 ```
 
 ### Types
 
 ```rust
-pub enum IinitEnum {
-    Zero,              // Simple initialization list
-    One,               // Not implemented
-    Two,               // Not implemented
-    Three,             // Not implemented
-}
-
 pub enum ExitFlagEnum {
     NormalShutdown,         // Normal termination
     StopNfExceeded,         // Maximum function evaluations exceeded
@@ -110,31 +105,38 @@ pub enum ExitFlagEnum {
 ```
 
 ## Testing
-
-Using built-in Rust tool:
-
 ```bash
 cargo test
 ```
 
 ## Benchmarking
 
-Run benchmarks using Criterion:
+#### Run [divan](https://github.com/nvzqz/divan) `benchmarks`:
 
 ```bash
 cargo bench
 ```
 
-Generate a flame graph for performance analysis:
-
+#### Run `flamegraph`  profiling tool:
+- Install [flamegraph](https://github.com/flamegraph-rs/flamegraph)
+- Ensure that `Cargo.toml` file contains:
+```
+[profile.release]
+debug = true
+```
+- Run terminal `as admin`
+- Move to the project directory:
+```
+cd [*your_path*]\Rust_MCS
+```
+- Run:
 ```bash
 cargo flamegraph --unit-test -- tests::test_for_flamegraph_0
 ```
 
 The flame graph will be saved as `flamegraph.svg` in your project directory.
 
-To see my flamegraph open the [flamegraph.svg](flamegraph.svg) file.
+My flamegraph: [flamegraph.svg](flamegraph.svg) file.
 
 ## Credits
-
-- Original MCS algorithm by [W. Huyer and A. Neumaier](https://arnold-neumaier.at/software/mcs/index.html)
+Original MCS algorithm by [W. Huyer and A. Neumaier](https://arnold-neumaier.at/software/mcs/index.html)
