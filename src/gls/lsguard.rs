@@ -29,7 +29,7 @@
  *
  * * `alist` contains values within the admissible range [amin, amax]
  **/
-pub fn lsguard(alp: &mut f64, alist: &Vec<f64>, amax: f64, amin: f64, small: f64) {
+pub(super) fn lsguard(alp: &mut f64, alist: &Vec<f64>, amax: f64, amin: f64, small: f64) {
     // We only need 2 minimums and 2 maximums, no need to sort()
     let (mut min, mut min2, mut max2, mut max) = (f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
     for &el in alist {
@@ -131,7 +131,7 @@ mod tests {
     #[test]
     fn test_extrapolation() {
         let mut alp = 11.;
-        let result = lsguard(&mut alp, &vec![2.0, 5.0], 20.0, 0.0, 0.5);
+        lsguard(&mut alp, &vec![2.0, 5.0], 20.0, 0.0, 0.5);
         assert_eq!(alp, 11.0);
     }
 

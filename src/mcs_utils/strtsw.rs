@@ -1,7 +1,7 @@
 use nalgebra::{Dyn, MatrixView, U1, U2};
 
 #[inline]
-pub fn strtsw<const SMAX: usize>(
+pub(crate) fn strtsw<const SMAX: usize>(
     record: &mut [Option<usize>; SMAX],  // record
     level: &Vec<usize>,
     f: MatrixView<f64, U1, Dyn, U1, U2>,
@@ -24,7 +24,7 @@ pub fn strtsw<const SMAX: usize>(
             if level_val < s { // both s and level are as in Matlab
                 s = level_val;
             };
-            
+
             let record_el = &mut record[level_val - 1];
             *record_el = Some(match *record_el {
                 None => j,

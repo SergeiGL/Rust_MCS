@@ -1,4 +1,4 @@
-pub fn polint(x: &[f64; 3], f: &[f64; 3]) -> [f64; 3] {
+pub(super) fn polint(x: &[f64; 3], f: &[f64; 3]) -> [f64; 3] {
     [
         f[0],
         (f[1] - f[0]) / (x[1] - x[0]),
@@ -6,7 +6,7 @@ pub fn polint(x: &[f64; 3], f: &[f64; 3]) -> [f64; 3] {
     ]
 }
 
-pub fn polint1(x: &[f64; 3], f: &[f64; 3]) -> (f64, f64) {
+pub(super) fn polint1(x: &[f64; 3], f: &[f64; 3]) -> (f64, f64) {
     let f13: f64 = (f[2] - f[0]) / (x[2] - x[0]);
     let f12: f64 = (f[1] - f[0]) / (x[1] - x[0]);
     let f23: f64 = (f[2] - f[1]) / (x[2] - x[1]);

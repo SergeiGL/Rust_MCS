@@ -1,4 +1,4 @@
-pub fn quadmin(a: f64, b: f64, d: &[f64; 3], x0: &[f64; 3]) -> f64 {
+pub(super) fn quadmin(a: f64, b: f64, d: &[f64; 3], x0: &[f64; 3]) -> f64 {
     if d[2] == 0.0 {
         if d[1] > 0.0 {
             a
@@ -23,7 +23,7 @@ pub fn quadmin(a: f64, b: f64, d: &[f64; 3], x0: &[f64; 3]) -> f64 {
     }
 }
 
-pub fn quadpol(x: f64, d: &[f64; 3], x0: &[f64; 3]) -> f64 {
+pub(super) fn quadpol(x: f64, d: &[f64; 3], x0: &[f64; 3]) -> f64 {
     d[0] + d[1] * (x - x0[0]) + d[2] * (x - x0[0]) * (x - x0[1])
 }
 

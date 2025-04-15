@@ -3,7 +3,7 @@ use crate::mcs_utils::genbox::genbox;
 use nalgebra::{Matrix2xX, Matrix3xX, SMatrix, SVector};
 
 #[inline]
-pub fn splinit<const N: usize, const SMAX: usize>(
+pub(crate) fn splinit<const N: usize, const SMAX: usize>(
     func: fn(&SVector<f64, N>) -> f64,
     i: usize, // -1 from Matlab
     s: usize,

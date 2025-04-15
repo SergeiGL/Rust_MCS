@@ -2,7 +2,7 @@ use crate::mcs_utils::updtrec::updtrec;
 use nalgebra::Matrix2xX;
 
 #[inline]
-pub fn genbox<const SMAX: usize>(
+pub(super) fn genbox<const SMAX: usize>(
     nboxes: &mut usize,
     ipar: &mut Vec<Option<usize>>,
     level: &mut Vec<usize>,

@@ -1,11 +1,11 @@
-use crate::mcs_utils::{init_func::subint, polint::polint, quadratic_func::quadmin, quadratic_func::quadpol};
+use crate::mcs_utils::{polint::polint, quadratic_func::quadmin, quadratic_func::quadpol, subint::subint};
 use nalgebra::{Matrix3xX, SVector};
 
 
 // l is always full of 1;
 // L is always full of 2
 #[inline]
-pub fn exgain<const N: usize>(
+pub(crate) fn exgain<const N: usize>(
     n0: &SVector<usize, N>,
     x: &SVector<f64, N>,
     y: &SVector<f64, N>,

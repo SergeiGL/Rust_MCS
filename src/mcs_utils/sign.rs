@@ -17,7 +17,7 @@
 ///
 /// Default Rust .signum() function does not work as it maps -0.0 to -1.0 and 0.0 to 1.0
 #[inline]
-pub const fn sign(x: f64) -> f64 {
+pub(super) const fn sign(x: f64) -> f64 {
     match x {
         0.0 => 0.0, // captures both -0.0 and 0.0
         _ => x.signum(),

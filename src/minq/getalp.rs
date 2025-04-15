@@ -27,7 +27,7 @@ use crate::minq::IerEnum;
 /// - If `pTGp = 0` and `gTp = 0`, any point is a minimizer (constant function)
 /// - If `pTGp = 0` and `gTp ≠ 0`, the function is linear and minimized at a bound
 /// - If `pTGp < 0`, the function is concave and minimized at a bound (or unbounded if infinite bounds)
-pub fn getalp(alpu: f64, alpo: f64, gTp: f64, pTGp: f64) -> (
+pub(super) fn getalp(alpu: f64, alpo: f64, gTp: f64, pTGp: f64) -> (
     f64,     // alp
     bool,    // lba
     bool,    // uba

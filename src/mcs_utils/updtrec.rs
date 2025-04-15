@@ -1,6 +1,7 @@
 use nalgebra::{Dyn, MatrixView, U1, U2};
 
-pub fn updtrec<const SMAX: usize>(j: usize, s: usize, f: MatrixView<f64, U1, Dyn, U1, U2>, record: &mut [Option<usize>; SMAX]) {
+#[inline]
+pub(crate) fn updtrec<const SMAX: usize>(j: usize, s: usize, f: MatrixView<f64, U1, Dyn, U1, U2>, record: &mut [Option<usize>; SMAX]) {
     // s: as in Matlab
     // j: -1 from Matlab
     // record: -1 from Matlab in tens of values; record.len(): +1 from Matlab

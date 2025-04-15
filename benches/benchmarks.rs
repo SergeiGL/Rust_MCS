@@ -43,7 +43,7 @@ const HM6_P: [[f64; 6]; 4] = [
 const C: [f64; 4] = [1.0, 1.2, 3.0, 3.2];
 
 
-pub fn hm6<const N: usize>(x: &SVector<f64, N>) -> f64 {
+fn hm6<const N: usize>(x: &SVector<f64, N>) -> f64 {
     debug_assert!(x.len() == 6);
     let mut sum = 0.0;
 

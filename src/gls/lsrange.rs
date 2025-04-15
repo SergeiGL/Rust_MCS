@@ -1,7 +1,7 @@
 use nalgebra::SVector;
 use std::cmp::Ordering;
 
-pub fn lsrange<const N: usize>(
+pub(super) fn lsrange<const N: usize>(
     x: &SVector<f64, N>,
     p: &SVector<f64, N>,
     u: &SVector<f64, N>, // xl

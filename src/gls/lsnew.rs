@@ -2,7 +2,7 @@ use crate::gls::lssplit::lssplit;
 use nalgebra::SVector;
 
 /// find one new point by extrapolation or split of wide interval
-pub fn lsnew<const N: usize>(
+pub(super) fn lsnew<const N: usize>(
     func: fn(&SVector<f64, N>) -> f64,
     nloc: usize,
     small: f64,

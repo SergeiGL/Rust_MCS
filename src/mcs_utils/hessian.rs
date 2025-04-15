@@ -1,6 +1,6 @@
 use nalgebra::{SMatrix, SVector};
 
-pub fn hessian<const N: usize>(
+pub(super) fn hessian<const N: usize>(
     i: usize,
     k: usize,
     x: &SVector<f64, N>,

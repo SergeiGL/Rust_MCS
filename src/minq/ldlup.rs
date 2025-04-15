@@ -38,7 +38,7 @@ use nalgebra::{SMatrix, SVector};
 /// # Note
 /// Ensure that the vector `g` is properly constructed with zeros in other unit rows (except possibly at index j)
 /// to satisfy the assumptions of the algorithm.
-pub fn ldlup<const N: usize>(
+pub(super) fn ldlup<const N: usize>(
     L: &mut SMatrix<f64, N, N>,
     d: &mut SVector<f64, N>,
     j: usize,
@@ -143,7 +143,7 @@ mod tests {
         // disp('d_out:'); disp(d_out)
         // disp('p:'); disp(p)
         // -----------------------------------
-        
+
         const N: usize = 4;
         let mut L = SMatrix::<f64, N, N>::identity();
         let mut d = SVector::<f64, N>::from_row_slice(&[2.0, 3.0, 4.0, 5.0]);

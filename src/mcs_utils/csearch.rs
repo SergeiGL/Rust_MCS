@@ -2,7 +2,7 @@ use crate::gls::gls;
 use crate::mcs_utils::{helper_funcs::clamp_SVector, hessian::hessian, polint::polint1};
 use nalgebra::{SMatrix, SVector};
 
-pub fn csearch<const N: usize>(
+pub(super) fn csearch<const N: usize>(
     func: fn(&SVector<f64, N>) -> f64,
     x: &SVector<f64, N>,
     f: f64,

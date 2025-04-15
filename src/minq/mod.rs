@@ -4,11 +4,14 @@ mod ldlup;
 mod ldldown;
 mod minqsub;
 
-use crate::mcs_utils::helper_funcs::clamp_SVector_mut;
-use crate::minq::{getalp::getalp, minqsub::minqsub};
+use crate::minq::getalp::getalp;
+use crate::minq::minqsub::minqsub;
 
+use crate::mcs_utils::helper_funcs::clamp_SVector_mut;
 use nalgebra::{Const, DimMin, SMatrix, SVector};
 
+
+// Returned from MINQ
 #[derive(Debug, PartialOrd, PartialEq, Clone, Copy)]
 pub enum IerEnum {
     LocalMinimizerFound, // 0
@@ -73,7 +76,7 @@ where
     // Regularization for low rank problems // TODO: WTF
     // .clone() matrix with changed diag
     let G = SMatrix::<f64, N, N>::from_fn(|row, col| if row != col { G[(row, col)] } else { ONE_PLUS_HEPS * G[(row, col)] });
-    
+
     let mut K = SVector::<bool, N>::repeat(false);
     // issparse() sparse matrices are used in MATLAB to efficiently store and operate on matrices that are mostly zeros -- no influence other than performance in Matlab
     let mut L = SMatrix::<f64, N, N>::identity();

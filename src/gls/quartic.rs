@@ -21,7 +21,7 @@ use nalgebra::SVector;
 * * A floating-point value (`f64`) representing the computed result f(x).
 **/
 #[inline]
-pub fn quartic(a: &SVector<f64, 5>, x: f64) -> f64 {
+pub(super) fn quartic(a: &SVector<f64, 5>, x: f64) -> f64 {
     // Use Horner's method with compensated summation for better numerical stability
     // and parallel computation opportunities
 

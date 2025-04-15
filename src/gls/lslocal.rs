@@ -14,7 +14,7 @@ enum CasEnum {
 
 
 #[inline]
-pub fn lslocal<const N: usize>(
+pub(super) fn lslocal<const N: usize>(
     func: fn(&SVector<f64, N>) -> f64,
     nloc: usize,
     small: f64,

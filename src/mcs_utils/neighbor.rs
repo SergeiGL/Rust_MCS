@@ -1,6 +1,6 @@
 use nalgebra::SVector;
 
-pub fn neighbor<const N: usize>(
+pub(super) fn neighbor<const N: usize>(
     x: &SVector<f64, N>,
     delta: &SVector<f64, N>,
     u: &SVector<f64, N>,

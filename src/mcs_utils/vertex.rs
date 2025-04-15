@@ -1,78 +1,10 @@
 use crate::mcs_utils::{split::split1, updtf::updtf};
 use nalgebra::{Matrix2xX, Matrix3xX, SMatrix, SVector};
 
-
-#[inline]
-fn vert1(z_j: f64, f_j: f64, x1: &mut f64, x2: &mut f64, f1: &mut f64, f2: &mut f64) {
-    match (*x1, *x2) {
-        (f64::INFINITY, _) => {
-            *x1 = z_j;
-            *f1 += f_j;
-        }
-        (x_1, f64::INFINITY) if x_1 != z_j => {
-            *x2 = z_j;
-            *f2 += f_j;
-        }
-        _ => {}
-    }
-}
-
-
-#[inline]
-fn vert2(x: f64, z_j: f64, z_j1: f64, f_j: f64, f_j1: f64,
-         x1: &mut f64, x2: &mut f64,
-         f1: &mut f64, f2: &mut f64) {
-    match (*x1, *x2) {
-        (f64::INFINITY, _) => {
-            *x1 = z_j;
-            *f1 += f_j;
-            if x != z_j1 {
-                *x2 = z_j1;
-                *f2 += f_j1;
-            }
-        }
-        (_, f64::INFINITY) => {
-            if *x1 != z_j {
-                *x2 = z_j;
-                *f2 += f_j;
-            } else {
-                *x2 = z_j1;
-                *f2 += f_j1;
-            }
-        }
-        _ => {}
-    }
-}
-
-
-// L is always 3 in Matlab
-#[inline]
-fn vert3<const N: usize>(
-    j: usize, // as in Matlab
-    x0: &SMatrix<f64, N, 3>,
-    f0: &Matrix3xX<f64>,
-    i: usize,
-    k: usize,
-    x1: &mut f64,
-    x2: &mut f64,
-    f1: &mut f64,
-    f2: &mut f64,
-) {
-    let (k1, k2) = match j {
-        1 => (1, 2),
-        3 => (0, 1), // (3-2-1, 3-1-1)
-        _ => (j - 2, j)
-    };
-    *x1 = x0[(i, k1)];
-    *x2 = x0[(i, k2)];
-    *f1 += f0[(k1, k)];
-    *f2 += f0[(k2, k)];
-}
-
 // l is always full of 1 (2 in Matlab);
 // L is always full of 2 (3 in Matlab)
 #[inline]
-pub fn vertex<const N: usize>(
+pub(crate) fn vertex<const N: usize>(
     par: usize, // -1 from Matlab
     u: &SVector<f64, N>,
     v: &SVector<f64, N>,
@@ -263,6 +195,73 @@ pub fn vertex<const N: usize>(
     }
 }
 
+
+#[inline]
+fn vert1(z_j: f64, f_j: f64, x1: &mut f64, x2: &mut f64, f1: &mut f64, f2: &mut f64) {
+    match (*x1, *x2) {
+        (f64::INFINITY, _) => {
+            *x1 = z_j;
+            *f1 += f_j;
+        }
+        (x_1, f64::INFINITY) if x_1 != z_j => {
+            *x2 = z_j;
+            *f2 += f_j;
+        }
+        _ => {}
+    }
+}
+
+
+#[inline]
+fn vert2(x: f64, z_j: f64, z_j1: f64, f_j: f64, f_j1: f64,
+         x1: &mut f64, x2: &mut f64,
+         f1: &mut f64, f2: &mut f64) {
+    match (*x1, *x2) {
+        (f64::INFINITY, _) => {
+            *x1 = z_j;
+            *f1 += f_j;
+            if x != z_j1 {
+                *x2 = z_j1;
+                *f2 += f_j1;
+            }
+        }
+        (_, f64::INFINITY) => {
+            if *x1 != z_j {
+                *x2 = z_j;
+                *f2 += f_j;
+            } else {
+                *x2 = z_j1;
+                *f2 += f_j1;
+            }
+        }
+        _ => {}
+    }
+}
+
+
+// L is always 3 in Matlab
+#[inline]
+fn vert3<const N: usize>(
+    j: usize, // as in Matlab
+    x0: &SMatrix<f64, N, 3>,
+    f0: &Matrix3xX<f64>,
+    i: usize,
+    k: usize,
+    x1: &mut f64,
+    x2: &mut f64,
+    f1: &mut f64,
+    f2: &mut f64,
+) {
+    let (k1, k2) = match j {
+        1 => (1, 2),
+        3 => (0, 1), // (3-2-1, 3-1-1)
+        _ => (j - 2, j)
+    };
+    *x1 = x0[(i, k1)];
+    *x2 = x0[(i, k2)];
+    *f1 += f0[(k1, k)];
+    *f2 += f0[(k2, k)];
+}
 
 #[cfg(test)]
 mod tests {

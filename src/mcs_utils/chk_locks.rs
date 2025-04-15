@@ -1,7 +1,7 @@
 use nalgebra::SVector;
 
 #[inline]
-pub fn chkloc<const N: usize>(
+pub(crate) fn chkloc<const N: usize>(
     xloc: &[SVector<f64, N>],
     x: &SVector<f64, N>,
 ) ->
@@ -12,7 +12,7 @@ pub fn chkloc<const N: usize>(
 }
 
 #[inline]
-pub fn fbestloc<const N: usize>(
+pub(crate) fn fbestloc<const N: usize>(
     fmi: &Vec<f64>,
     fbest: &mut f64,
     xmin: &Vec<SVector<f64, N>>,

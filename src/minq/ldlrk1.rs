@@ -27,7 +27,7 @@ use nalgebra::{Const, DVector, Dyn, MatrixViewMut, U1};
 ///
 /// # Note
 /// This function does not work for matrices of dimension 0.
-pub fn ldlrk1<const N: usize>(
+pub(super) fn ldlrk1<const N: usize>(
     L: &mut MatrixViewMut<f64, Dyn, Dyn, Const<1>, Const<{ N }>>,
     d: &mut MatrixViewMut<f64, Dyn, U1, Const<1>, Const<{ N }>>,
     mut alp: f64,

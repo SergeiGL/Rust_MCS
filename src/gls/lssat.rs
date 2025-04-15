@@ -1,5 +1,5 @@
 #[inline]
-pub fn lssat(
+pub(super) fn lssat(
     small: f64,
     alist: &[f64],
     flist: &[f64],

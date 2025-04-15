@@ -25,7 +25,7 @@ use std::cmp::Ordering;
  * * `fac` - The interpolation factor determined by the comparison of `flist_i` and `flist_i_plus_1`.
  */
 #[inline]
-pub fn lssplit(alist_i: f64, alist_i_plus_1: f64, flist_i: f64, flist_i_plus_1: f64, short: f64) -> (f64, f64) {
+pub(super) fn lssplit(alist_i: f64, alist_i_plus_1: f64, flist_i: f64, flist_i_plus_1: f64, short: f64) -> (f64, f64) {
     let fac = match flist_i.total_cmp(&flist_i_plus_1) {
         Ordering::Less => short,
         Ordering::Greater => 1.0 - short,

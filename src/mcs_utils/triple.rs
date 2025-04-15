@@ -1,8 +1,7 @@
 use crate::mcs_utils::{hessian::hessian, polint::polint1};
 use nalgebra::{SMatrix, SVector};
 
-#[inline]
-pub fn triple<const N: usize>(
+pub(super) fn triple<const N: usize>(
     func: fn(&SVector<f64, N>) -> f64,
     x: &SVector<f64, N>,
     mut f: f64,

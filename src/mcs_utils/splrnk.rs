@@ -2,7 +2,7 @@ use crate::mcs_utils::split::split2;
 use nalgebra::SVector;
 
 #[inline]
-pub fn splrnk<const N: usize>(
+pub(crate) fn splrnk<const N: usize>(
     n0: &SVector<usize, N>,
     p: &SVector<usize, N>, // -1 from Matlab
     x: &SVector<f64, N>,

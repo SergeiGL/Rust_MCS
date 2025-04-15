@@ -34,7 +34,7 @@ use crate::gls::helpers::clear_and_calc_up_down;
  * * `unitlen` - Characteristic length scale of the function.
  * * `s` - Size of the input lists.
  */
-pub fn lssort(
+pub(super) fn lssort(
     alist: &mut Vec<f64>,
     flist: &mut Vec<f64>,
 ) -> (

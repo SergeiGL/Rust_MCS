@@ -3,7 +3,7 @@ use nalgebra::SVector;
 use std::cmp::Ordering;
 
 #[inline]
-pub fn lsdescent<const N: usize>(
+pub(super) fn lsdescent<const N: usize>(
     func: fn(&SVector<f64, N>) -> f64,
     x: &SVector<f64, N>,
     p: &SVector<f64, N>,

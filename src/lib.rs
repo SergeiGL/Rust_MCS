@@ -1,5 +1,4 @@
 #![allow(non_snake_case)]
-#![allow(unused_variables)]
 
 use nalgebra::{Const, DimMin, Matrix2xX, SMatrix, SVector};
 
@@ -8,15 +7,16 @@ mod test_functions;
 
 pub mod minq;
 pub mod gls;
-pub mod mcs_utils;
+
+mod mcs_utils;
 use mcs_utils::add_basket::add_basket;
-use mcs_utils::basket_func::basket;
-use mcs_utils::basket_func::basket1;
+use mcs_utils::basket::basket;
+use mcs_utils::basket1::basket1;
 use mcs_utils::chk_locks::chkloc;
 use mcs_utils::chk_locks::fbestloc;
 use mcs_utils::exgain::exgain;
-use mcs_utils::init_func::init;
-use mcs_utils::init_func::initbox;
+use mcs_utils::init::init;
+use mcs_utils::initbox::initbox;
 use mcs_utils::lsearch::lsearch;
 use mcs_utils::splinit::splinit;
 use mcs_utils::split::split;
@@ -390,7 +390,7 @@ mod tests {
         let gamma = 2e-6;
         let hess = SMatrix::<f64, 6, 6>::repeat(1.);
 
-        let (xbest, fbest, xmin, fmi, ncall, ncloc, ExitFlag) = mcs::<SMAX, 6>(hm6, &u, &v, nsweeps, nf, local, gamma, &hess).unwrap();
+        let (xbest, fbest, _, fmi, ncall, ncloc, ExitFlag) = mcs::<SMAX, 6>(hm6, &u, &v, nsweeps, nf, local, gamma, &hess).unwrap();
 
         assert_relative_eq!(xbest.as_slice(), [0.201689511010837, 0.150010691921827, 0.476873974679078, 0.275332430524218, 0.311651616585802, 0.657300534081583].as_slice(), epsilon = TOLERANCE);
         assert_relative_eq!(fbest, -3.32236801141551, epsilon = TOLERANCE);

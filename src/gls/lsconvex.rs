@@ -1,6 +1,6 @@
 // check convexity
 #[inline]
-pub fn lsconvex(alist: &Vec<f64>, flist: &Vec<f64>, nmin: usize, s: usize) -> bool {
+pub(super) fn lsconvex(alist: &Vec<f64>, flist: &Vec<f64>, nmin: usize, s: usize) -> bool {
     if nmin > 1 {
         false
     } else {

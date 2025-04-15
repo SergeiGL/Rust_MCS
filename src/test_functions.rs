@@ -22,7 +22,7 @@ const C: [f64; 4] = [1.0, 1.2, 3.0, 3.2];
 
 
 #[cfg(test)] // hm6 function
-pub fn hm6<const N: usize>(x: &SVector<f64, N>) -> f64 {
+pub(crate) fn hm6<const N: usize>(x: &SVector<f64, N>) -> f64 {
     debug_assert!(x.len() == 6);
     let mut sum = 0.0;
 

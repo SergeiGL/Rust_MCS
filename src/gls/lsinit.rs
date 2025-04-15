@@ -1,7 +1,7 @@
 use nalgebra::SVector;
 
 // find first two points and establish correct scale
-pub fn lsinit<const N: usize>(
+pub(super) fn lsinit<const N: usize>(
     func: fn(&SVector<f64, N>) -> f64,
     x: &SVector<f64, N>,
     p: &SVector<f64, N>,

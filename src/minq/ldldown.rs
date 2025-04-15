@@ -19,7 +19,7 @@ use nalgebra::{SMatrix, SVector};
 ///
 /// # Note
 /// The function modifies both L and d in-place.
-pub fn ldldown<const N: usize>(
+pub(super) fn ldldown<const N: usize>(
     L: &mut SMatrix<f64, N, N>,
     d: &mut SVector<f64, N>,
     j: usize,

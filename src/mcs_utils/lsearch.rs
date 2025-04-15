@@ -5,7 +5,7 @@ use nalgebra::{Const, DimMin, SMatrix, SVector};
 
 const EPS_POW_1_3: f64 = 0.000006055454452393343;
 
-pub fn lsearch<const N: usize>(
+pub(crate) fn lsearch<const N: usize>(
     func: fn(&SVector<f64, N>) -> f64,
     x: &SVector<f64, N>,
     mut f: f64,
@@ -30,7 +30,7 @@ where
     // smaxls: === 15;
     // small: === 0.1;
     let mut ncall = 0_usize;
-    
+
     let mut x0: SVector<f64, N> = SVector::zeros();
     clamp_SVector_mut(&mut x0, u, v);
 

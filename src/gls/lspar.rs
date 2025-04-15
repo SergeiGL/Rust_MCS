@@ -4,7 +4,7 @@ use crate::gls::lssort::lssort;
 use nalgebra::SVector;
 
 #[inline]
-pub fn lspar<const N: usize>(
+pub(super) fn lspar<const N: usize>(
     func: fn(&SVector<f64, N>) -> f64,
     nloc: usize,
     small: f64,
