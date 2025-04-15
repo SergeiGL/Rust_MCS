@@ -38,7 +38,7 @@ pub(crate) fn exgain<const N: usize>(
             let z2 = [0.0, f1[i] - fx, f2[i] - fx];
 
             let d = polint(&z1, &z2);
-            let (eta1, eta2) = subint::<1000>(x[i], y[i]);
+            let (eta1, eta2) = subint(x[i], y[i]);
             let z = quadmin(
                 eta1.min(eta2),
                 eta1.max(eta2),

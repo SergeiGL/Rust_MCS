@@ -1,19 +1,19 @@
 pub(super) fn polint(x: &[f64; 3], f: &[f64; 3]) -> [f64; 3] {
+    let d_2 = (f[1] - f[0]) / (x[1] - x[0]);
     [
         f[0],
-        (f[1] - f[0]) / (x[1] - x[0]),
-        ((f[2] - f[1]) / (x[2] - x[1]) - (f[1] - f[0]) / (x[1] - x[0])) / (x[2] - x[0])
+        d_2,
+        ((f[2] - f[1]) / (x[2] - x[1]) - d_2) / (x[2] - x[0])
     ]
 }
 
 pub(super) fn polint1(x: &[f64; 3], f: &[f64; 3]) -> (f64, f64) {
-    let f13: f64 = (f[2] - f[0]) / (x[2] - x[0]);
-    let f12: f64 = (f[1] - f[0]) / (x[1] - x[0]);
-    let f23: f64 = (f[2] - f[1]) / (x[2] - x[1]);
+    let f13 = (f[2] - f[0]) / (x[2] - x[0]);
+    let f12 = (f[1] - f[0]) / (x[1] - x[0]);
+    let f23 = (f[2] - f[1]) / (x[2] - x[1]);
 
-    // Interpolated values following the formula from the Python code.
-    let g: f64 = f13 + f12 - f23;
-    let G: f64 = 2.0 * (f13 - f12) / (x[2] - x[1]);
+    let g = f13 + f12 - f23;
+    let G = 2.0 * (f13 - f12) / (x[2] - x[1]);
 
     (g, G)
 }

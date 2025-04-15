@@ -2,6 +2,8 @@ use crate::gls::gls;
 use crate::mcs_utils::{helper_funcs::clamp_SVector, hessian::hessian, polint::polint1};
 use nalgebra::{SMatrix, SVector};
 
+const EPS_POW_1_3: f64 = 0.000006055454452393343;
+
 pub(super) fn csearch<const N: usize>(
     func: fn(&SVector<f64, N>) -> f64,
     x: &SVector<f64, N>,
@@ -15,8 +17,6 @@ pub(super) fn csearch<const N: usize>(
     SMatrix<f64, N, N>,  // G
     usize                // nfcsearch
 ) {
-    let EPS_POW_1_3: f64 = f64::EPSILON.powf(1.0 / 3.0);
-
     let (mut nfcsearch, smaxls, small) = (0_usize, 6_usize, 0.1_f64);
 
     let mut x = clamp_SVector(x, u, v);
@@ -32,12 +32,11 @@ pub(super) fn csearch<const N: usize>(
         if i != 0 { p[i - 1] = 0.0; }
         p[i] = 1.0;
 
-        let mut delta = if xmin[i] != 0.0 {
-            xmin[i].abs()
+        let delta = if xmin[i] != 0.0 {
+            EPS_POW_1_3 * xmin[i].abs()
         } else {
-            1.0
+            EPS_POW_1_3
         };
-        delta *= EPS_POW_1_3;
         let mut linesearch = true;
 
         if xmin[i] <= u[i] {
@@ -185,7 +184,7 @@ pub(super) fn csearch<const N: usize>(
 
         // println!("Grand before {xminnew:?}");
         let mut k1: Option<usize> = None;
-        for k in 0..i {
+        for k in 0..i { // i: -1 from Matlab
             let q1 = fmi
                 + g[k] * (x1[k] - xmin[k])
                 + 0.5 * G[(k, k)] * (x1[k] - xmin[k]).powi(2);
@@ -217,21 +216,21 @@ pub(super) fn csearch<const N: usize>(
             } else if x2[i] == xminnew[i] {
                 x2[i] = xmin[i];
             }
-            if let Some(k1) = k1 {
+            if let Some(k1) = k1 { // k: -1 from Matlab
                 if xminnew[k1] == x1[k1] {
                     x1[k1] = xmin[k1];
                 } else if xminnew[k1] == x2[k1] {
                     x2[k1] = xmin[k1];
                 }
             }
-            for k in 0..=i {
+            for k in 0..=i { // i: -1 from Matlab
                 g[k] += G[(i, k)] * (xminnew[i] - xmin[i]);
                 if let Some(k1) = k1 {
                     g[k] += G[(k1, k)] * (xminnew[k1] - xmin[k1]);
                 }
             }
         }
-        xmin = xminnew.clone();
+        xmin = xminnew;
         fmi = fminew;
     }
 
@@ -246,7 +245,38 @@ mod tests {
 
     use approx::assert_relative_eq;
 
-    static TOLERANCE: f64 = 1e-10;
+    static TOLERANCE: f64 = 1e-12;
+
+    #[test]
+    fn test_5() {
+        // Matlab Equivalent test
+        //
+        // clearvars; clear global;
+        // fcn = "feval"; data = "hm6"; path(path,'jones'); stop = [100];
+        // x = [0.20601133, 0.20601133, 0.45913871, 0.15954294, 0.37887001, 0.62112999]';
+        // f = -2.728684905407648;
+        // u = zeros(6,1);
+        // v = ones(6,1);
+        // hess = ones(6,6);
+        //
+        // format long g;
+        // [xmin,fmi,g,G,nfcsearch] = csearch(fcn,data,x,f,u,v,hess)
+
+        let x = SVector::<f64, 6>::from_row_slice(&[0.20601133, 0.20601133, 0.45913871, 0.15954294, 0.37887001, 0.62112999]);
+        let f = -2.728684905407648;
+        let u = SVector::<f64, 6>::from_row_slice(&[0.0; 6]);
+        let v = SVector::<f64, 6>::from_row_slice(&[1.0; 6]);
+
+        let (xmin, fmi, g, G, nfcsearch) = csearch(hm6, &x, f, &u, &v);
+
+        assert_relative_eq!(xmin.as_slice(), [0.20094711239564478, 0.1495167421889697, 0.45913871, 0.2559626362565819, 0.33160230910548794, 0.6275210838397162].as_slice(), epsilon = TOLERANCE);
+        assert_relative_eq!(fmi, -3.2661659570240427, epsilon = TOLERANCE);
+        assert_relative_eq!(g.as_slice(), SVector::<f64, 6>::from_row_slice(&[0.0114919524849414, 0.10990155244416452, -0.5975771816968102, -0.8069326056544469, 1.8713998467574906, -1.4958051414638653]).as_slice(), epsilon = TOLERANCE);
+        assert_relative_eq!(G.as_slice(), SMatrix::<f64, 6, 6>::from_row_slice(&[
+            23.12798652584253, 0.0808647397791913, 1.75381629525258, -1.90128293323017, 1.786461227928722, -0.7406818881368897, 0.0808647397791913, 18.5767212985667, -0.5909985456367552, 0.801357349181761, -0.9992079198192292, 0.18105617066417665, 1.75381629525258, -0.5909985456367552, 24.556579083791647, 3.3716142085157075, -3.5009378170621, 0.09958957165243534, -1.90128293323017, 0.801357349181761, 3.3716142085157075, 48.678472018407895, -1.0333246379474361, 0.9233898437178975, 1.786461227928722, -0.9992079198192292, -3.5009378170621, -1.0333246379474361, 89.37343113076405, 4.016171463396038, -0.7406818881368897, 0.18105617066417665, 0.09958957165243534, 0.9233898437178975, 4.016171463396038, 48.17000841044073
+        ]).as_slice(), epsilon = TOLERANCE);
+        assert_eq!(nfcsearch, 50);
+    }
 
     #[test]
     fn test_random_0() {
@@ -485,21 +515,5 @@ mod tests {
         assert_eq!(g, SVector::<f64, 6>::from_row_slice(&[48335.34155263062, 48335.334904356554, -48335.32412470991, -48335.299023819374, 96670.7221889008, 96670.67130089863]));
         assert_eq!(G, expected_G);
         assert_eq!(nfcsearch, 27);
-    }
-
-    #[test]
-    fn test_5() {
-        let x = SVector::<f64, 6>::from_row_slice(&[0.20601133, 0.20601133, 0.45913871, 0.15954294, 0.37887001, 0.62112999]);
-        let f = -2.728684905407648;
-        let u = SVector::<f64, 6>::from_row_slice(&[0.0; 6]);
-        let v = SVector::<f64, 6>::from_row_slice(&[1.0; 6]);
-
-        let (xmin, fmi, g, G, nfcsearch) = csearch(hm6, &x, f, &u, &v);
-
-        assert_relative_eq!(xmin.as_slice(), [0.20094711239564478, 0.1495167421889697, 0.45913871, 0.2559626362565819, 0.33160230910548794, 0.6275210838397162].as_slice(), epsilon = TOLERANCE);
-        assert_relative_eq!(fmi, -3.2661659570240427, epsilon = TOLERANCE);
-        assert_relative_eq!(g.as_slice(), SVector::<f64, 6>::from_row_slice(&[0.0114919524849414, 0.10990155244416452, -0.5975771816968102, -0.8069326056544469, 1.8713998467574906, -1.4958051414638653]).as_slice(), epsilon = TOLERANCE);
-        assert_relative_eq!(G.as_slice(), SMatrix::<f64, 6, 6>::from_row_slice(&[23.12798652584253, 0.08086473977917293, 1.7538162952525622, -1.9012829332301402, 1.7864612279278773, -0.7406818881503929, 0.08086473977917293, 18.576721298566618, -0.5909985456367552, 0.8013573491817589, -0.999207919819045, 0.18105617066543545, 1.7538162952525622, -0.5909985456367552, 24.556579083791647, 3.3716142085157212, -3.500937817061999, 0.09958957165513106, -1.9012829332301402, 0.8013573491817589, 3.3716142085157212, 48.67847201840795, -1.0333246379473702, 0.9233898437196009, 1.7864612279278773, -0.999207919819045, -3.500937817061999, -1.0333246379473702, 89.37343113076398, 4.016171463398785, -0.7406818881503929, 0.18105617066543545, 0.09958957165513106, 0.9233898437196009, 4.016171463398785, 48.17000841044151]).as_slice(), epsilon = TOLERANCE);
-        assert_eq!(nfcsearch, 50);
     }
 }

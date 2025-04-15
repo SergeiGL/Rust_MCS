@@ -1,5 +1,4 @@
 use nalgebra::SVector;
-use std::cmp::Ordering;
 
 
 #[inline]
@@ -26,18 +25,12 @@ pub(super) fn update_fbest_xbest_nsweepbest<const N: usize>(
 // used in basket and basket1
 #[inline]
 pub(super) fn get_sorted_indices<const N: usize>(nbasket: usize, x: &SVector<f64, N>, xmin: &Vec<SVector<f64, N>>) -> Vec<usize> {
-    let xmin_len = xmin.len();
-
     let mut indices: Vec<usize> = (0..nbasket).collect();
-    indices.sort_unstable_by(|&i, &j| {
-        match (i >= xmin_len, j >= xmin_len) {
-            (true, true) => Ordering::Equal,
-            (true, false) => Ordering::Greater,
-            (false, true) => Ordering::Less,
-            // Norm norm_squared() is used for performance as just norm() is self.norm_squared().simd_sqrt()
-            (false, false) => (x - xmin[i]).norm_squared().total_cmp(&(x - xmin[j]).norm_squared()),
-        }
-    });
+    debug_assert!(nbasket <= xmin.len());
+    indices.sort_unstable_by(|&i, &j|
+        // Norm norm_squared() is used for performance as just norm() is self.norm_squared().simd_sqrt()
+        (x - xmin[i]).norm_squared().total_cmp(&(x - xmin[j]).norm_squared())
+    );
     indices
 }
 

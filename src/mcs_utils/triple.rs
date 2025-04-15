@@ -18,13 +18,7 @@ pub(super) fn triple<const N: usize>(
     f64,               // ftrip
     SVector<f64, N>,   // g
 ) {
-    let mut nargin_lower_10 = false;
     let mut g = SVector::<f64, N>::zeros();
-
-    if setG {
-        nargin_lower_10 = true;
-        *G = SMatrix::<f64, N, N>::zeros();
-    }
 
     let mut ind: Vec<usize> = Vec::with_capacity(x.len());
     for (i, &xi) in x.iter().enumerate() {
@@ -38,8 +32,8 @@ pub(super) fn triple<const N: usize>(
     }
 
     let mut xtrip = x.clone();
-    let mut ftrip = f;
     let mut xtripnew = x.clone();
+    let mut ftrip = f;
     let mut ftripnew = f;
 
     if ind.len() <= 1 {
@@ -83,7 +77,7 @@ pub(super) fn triple<const N: usize>(
             }
         }
 
-        if nargin_lower_10 {
+        if setG {
             k1_option = None;
             if f1 <= f2 {
                 x[i] = x1[i];
@@ -91,7 +85,7 @@ pub(super) fn triple<const N: usize>(
                 x[i] = x2[i];
             }
 
-            for k in 0..i {
+            for k in 0..i { // i: -1 from matlab
                 if hess[(i, k)] != 0.0 {
                     if xtrip[k] > u[k] && xtrip[k] < v[k] && ind.contains(&k) {
                         let q1 = ftrip
@@ -128,7 +122,6 @@ pub(super) fn triple<const N: usize>(
                 }
             }
         }
-        // println!("{g:?}, {G:.15}");
         if ftripnew < ftrip {
             if x1[i] == xtripnew[i] {
                 x1[i] = xtrip[i];
@@ -136,7 +129,7 @@ pub(super) fn triple<const N: usize>(
                 x2[i] = xtrip[i];
             }
 
-            if let (true, Some(k1_val)) = (nargin_lower_10, k1_option) {
+            if let (true, Some(k1_val)) = (setG, k1_option) {
                 if xtripnew[k1_val] == x1[k1_val] {
                     x1[k1_val] = xtrip[k1_val];
                 } else {
@@ -144,19 +137,18 @@ pub(super) fn triple<const N: usize>(
                 }
             }
 
-            for k in 0..=i {
+            for k in 0..=i { // i: -1 from Matlab
                 if ind.contains(&k) {
                     g[k] += G[(i, k)] * (xtripnew[i] - xtrip[i]);
 
-                    if let (true, Some(k1_val)) = (nargin_lower_10, k1_option) {
+                    if let (true, Some(k1_val)) = (setG, k1_option) {
                         g[k] += G[(k1_val, k)] * (xtripnew[k1_val] - xtrip[k1_val]);
                     }
                 }
             }
-            xtrip = xtripnew.clone();
+            xtrip = xtripnew;
             ftrip = ftripnew;
         }
-        // println!("end {g:?}");
     }
 
     (xtrip, ftrip, g)

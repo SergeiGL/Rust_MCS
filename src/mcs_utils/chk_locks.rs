@@ -20,10 +20,11 @@ pub(crate) fn fbestloc<const N: usize>(
     nbasket0: usize,
 ) {
     // nbasket0 is as in Matlab => adjust index
-    if fmi[nbasket0 - 1] < *fbest {
-        *fbest = fmi[nbasket0 - 1];
-        *xbest = xmin[nbasket0 - 1];
-        // No need for chrelerr
+    let indx = nbasket0 - 1;
+    if fmi[indx] < *fbest {
+        *fbest = fmi[indx];
+        *xbest = xmin[indx];
+        // No need for chrelerr; it checks whether fbest is near !known! fglob
     }
 }
 

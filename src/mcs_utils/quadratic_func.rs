@@ -14,12 +14,10 @@ pub(super) fn quadmin(a: f64, b: f64, d: &[f64; 3], x0: &[f64; 3]) -> f64 {
         } else {
             b
         }
+    } else if quadpol(a, &d, &x0) < quadpol(b, &d, &x0) {
+        a
     } else {
-        if quadpol(a, &d, &x0) < quadpol(b, &d, &x0) {
-            a
-        } else {
-            b
-        }
+        b
     }
 }
 

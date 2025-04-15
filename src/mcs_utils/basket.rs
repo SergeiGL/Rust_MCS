@@ -25,6 +25,7 @@ pub(crate) fn basket<const N: usize>(
 
     if nbasket == 0 { return loc; }
 
+    // i: -1 from Matlab
     for i in get_sorted_indices(nbasket, x, xmin) {
         if fmi[i] <= *f {
             p = xmin[i] - *x;
@@ -37,7 +38,6 @@ pub(crate) fn basket<const N: usize>(
                 y2 = *x + (p.scale(2. / 3.));
                 let f2 = func(&y2);
                 *ncall += 1;
-
                 if f2 > f1.max(fmi[i]) {
                     if f1 < *f {
                         *x = y1;
@@ -73,6 +73,102 @@ pub(crate) fn basket<const N: usize>(
 mod tests {
     use super::*;
     use crate::test_functions::hm6;
+
+    #[test]
+    fn test_matlab_0() {
+        // Matlab Equivalent test
+        //
+        // clearvars;
+        // clear global;
+        //
+        // fcn = "feval"; % do not change
+        // data = "hm6"; % do not change
+        // path(path,'jones'); % do not change
+        // stop = [100]; % do not change
+        // x = [0.1, 0.11, 0.1, 0.9, 0.6, 0.3]'; % Note: column vector
+        // f = 5.;
+        // xmin = [[0.2, 0.2, 0.4, 0.15, 0.29, 0.62]; [0.2, 0.2, 0.4, 0.15, 0.29, 0.62]; [0.2, 0.2, 0.4, 0.15, 0.29, 0.62]; [0.2, 0.2, 0.4, 0.15, 0.29, 0.62];[0.2, 0.2, 0.4, 0.15, 0.29, 0.62];[0.2, 0.2, 0.4, 0.15, 0.29, 0.62];[0.2, 0.2, 0.4, 0.15, 0.29, 0.62]]'; % Note: column vector
+        // fmi = [-3.3, -10.3, -1.1, -3., -2., -2.];
+        // xbest = [0.2, 0.15, 1.47, 0.27, 0.31, 0.65];
+        // fbest = 3.3;
+        // nbasket = 6;
+        // global nsweepbest;
+        // global nsweep;
+        // nsweep = 15;
+        // nsweepbest = 1;
+        // ncall = 0;
+        //
+        // [xbest,fbest,xmin,fmi,x,f,loc,flag,ncall] = basket(fcn,data,x,f,xmin,fmi,xbest,fbest,stop,nbasket)
+        // disp(nsweepbest)
+
+        let mut x = SVector::<f64, 6>::from_row_slice(&[0.1, 0.11, 0.1, 0.9, 0.6, 0.3]);
+        let mut f = 5.;
+        let mut xmin = vec![SVector::<f64, 6>::from_row_slice(&[0.2, 0.2, 0.4, 0.15, 0.29, 0.62]); 6];
+        let mut fmi = vec![-3.3, -10.3, -1.1, -3., -2., -2.];
+        let mut xbest = SVector::<f64, 6>::from_row_slice(&[0.2, 0.15, 1.47, 0.27, 0.31, 0.65]);
+        let mut fbest = 3.3;
+        let nbasket = 6;
+        let nsweep = 15;
+        let mut nsweepbest = 1;
+        let mut ncall = 0;
+
+        let loc = basket(hm6, &mut x, &mut f, &mut xmin, &mut fmi, &mut xbest, &mut fbest, nbasket, nsweep, &mut nsweepbest, &mut ncall);
+
+        assert_eq!(xbest.as_slice(), [0.2000, 0.1500, 1.4700, 0.2700, 0.3100, 0.6500]);
+        assert_eq!(fbest, 3.3);
+        assert_eq!(xmin, vec![SVector::<f64, 6>::from_row_slice(&[0.2, 0.2, 0.4, 0.15, 0.29, 0.62]); 6]);
+        assert_eq!(fmi, vec![-3.3000, -10.3000, -1.1000, -3.0000, -2.0000, -2.0000]);
+        assert_eq!(x.as_slice(), [0.1000, 0.1100, 0.1000, 0.9000, 0.6000, 0.3000]);
+        assert_eq!(f, 5.);
+        assert_eq!((loc, ncall, nsweepbest), (false, 2, 1));
+    }
+
+    #[test]
+    fn test_matlab_1() {
+        // Matlab Equivalent test
+        // Test case for `if fmi[i] <= *f` (true), but `if f1 <= *f` (false).
+        // We need hm6(&y1) > *f.
+        //
+        // clearvars; clear global;
+        // fcn = "feval"; data = "hm6"; path(path,'jones'); stop = [100];
+        // x = [0.1, 0.1, 0.1, 0.1, 0.1, 0.1]';
+        // f = -1.0;
+        // xmin = [[0.9, 0.9, 0.9, 0.9, 0.9, 0.9]]';
+        // fmi = [-2.0];
+        // xbest = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]';
+        // fbest = 10.0;
+        // nbasket = 1;
+        // global nsweepbest;
+        // global nsweep;
+        // nsweep = 5;
+        // nsweepbest = 0;
+        // ncall = 0;
+        //
+        // format long g;
+        // [xbest,fbest,xmin,fmi,x,f,loc,flag,ncall] = basket(fcn,data,x,f,xmin,fmi,xbest,fbest,stop,nbasket)
+        // disp(nsweepbest)
+
+        let mut x = SVector::<f64, 6>::from_row_slice(&[0.1, 0.1, 0.1, 0.1, 0.1, 0.1]);
+        let mut f = -1.0;
+        let mut xmin = vec![SVector::<f64, 6>::from_row_slice(&[0.9, 0.9, 0.9, 0.9, 0.9, 0.9])];
+        let mut fmi = vec![-2.0];
+        let mut xbest = SVector::<f64, 6>::from_row_slice(&[0.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
+        let mut fbest = 10.0;
+        let nbasket = 1;
+        let nsweep = 5;
+        let mut nsweepbest = 0;
+        let mut ncall = 0;
+
+        let loc = basket(hm6, &mut x, &mut f, &mut xmin, &mut fmi, &mut xbest, &mut fbest, nbasket, nsweep, &mut nsweepbest, &mut ncall);
+
+        assert_eq!(xbest.as_slice(), [0.3666666666666667, 0.3666666666666667, 0.3666666666666667, 0.3666666666666667, 0.3666666666666667, 0.3666666666666667]);
+        assert_eq!(fbest, -1.1719579288098294);
+        assert_eq!(xmin, vec![SVector::<f64, 6>::from_row_slice(&[0.9, 0.9, 0.9, 0.9, 0.9, 0.9])]);
+        assert_eq!(fmi, vec![-2.0000]);
+        assert_eq!(x.as_slice(), [0.3666666666666667, 0.3666666666666667, 0.3666666666666667, 0.3666666666666667, 0.3666666666666667, 0.3666666666666667]);
+        assert_eq!(f, -1.1719579288098294);
+        assert_eq!((loc, ncall, nsweepbest), (true, 2, 5));
+    }
 
     #[test]
     fn test_0_immediate_return() {

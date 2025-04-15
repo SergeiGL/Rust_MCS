@@ -245,7 +245,7 @@ fn vert3<const N: usize>(
     j: usize, // as in Matlab
     x0: &SMatrix<f64, N, 3>,
     f0: &Matrix3xX<f64>,
-    i: usize,
+    i: usize, // -1 from Matlab
     k: usize,
     x1: &mut f64,
     x2: &mut f64,

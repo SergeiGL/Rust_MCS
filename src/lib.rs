@@ -125,7 +125,8 @@ where
     // stop(1) in matlab is nsweeps; always > 0 => flag won't change
 
     // record(i): -1 from Matlab; points to the best non-split box at level i; record.len() is +1 from Matlab and from what is needed due to generic_const_exprs
-    let mut record = [None; SMAX]; // not SMAX-1 as it will be hard in terms of generic_const_exprs. will account for +1 len() later
+    // record: Matlab 0 === Rust None
+    let mut record = [None; SMAX];
     // s: same as in Matlab;
     let mut s = strtsw::<SMAX>(&mut record, &level, f.row(0), nboxes);
     nsweep += 1;
@@ -235,7 +236,6 @@ where
                 }
                 nbasket = nbasket0;
             }
-            record = [None; SMAX];
             s = strtsw::<SMAX>(&mut record, &level, f.row(0), nboxes);
             if nsweep - nsweepbest >= nsweeps {
                 return Ok((xbest, fbest, xmin, fmi, ncall, ncloc, ExitFlagEnum::StopNsweepsExceeded));
