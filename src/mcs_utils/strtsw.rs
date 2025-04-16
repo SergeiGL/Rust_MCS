@@ -1,10 +1,8 @@
-use nalgebra::{Dyn, MatrixView, U1, U2};
-
 #[inline]
 pub(crate) fn strtsw<const SMAX: usize>(
     record: &mut [Option<usize>; SMAX],  // -1 from Matlab
     level: &Vec<usize>, // as in Matlab
-    f: MatrixView<f64, U1, Dyn, U1, U2>,
+    f: &Vec<f64>,
     nboxes: usize, // as from Matlab
 ) ->
     usize  // s
@@ -41,7 +39,6 @@ pub(crate) fn strtsw<const SMAX: usize>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nalgebra::Matrix2xX;
 
     #[test]
     fn test_Matlab() {
@@ -62,11 +59,11 @@ mod tests {
 
         const SMAX: usize = 10;
         let level = vec![0, 1, 2, 3, 4, 5];
-        let f = Matrix2xX::from_row_slice(&[0.5, 0.1, -1., -10., 3., 0., 0.5, 0.1, -1., -10., 3., 0.]);
+        let f = vec![0.5, 0.1, -1., -10., 3., 0.];
         let nboxes = 5;
         let mut record = [Some(1); SMAX];
 
-        let s = strtsw::<SMAX>(&mut record, &level, f.row(0), nboxes);
+        let s = strtsw::<SMAX>(&mut record, &level, &f, nboxes);
         assert_eq!((s, record), (1, [Some(1), Some(2), Some(3), Some(4), None, None, None, None, None, None, ]));
     }
 
@@ -89,11 +86,11 @@ mod tests {
 
         const SMAX: usize = 10;
         let level = vec![];
-        let f = Matrix2xX::from_row_slice(&[]);
+        let f = vec![];
         let nboxes = 0;
         let mut record = [Some(1); SMAX];
 
-        let s = strtsw::<SMAX>(&mut record, &level, f.row(0), nboxes);
+        let s = strtsw::<SMAX>(&mut record, &level, &f, nboxes);
         assert_eq!((s, record), (10, [None, None, None, None, None, None, None, None, None, None]));
     }
 
@@ -116,11 +113,11 @@ mod tests {
 
         const SMAX: usize = 10;
         let level = vec![0, 0, 0, 0, 0];
-        let f = Matrix2xX::from_row_slice(&[1.0, 2.0, 3.0, 4.0, 5.0, 1.0, 2.0, 3.0, 4.0, 5.0]);
+        let f = vec![1.0, 2.0, 3.0, 4.0, 5.0];
         let nboxes = 5;
         let mut record = [Some(1); SMAX];
 
-        let s = strtsw::<SMAX>(&mut record, &level, f.row(0), nboxes);
+        let s = strtsw::<SMAX>(&mut record, &level, &f, nboxes);
         assert_eq!((s, record), (10, [None, None, None, None, None, None, None, None, None, None]));
     }
 
@@ -143,11 +140,11 @@ mod tests {
 
         const SMAX: usize = 10;
         let level = vec![0, 3, 3, 3, 3];
-        let f = Matrix2xX::from_row_slice(&[0.0, 4.0, -2.0, 1.0, 3.0, 0.0, 4.0, -2.0, 1.0, 3.0]);
+        let f = vec![0.0, 4.0, -2.0, 1.0, 3.0];
         let nboxes = 5;
         let mut record = [Some(1); SMAX];
 
-        let s = strtsw::<SMAX>(&mut record, &level, f.row(0), nboxes);
+        let s = strtsw::<SMAX>(&mut record, &level, &f, nboxes);
         assert_eq!((s, record), (3, [None, None, Some(2), None, None, None, None, None, None, None]));
     }
 
@@ -170,12 +167,11 @@ mod tests {
 
         const SMAX: usize = 10;
         let level = vec![0, 1, 2, 3, 4, 5, 6, 7];
-        let f = Matrix2xX::from_row_slice(&[0.5, 0.1, -1.0, -10.0, 3.0, 0.1, -5.0, 2.0,
-            0.5, 0.1, -1.0, -10.0, 3.0, 0.1, -5.0, 2.0]);
+        let f = vec![0.5, 0.1, -1.0, -10.0, 3.0, 0.1, -5.0, 2.0];
         let nboxes = 4;
         let mut record = [Some(1); SMAX];
 
-        let s = strtsw::<SMAX>(&mut record, &level, f.row(0), nboxes);
+        let s = strtsw::<SMAX>(&mut record, &level, &f, nboxes);
         assert_eq!((s, record), (1, [Some(1), Some(2), Some(3), None, None, None, None, None, None, None]));
     }
 
@@ -198,12 +194,11 @@ mod tests {
 
         const SMAX: usize = 5;
         let level = vec![0, 1, 2, 3, 10, 6];
-        let f = Matrix2xX::from_row_slice(&[0.5, 0.1, -1.0, -10.0, 3.0, 0.1,
-            0.5, 0.1, -1.0, -10.0, 3.0, 0.1]);
+        let f = vec![0.5, 0.1, -1.0, -10.0, 3.0, 0.1];
         let nboxes = 4;
         let mut record = [Some(1); SMAX];
 
-        let s = strtsw::<SMAX>(&mut record, &level, f.row(0), nboxes);
+        let s = strtsw::<SMAX>(&mut record, &level, &f, nboxes);
         // Note: levels exceeding SMAX will be ignored for record purposes
         assert_eq!((s, record), (1, [Some(1), Some(2), Some(3), None, None]));
     }
@@ -227,12 +222,11 @@ mod tests {
 
         const SMAX: usize = 10;
         let level = vec![0, 2, 2, 2, 2];
-        let f = Matrix2xX::from_row_slice(&[0.0, -10.0, -5.0, -20.0, -1.0,
-            0.0, -10.0, -5.0, -20.0, -1.0]);
+        let f = vec![0.0, -10.0, -5.0, -20.0, -1.0];
         let nboxes = 5;
         let mut record = [Some(1); SMAX];
 
-        let s = strtsw::<SMAX>(&mut record, &level, f.row(0), nboxes);
+        let s = strtsw::<SMAX>(&mut record, &level, &f, nboxes);
         assert_eq!((s, record), (2, [None, Some(3), None, None, None, None, None, None, None, None]));
     }
 
@@ -255,12 +249,11 @@ mod tests {
 
         const SMAX: usize = 10;
         let level = vec![0, 4, 0, 2, 4, 2, 1];
-        let f = Matrix2xX::from_row_slice(&[0.0, 3.1, 0.0, -1.5, 2.8, -2.7, 0.5,
-            0.0, 3.1, 0.0, -1.5, 2.8, -2.7, 0.5]);
+        let f = vec![0.0, 3.1, 0.0, -1.5, 2.8, -2.7, 0.5];
         let nboxes = 7;
         let mut record = [Some(13434); SMAX];
 
-        let s = strtsw::<SMAX>(&mut record, &level, f.row(0), nboxes);
+        let s = strtsw::<SMAX>(&mut record, &level, &f, nboxes);
         assert_eq!((s, record), (1, [Some(6), Some(5), None, Some(4), None, None, None, None, None, None]));
     }
 
@@ -283,12 +276,11 @@ mod tests {
 
         const SMAX: usize = 10;
         let level = vec![0, 5, 0, 0, 0, 0];
-        let f = Matrix2xX::from_row_slice(&[0.0, 3.1, 0.0, 0.0, 0.0, 0.0,
-            0.0, 3.1, 0.0, 0.0, 0.0, 0.0]);
+        let f = vec![0.0, 3.1, 0.0, 0.0, 0.0, 0.0];
         let nboxes = 6;
         let mut record = [Some(13434); SMAX];
 
-        let s = strtsw::<SMAX>(&mut record, &level, f.row(0), nboxes);
+        let s = strtsw::<SMAX>(&mut record, &level, &f, nboxes);
         assert_eq!((s, record), (5, [None, None, None, None, Some(1), None, None, None, None, None]));
     }
 
@@ -311,11 +303,11 @@ mod tests {
 
         const SMAX: usize = 76;
         let level = vec![0, 50, 25, 75];
-        let f = Matrix2xX::from_row_slice(&[0.0, 1.0, 2.0, 3.0, 0.0, 1.0, 2.0, 3.0]);
+        let f = vec![0.0, 1.0, 2.0, 3.0, 0.0, 1.0, 2.0, 3.0];
         let nboxes = 4;
         let mut record = [Some(13434); SMAX];
 
-        let s = strtsw::<SMAX>(&mut record, &level, f.row(0), nboxes);
+        let s = strtsw::<SMAX>(&mut record, &level, &f, nboxes);
 
         let mut expected_record = [None; SMAX];
         expected_record[24] = Some(2);  // level 25, index 2

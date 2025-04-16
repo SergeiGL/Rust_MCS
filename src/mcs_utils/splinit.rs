@@ -1,6 +1,6 @@
 use crate::add_basket;
 use crate::mcs_utils::genbox::genbox;
-use nalgebra::{Matrix2xX, Matrix3xX, SMatrix, SVector};
+use nalgebra::{Matrix3xX, SMatrix, SVector};
 
 #[inline]
 pub(crate) fn splinit<const N: usize, const SMAX: usize>(
@@ -19,8 +19,8 @@ pub(crate) fn splinit<const N: usize, const SMAX: usize>(
     ichild: &mut Vec<isize>,
     isplit: &mut Vec<isize>,
     nogain: &mut Vec<bool>,
-    f: &mut Matrix2xX<f64>,
-    z: &mut Matrix2xX<f64>,
+    f: &mut [Vec<f64>; 2],
+    z: &mut [Vec<f64>; 2],
     xbest: &mut SVector<f64, N>,
     fbest: &mut f64,
     record: &mut [Option<usize>; SMAX],
@@ -52,7 +52,7 @@ pub(crate) fn splinit<const N: usize, const SMAX: usize>(
                 *xbest = x;
                 *nsweepbest = *nsweep;
             }
-        } else { f0[(1, f0_col_indx)] = f[(0, par)] }
+        } else { f0[(1, f0_col_indx)] = f[0][par] }
     }
     // Useless as splval1 and splval2 will never be used:
     // [fm,i1] = min(f0);
@@ -189,7 +189,8 @@ mod tests {
         let mut ipar = vec![Some(0); 10];
         let mut level = vec![0; 10];
         let mut ichild = vec![0; 10];
-        let mut f = Matrix2xX::<f64>::zeros(10);
+        let mut f = [vec![0.0; 10], vec![0.0; 10]];
+        let mut z = [vec![0.0; 10], vec![0.0; 10]];
         let mut xbest = SVector::<f64, 6>::from_row_slice(&[0.0; 6]);
         let mut fbest = 10.0;
         let mut record = [None; 2];
@@ -200,7 +201,7 @@ mod tests {
         let mut f0 = Matrix3xX::<f64>::zeros(0);
 
         splinit(hm6, i, s, par, &x0, &u, &v, &mut x, &mut xmin,
-                &mut fmi, &mut ipar, &mut level, &mut ichild, &mut vec![], &mut vec![], &mut f, &mut Matrix2xX::<f64>::zeros(0), &mut xbest,
+                &mut fmi, &mut ipar, &mut level, &mut ichild, &mut vec![], &mut vec![], &mut f, &mut z, &mut xbest,
                 &mut fbest, &mut record, &mut nboxes, &mut nbasket,
                 &mut nsweepbest, &mut nsweep, &mut f0);
 
@@ -212,7 +213,7 @@ mod tests {
         assert_eq!(ipar, [Some(0); 10]); // same as in Matlab
         assert_eq!(level, [0; 10]); // same as in Matlab
         assert_eq!(ichild, [0; 10]); // same as in Matlab
-        assert_eq!(f, Matrix2xX::<f64>::zeros(10));
+        assert_eq!(f, [vec![0.0; 10], vec![0.0; 10]]);
         assert_eq!(record, [None; 2]);
         assert_eq!(nboxes, 2);
         assert_eq!(nbasket, 4);
@@ -301,7 +302,8 @@ mod tests {
         let mut ipar = vec![Some(1); 10];
         let mut level = vec![1; 10];
         let mut ichild = vec![1; 10];
-        let mut f = Matrix2xX::<f64>::repeat(10, 1.0);
+        let mut f = [vec![1.0; 10], vec![1.0; 10]];
+        let mut z = [vec![1.0; 10], vec![1.0; 10]];
         let mut xbest = SVector::<f64, 6>::from_row_slice(&[1.0; 6]);
         let mut fbest = 0.0;
         let mut record = [None; 1];
@@ -312,7 +314,7 @@ mod tests {
         let mut f0 = Matrix3xX::<f64>::zeros(0);
 
         splinit(hm6, i, s, par, &x0, &u, &v, &mut x, &mut xmin,
-                &mut fmi, &mut ipar, &mut level, &mut ichild, &mut vec![], &mut vec![], &mut f, &mut Matrix2xX::<f64>::zeros(0), &mut xbest,
+                &mut fmi, &mut ipar, &mut level, &mut ichild, &mut vec![], &mut vec![], &mut f, &mut z, &mut xbest,
                 &mut fbest, &mut record, &mut nboxes, &mut nbasket,
                 &mut nsweepbest, &mut nsweep, &mut f0);
 
@@ -324,7 +326,7 @@ mod tests {
         assert_eq!(ipar, [Some(1); 10]); // same as in Rust
         assert_eq!(level, [1; 10]);
         assert_eq!(ichild, [1; 10]);
-        assert_eq!(f, Matrix2xX::<f64>::repeat(10, 1.0));
+        assert_eq!(f, [vec![1.0; 10], vec![1.0; 10]]);
         assert_eq!(record, [None]);
         assert_eq!(nboxes, 3);
         assert_eq!(nbasket, 6);
@@ -410,7 +412,8 @@ mod tests {
         let mut ipar = vec![Some(0); 10];
         let mut level = vec![0; 10];
         let mut ichild = vec![1; 10];
-        let mut f = Matrix2xX::<f64>::zeros(10);
+        let mut f = [vec![0.0; 10], vec![0.0; 10]];
+        let mut z = [vec![0.0; 10], vec![0.0; 10]];
         let mut xbest = SVector::<f64, 6>::from_row_slice(&[0.0; 6]);
         let mut fbest = 0.0;
         let mut record = [None; 9];
@@ -421,14 +424,14 @@ mod tests {
         let mut f0 = Matrix3xX::<f64>::zeros(0);
 
         splinit(hm6, i, s, par, &x0, &u, &v, &mut x, &mut xmin,
-                &mut fmi, &mut ipar, &mut level, &mut ichild, &mut vec![], &mut vec![], &mut f, &mut Matrix2xX::<f64>::zeros(0), &mut xbest,
+                &mut fmi, &mut ipar, &mut level, &mut ichild, &mut vec![], &mut vec![], &mut f, &mut z, &mut xbest,
                 &mut fbest, &mut record, &mut nboxes, &mut nbasket,
                 &mut nsweepbest, &mut nsweep, &mut f0);
 
-        let expected_f = Matrix2xX::<f64>::from_row_slice(&[
-            0.0, 0.0, -8.679282323749578e-298, -8.679282323749578e-298, 0.0, 0.0, -8.679282323749578e-298, 0.0, 0.0, 0.0,
-            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-        ]);
+        let expected_f = [
+            vec![0.0, 0.0, -8.679282323749578e-298, -8.679282323749578e-298, 0.0, 0.0, -8.679282323749578e-298, 0.0, 0.0, 0.0],
+            vec![0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        ];
 
         assert_eq!(xbest, SVector::<f64, 6>::from_row_slice(&[1., 5., 5., 5., 5., 5., ]));
         assert_eq!(fbest, -8.679282323749578e-298);

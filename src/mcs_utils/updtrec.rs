@@ -1,7 +1,5 @@
-use nalgebra::{Dyn, MatrixView, U1, U2};
-
 #[inline]
-pub(crate) fn updtrec<const SMAX: usize>(j: usize, s: usize, f: MatrixView<f64, U1, Dyn, U1, U2>, record: &mut [Option<usize>; SMAX]) {
+pub(crate) fn updtrec<const SMAX: usize>(j: usize, s: usize, f: &Vec<f64>, record: &mut [Option<usize>; SMAX]) {
     // s: as in Matlab
     // j: -1 from Matlab
     // record: -1 from Matlab in terms of values; record.len(): +1 from Matlab
@@ -16,7 +14,6 @@ pub(crate) fn updtrec<const SMAX: usize>(j: usize, s: usize, f: MatrixView<f64, 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nalgebra::Matrix2xX;
 
     #[test]
     fn test_0() {
@@ -35,10 +32,10 @@ mod tests {
 
         let j = 3;
         let s = 3;
-        let f = Matrix2xX::<f64>::from_row_slice(&[-0.5, -0.6, -0.7, -2.0, -4.0, -0.5, -0.6, -0.7, -2.0, -4.0]);
+        let f = vec![-0.5, -0.6, -0.7, -2.0, -4.0];
         let mut record = [Some(0), Some(1), Some(2), Some(3), Some(4), None];
 
-        updtrec(j, s, f.row(0), &mut record);
+        updtrec(j, s, &f, &mut record);
         assert_eq!(record, [Some(0), Some(1), Some(3), Some(3), Some(4), None]);
     }
 
@@ -59,10 +56,10 @@ mod tests {
 
         let j = 2;
         let s = 2;
-        let f = Matrix2xX::<f64>::from_row_slice(&[-0.5, -0.6, -0.7, -2.0, -4.0, -0.5, -0.6, -0.7, -2.0, -4.0]);
+        let f = vec![-0.5, -0.6, -0.7, -2.0, -4.0];
         let mut record = [Some(0), Some(0), Some(0), Some(0), Some(0), None];
 
-        updtrec(j, s, f.row(0), &mut record);
+        updtrec(j, s, &f, &mut record);
         assert_eq!(record, [Some(0), Some(2), Some(0), Some(0), Some(0), None]);
     }
 
@@ -83,10 +80,10 @@ mod tests {
 
         let j = 3;
         let s = 2;
-        let f = Matrix2xX::<f64>::from_row_slice(&[-0.5, -0.6, -0.7, -2.0, -1.0, -0.5, -0.6, -0.7, -2.0, -1.0]);
+        let f = vec![-0.5, -0.6, -0.7, -2.0, -1.0];
         let mut record = [Some(0), Some(0), Some(2), Some(0), Some(0), None];
 
-        updtrec(j, s, f.row(0), &mut record);
+        updtrec(j, s, &f, &mut record);
         assert_eq!(record, [Some(0), Some(3), Some(2), Some(0), Some(0), None]);
     }
 
@@ -107,10 +104,10 @@ mod tests {
 
         let j = 2;
         let s = 2;
-        let f = Matrix2xX::<f64>::from_row_slice(&[-0.5, -0.6, -0.7, -2.0, -4.0, -0.5, -0.6, -0.7, -2.0, -4.0]);
+        let f = vec![-0.5, -0.6, -0.7, -2.0, -4.0];
         let mut record = [Some(0), Some(0), Some(2), Some(0), Some(0), None];
 
-        updtrec(j, s, f.row(0), &mut record);
+        updtrec(j, s, &f, &mut record);
         assert_eq!(record, [Some(0), Some(2), Some(2), Some(0), Some(0), None]);
     }
 
@@ -131,10 +128,10 @@ mod tests {
 
         let j = 3;
         let s = 3;
-        let f = Matrix2xX::<f64>::from_row_slice(&[-0.5, -0.6, -0.7, -2.0, -1.0, -0.5, -0.6, -0.7, -2.0, -1.0]);
+        let f = vec![-0.5, -0.6, -0.7, -2.0, -1.0];
         let mut record = [Some(0), Some(0), Some(2), Some(0), Some(0), None];
 
-        updtrec(j, s, f.row(0), &mut record);
+        updtrec(j, s, &f, &mut record);
         assert_eq!(record, [Some(0), Some(0), Some(3), Some(0), Some(0), None]);
     }
 
@@ -155,10 +152,10 @@ mod tests {
 
         let j = 3;
         let s = 3;
-        let f = Matrix2xX::<f64>::from_row_slice(&[-0.5, -0.6, -0.7, -2.0, -1.0, -0.5, -0.6, -0.7, -2.0, -1.0]);
+        let f = vec![-0.5, -0.6, -0.7, -2.0, -1.0];
         let mut record = [None; 6];
 
-        updtrec(j, s, f.row(0), &mut record);
+        updtrec(j, s, &f, &mut record);
         assert_eq!(record, [None, None, Some(3), None, None, None]);
     }
 }

@@ -1,5 +1,5 @@
 use crate::mcs_utils::{add_basket::add_basket, genbox::genbox, sign::sign};
-use nalgebra::{Matrix2xX, SVector};
+use nalgebra::SVector;
 
 const SQRT_5: f64 = 2.2360679774997896964091736687312;
 
@@ -19,8 +19,8 @@ pub(crate) fn split<const N: usize, const SMAX: usize>(
     ichild: &mut Vec<isize>,
     isplit: &mut Vec<isize>,
     nogain: &mut Vec<bool>,
-    f: &mut Matrix2xX<f64>,
-    z: &mut Matrix2xX<f64>,
+    f: &mut [Vec<f64>; 2],
+    z: &mut [Vec<f64>; 2],
     xbest: &mut SVector<f64, N>,
     fbest: &mut f64,
     record: &mut [Option<usize>; SMAX],
@@ -31,52 +31,52 @@ pub(crate) fn split<const N: usize, const SMAX: usize>(
 ) {
     let mut x = x.clone();
     x[i] = z1;
-    f[(1, par)] = func(&x);
+    f[1][par] = func(&x);
 
-    if f[(1, par)] < *fbest {
-        *fbest = f[(1, par)];
+    if f[1][par] < *fbest {
+        *fbest = f[1][par];
         *xbest = x;
         *nsweepbest = *nsweep;
     }
 
     if s + 1 < SMAX {
-        if f[(0, par)] <= f[(1, par)] {
-            genbox(nboxes, ipar, level, ichild, isplit, nogain, f, z, par, s + 1, 1, f[(0, par)], record);
+        if f[0][par] <= f[1][par] {
+            genbox(nboxes, ipar, level, ichild, isplit, nogain, f, z, par, s + 1, 1, f[0][par], record);
             if s + 2 < SMAX {
-                genbox(nboxes, ipar, level, ichild, isplit, nogain, f, z, par, s + 2, 2, f[(1, par)], record);
+                genbox(nboxes, ipar, level, ichild, isplit, nogain, f, z, par, s + 2, 2, f[1][par], record);
             } else {
                 x[i] = z1;
-                add_basket(nbasket, xmin, fmi, &x, f[(1, par)]);
+                add_basket(nbasket, xmin, fmi, &x, f[1][par]);
             }
         } else {
             if s + 2 < SMAX {
-                genbox(nboxes, ipar, level, ichild, isplit, nogain, f, z, par, s + 2, 1, f[(0, par)], record);
+                genbox(nboxes, ipar, level, ichild, isplit, nogain, f, z, par, s + 2, 1, f[0][par], record);
             } else {
                 x[i] = z0;
-                add_basket(nbasket, xmin, fmi, &x, f[(0, par)]);
+                add_basket(nbasket, xmin, fmi, &x, f[0][par]);
             }
 
-            genbox(nboxes, ipar, level, ichild, isplit, nogain, f, z, par, s + 1, 2, f[(1, par)], record);
+            genbox(nboxes, ipar, level, ichild, isplit, nogain, f, z, par, s + 1, 2, f[1][par], record);
         }
 
         if z1 != y[i] {
             if (z1 - y[i]).abs() > (z1 - z0).abs() * (3.0 - SQRT_5) * 0.5 {
-                genbox(nboxes, ipar, level, ichild, isplit, nogain, f, z, par, s + 1, 3, f[(1, par)], record);
+                genbox(nboxes, ipar, level, ichild, isplit, nogain, f, z, par, s + 1, 3, f[1][par], record);
             } else {
                 if s + 2 < SMAX {
-                    genbox(nboxes, ipar, level, ichild, isplit, nogain, f, z, par, s + 2, 3, f[(1, par)], record);
+                    genbox(nboxes, ipar, level, ichild, isplit, nogain, f, z, par, s + 2, 3, f[1][par], record);
                 } else {
                     x[i] = z1;
-                    add_basket(nbasket, xmin, fmi, &x, f[(1, par)]);
+                    add_basket(nbasket, xmin, fmi, &x, f[1][par]);
                 }
             }
         }
     } else {
         x[i] = z0;
-        add_basket(nbasket, xmin, fmi, &x, f[(0, par)]);
+        add_basket(nbasket, xmin, fmi, &x, f[0][par]);
 
         x[i] = z1;
-        add_basket(nbasket, xmin, fmi, &x, f[(1, par)]);
+        add_basket(nbasket, xmin, fmi, &x, f[1][par]);
     }
 }
 
@@ -173,7 +173,8 @@ mod tests {
         let mut ipar = vec![Some(0); 10];
         let mut level = vec![0; 10];
         let mut ichild = vec![-1; 10];
-        let mut f = Matrix2xX::<f64>::repeat(10, 1.0);
+        let mut f = [vec![1.0; 10], vec![1.0; 10]];
+        let mut z = [vec![1.0; 10], vec![1.0; 10]];
         let mut xbest = SVector::<f64, 6>::from_row_slice(&[0.0; 6]);
         let mut fbest = 10.0;
         let mut record = [Some(0), Some(1), Some(2), Some(3), Some(4), Some(5), Some(6), None];
@@ -183,13 +184,13 @@ mod tests {
         let mut nsweep = 1_usize;
 
         split(hm6, i, s, par, &x, &y, z0, z1, &mut xmin, &mut fmi, &mut ipar, &mut level,
-              &mut ichild, &mut vec![], &mut vec![], &mut f, &mut Matrix2xX::<f64>::zeros(0), &mut xbest, &mut fbest, &mut record, &mut nboxes,
+              &mut ichild, &mut vec![], &mut vec![], &mut f, &mut z, &mut xbest, &mut fbest, &mut record, &mut nboxes,
               &mut nbasket, &mut nsweepbest, &mut nsweep);
 
-        let expected_f = Matrix2xX::<f64>::from_row_slice(&[
-            1.0, 1.0, -9.93492055883314e-188, -9.93492055883314e-188, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
-            1.0, 1.0, 1.0, 1.0, 1.0, -9.93492055883314e-188, 1.0, 1.0, 1.0, 1.0
-        ]);
+        let expected_f = [
+            vec![1.0, 1.0, -9.93492055883314e-188, -9.93492055883314e-188, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            vec![1.0, 1.0, 1.0, 1.0, 1.0, -9.93492055883314e-188, 1.0, 1.0, 1.0, 1.0]
+        ];
 
         assert_eq!(xmin, [SVector::<f64, 6>::from_row_slice(&[-10., -20., -30., -40., -50., -60.]), SVector::<f64, 6>::from_row_slice(&[-11., -21., -31., -41., -51., -61.])]);
         assert_eq!(fmi, [0., 1., 2., 3., 4., 5.]);
@@ -264,15 +265,16 @@ mod tests {
         let i = 1_usize;
         let s = 3_usize;
         let par = 3_usize;
-        let mut x = SVector::<f64, 6>::from_row_slice(&[10.0, 9.0, 8.0, 7.0, 6.0, 5.0]);
-        let mut y = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let x = SVector::<f64, 6>::from_row_slice(&[10.0, 9.0, 8.0, 7.0, 6.0, 5.0]);
+        let y = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
         let (z0, z1) = (5.1, -5.2);
         let mut xmin = vec![SVector::<f64, 6>::from_row_slice(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0])];
         let mut fmi = vec![-1.0, -2.0, -3.0, -4.0, -5.0, -6.0];
         let mut ipar = vec![Some(1); 6];
         let mut level = vec![1; 6];
         let mut ichild = vec![1; 6];
-        let mut f = Matrix2xX::<f64>::repeat(10, 1.0);
+        let mut f = [vec![1.0; 10], vec![1.0; 10]];
+        let mut z = [vec![1.0; 10], vec![1.0; 10]];
         let mut xbest = SVector::<f64, 6>::from_row_slice(&[1.0; 6]);
         let mut fbest = 0.0;
         let mut record = [Some(1), Some(2), Some(3), Some(4), Some(5), Some(6), Some(7)];
@@ -281,14 +283,14 @@ mod tests {
         let mut nsweepbest = 3_usize;
         let mut nsweep = 1_usize;
 
-        split(hm6, i, s, par, &mut x, &mut y, z0, z1, &mut xmin, &mut fmi, &mut ipar, &mut level,
-              &mut ichild, &mut vec![], &mut vec![], &mut f, &mut Matrix2xX::<f64>::zeros(0), &mut xbest, &mut fbest, &mut record, &mut nboxes,
+        split(hm6, i, s, par, &x, &y, z0, z1, &mut xmin, &mut fmi, &mut ipar, &mut level,
+              &mut ichild, &mut vec![], &mut vec![], &mut f, &mut z, &mut xbest, &mut fbest, &mut record, &mut nboxes,
               &mut nbasket, &mut nsweepbest, &mut nsweep);
 
-        let expected_f = Matrix2xX::<f64>::from_row_slice(&[
-            1.0, 1.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0,
-            1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0
-        ]);
+        let expected_f = [
+            vec![1.0, 1.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            vec![1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+        ];
 
         assert_eq!(xmin, [SVector::<f64, 6>::from_row_slice(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0])]);
         assert_eq!(fmi, [-1.0, -2.0, -3.0, -4.0, -5.0, -6.0]);

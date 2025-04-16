@@ -1,5 +1,5 @@
 use crate::mcs_utils::{split::split1, updtf::updtf};
-use nalgebra::{Matrix2xX, Matrix3xX, SMatrix, SVector};
+use nalgebra::{Matrix3xX, SMatrix, SVector};
 
 // l is always full of 1 (2 in Matlab);
 // L is always full of 2 (3 in Matlab)
@@ -14,8 +14,8 @@ pub(crate) fn vertex<const N: usize>(
     ipar: &Vec<Option<usize>>,
     isplit: &Vec<isize>,
     ichild: &Vec<isize>,
-    z: &Matrix2xX<f64>,
-    f: &Matrix2xX<f64>,
+    z: &[Vec<f64>; 2],
+    f: &[Vec<f64>; 2],
     n0: &mut [usize; N],
     x: &mut SVector<f64, N>,
     y: &mut [f64; N],
@@ -32,7 +32,7 @@ pub(crate) fn vertex<const N: usize>(
     f1.fill(0.0);
     f2.fill(0.0);
 
-    let mut fold = f[(0, par)];
+    let mut fold = f[0][par];
     let mut m = par;
 
     while m != 0 {  // -1 from Matlab as j is -1 from Matlab
@@ -47,29 +47,29 @@ pub(crate) fn vertex<const N: usize>(
 
         let ichild_m = ichild[m]; // as in Matlab
         if ichild_m == 1 {
-            if x[i] == f64::INFINITY || x[i] == z[(0, ipar_m)] {
-                vert1(z[(1, ipar_m)], f[(1, ipar_m)], &mut x1[i], &mut x2[i], &mut f1[i], &mut f2[i]);
-                x[i] = z[(0, ipar_m)];
+            if x[i] == f64::INFINITY || x[i] == z[0][ipar_m] {
+                vert1(z[1][ipar_m], f[1][ipar_m], &mut x1[i], &mut x2[i], &mut f1[i], &mut f2[i]);
+                x[i] = z[0][ipar_m];
             } else {
-                fold = updtf(i, &x1, &x2, f1, f2, fold, f[(0, ipar_m)]);
-                vert2(x[i], z[(0, ipar_m)], z[(1, ipar_m)], f[(0, ipar_m)], f[(1, ipar_m)], &mut x1[i], &mut x2[i], &mut f1[i], &mut f2[i]);
+                fold = updtf(i, &x1, &x2, f1, f2, fold, f[0][ipar_m]);
+                vert2(x[i], z[0][ipar_m], z[1][ipar_m], f[0][ipar_m], f[1][ipar_m], &mut x1[i], &mut x2[i], &mut f1[i], &mut f2[i]);
             }
         } else if ichild_m >= 2 {
-            fold = updtf(i, &x1, &x2, f1, f2, fold, f[(0, ipar_m)]);
-            if x[i] == f64::INFINITY || x[i] == z[(1, ipar_m)] {
-                vert1(z[(0, ipar_m)], f[(0, ipar_m)], &mut x1[i], &mut x2[i], &mut f1[i], &mut f2[i]);
-                x[i] = z[(1, ipar_m)];
+            fold = updtf(i, &x1, &x2, f1, f2, fold, f[0][ipar_m]);
+            if x[i] == f64::INFINITY || x[i] == z[1][ipar_m] {
+                vert1(z[0][ipar_m], f[0][ipar_m], &mut x1[i], &mut x2[i], &mut f1[i], &mut f2[i]);
+                x[i] = z[1][ipar_m];
             } else {
-                vert2(x[i], z[(1, ipar_m)], z[(0, ipar_m)], f[(1, ipar_m)], f[(0, ipar_m)], &mut x1[i], &mut x2[i], &mut f1[i], &mut f2[i]);
+                vert2(x[i], z[1][ipar_m], z[0][ipar_m], f[1][ipar_m], f[0][ipar_m], &mut x1[i], &mut x2[i], &mut f1[i], &mut f2[i]);
             }
         };
 
         if 1 <= ichild[m] && ichild[m] <= 2 && y[i] == f64::INFINITY {
             y[i] = split1(
-                z[(0, ipar_m)],
-                z[(1, ipar_m)],
-                f[(0, ipar_m)],
-                f[(1, ipar_m)],
+                z[0][ipar_m],
+                z[1][ipar_m],
+                f[0][ipar_m],
+                f[1][ipar_m],
             );
         };
 
@@ -113,8 +113,8 @@ pub(crate) fn vertex<const N: usize>(
             let k = if isplit[ipar_m] < 0 {
                 i
             } else {
-                debug_assert!(z[(1, ipar_m)].abs() >= 1.);
-                z[(1, ipar_m)] as usize - 1
+                debug_assert!(z[1][ipar_m].abs() >= 1.);
+                z[1][ipar_m] as usize - 1
             };
 
             if j1 != 1 || (x[i] != f64::INFINITY && x[i] != x0[(i, 1)]) {
@@ -324,8 +324,8 @@ mod tests {
         let ipar = vec![Some(0)];
         let isplit = vec![-1];
         let ichild = vec![1];
-        let z = Matrix2xX::<f64>::from_row_slice(&[0.0, f64::INFINITY]);
-        let f = Matrix2xX::<f64>::from_row_slice(&[-0.5, 0.0]);
+        let z = [vec![0.0], vec![f64::INFINITY]];
+        let f = [vec![-0.5], vec![0.0]];
         let mut n0 = [0; 6];
         let mut x = SVector::<f64, 6>::zeros();
         let mut y = [0.; 6];
@@ -404,8 +404,8 @@ mod tests {
         let ipar = vec![Some(3), Some(1)];
         let isplit = vec![2, -3];
         let ichild = vec![-1, 2];
-        let z = Matrix2xX::<f64>::from_row_slice(&[0.2, 0.3, 0.4, 0.5]);
-        let f = Matrix2xX::<f64>::from_row_slice(&[-0.3, -0.4, -0.5, -0.6]);
+        let z = [vec![0.2, 0.3], vec![0.4, 0.5]];
+        let f = [vec![-0.3, -0.4], vec![-0.5, -0.6]];
         let mut n0 = [0; 4];
         let mut x = SVector::<f64, 4>::zeros();
         let mut y = [0.; 4];
@@ -484,8 +484,8 @@ mod tests {
         let ipar = vec![Some(4), Some(5), Some(1)];
         let isplit = vec![1, 3, -5];
         let ichild = vec![-5, -3, -1];
-        let z = Matrix2xX::<f64>::from_row_slice(&[2., 1., 2., 3., 4., 5.]);
-        let f = Matrix2xX::<f64>::from_row_slice(&[2., 1., 2., 3., 4., 5.]);
+        let z = [vec![2., 1., 2.], vec![3., 4., 5.]];
+        let f = [vec![2., 1., 2.], vec![3., 4., 5.]];
         let mut n0 = [0; 5];
         let mut x = SVector::<f64, 5>::zeros();
         let mut y = [0.; 5];
@@ -559,8 +559,8 @@ mod tests {
         let ipar = vec![Some(3), Some(2), Some(1)];
         let isplit = vec![1, 0, 2];
         let ichild = vec![2, 1, 3];
-        let z = Matrix2xX::<f64>::from_row_slice(&[0.25, 0.55, 0.75, 0.35, 0.65, 0.85]);
-        let f = Matrix2xX::<f64>::from_row_slice(&[0.30, 0.40, 0.50, 0.35, 0.45, 0.55]);
+        let z = [vec![0.25, 0.55, 0.75], vec![0.35, 0.65, 0.85]];
+        let f = [vec![0.30, 0.40, 0.50], vec![0.35, 0.45, 0.55]];
         let mut n0 = [0; 2];
         let mut x = SVector::<f64, 2>::zeros();
         let mut y = [0.; 2];
@@ -636,8 +636,8 @@ mod tests {
         let ipar = vec![Some(3), Some(1), Some(0)];
         let isplit = vec![-1, 2, 0];
         let ichild = vec![1, -4, 2];
-        let z = Matrix2xX::<f64>::from_row_slice(&[0.1, 0.2, 0.3, 0.4, 0.5, 0.6]);
-        let f = Matrix2xX::<f64>::from_row_slice(&[-0.1, -0.2, -0.3, -0.4, -0.5, -0.6]);
+        let z = [vec![0.1, 0.2, 0.3], vec![0.4, 0.5, 0.6]];
+        let f = [vec![-0.1, -0.2, -0.3], vec![-0.4, -0.5, -0.6]];
         let mut n0 = [0; 3];
         let mut x = SVector::<f64, 3>::zeros();
         let mut y = [0.; 3];
@@ -721,8 +721,8 @@ mod tests {
         let ipar = vec![Some(2), Some(1), Some(3), Some(4), Some(2)];
         let isplit = vec![1, 3, 2, 3, 1];
         let ichild = vec![3, 2, 3, 1, 5];
-        let z = Matrix2xX::<f64>::from_row_slice(&[1., 2., 3., 4., 5., 1., 2., 3., 4., 5., ]);
-        let f = Matrix2xX::<f64>::from_row_slice(&[0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.10]);
+        let z = [vec![1., 2., 3., 4., 5.], vec![1., 2., 3., 4., 5., ]];
+        let f = [vec![0.01, 0.02, 0.03, 0.04, 0.05], vec![0.06, 0.07, 0.08, 0.09, 0.10]];
         let mut n0 = [0; 7];
         let mut x = SVector::<f64, 7>::zeros();
         let mut y = [0.; 7];
@@ -806,8 +806,8 @@ mod tests {
         let ipar = vec![Some(2), Some(1), Some(3), Some(4), Some(2)];
         let isplit = vec![1, 3, 2, 3, 1];
         let ichild = vec![-3, -2, -3, -1, -5];
-        let z = Matrix2xX::<f64>::from_row_slice(&[1., 2., 3., 4., 5., 1., 2., 3., 4., 5., ]);
-        let f = Matrix2xX::<f64>::from_row_slice(&[0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.10]);
+        let z = [vec![1., 2., 3., 4., 5.], vec![1., 2., 3., 4., 5., ]];
+        let f = [vec![0.01, 0.02, 0.03, 0.04, 0.05], vec![0.06, 0.07, 0.08, 0.09, 0.10]];
         let mut n0 = [0; 7];
         let mut x = SVector::<f64, 7>::zeros();
         let mut y = [0.; 7];

@@ -1,6 +1,6 @@
 #![allow(non_snake_case)]
 
-use nalgebra::{Const, DimMin, Matrix2xX, SMatrix, SVector};
+use nalgebra::{Const, DimMin, SMatrix, SVector};
 
 #[cfg(test)]
 mod test_functions;
@@ -81,8 +81,8 @@ where
     let mut isplit = vec![0_isize; INIT_VEC_CAPACITY]; // can be any negative or positive integer number
     let mut level = vec![0_usize; INIT_VEC_CAPACITY]; // the same numeration as in matlab
     let mut ipar = vec![Some(0); INIT_VEC_CAPACITY]; // as in Matlab; can be >=0 or -1 (None)
-    let mut f = Matrix2xX::<f64>::zeros(INIT_VEC_CAPACITY);
-    let mut z = Matrix2xX::<f64>::zeros(INIT_VEC_CAPACITY);
+    let mut f = [vec![0_f64; INIT_VEC_CAPACITY], vec![0_f64; INIT_VEC_CAPACITY]];
+    let mut z = [vec![0_f64; INIT_VEC_CAPACITY], vec![0_f64; INIT_VEC_CAPACITY]];
     let mut ichild = vec![0_isize; INIT_VEC_CAPACITY]; // can be negative
     let mut nogain = vec![false; INIT_VEC_CAPACITY];
 
@@ -128,7 +128,7 @@ where
     // record: Matlab 0 === Rust None
     let mut record = [None; SMAX];
     // s: same as in Matlab;
-    let mut s = strtsw::<SMAX>(&mut record, &level, f.row(0), nboxes);
+    let mut s = strtsw::<SMAX>(&mut record, &level, &f[0], nboxes);
     nsweep += 1;
 
     // VARIABLES USED LATER
@@ -150,7 +150,7 @@ where
 
         let splt = if s > 2 * N * (n0.iter().min().expect("n0 has length N") + 1) {
             // Splitting index and splitting value z[1][par] for splitting by rank
-            (isplit[par], z[(1, par)]) = splrnk(&n0, &p, &x, &y);
+            (isplit[par], z[1][par]) = splrnk(&n0, &p, &x, &y);
             true
         } else {
             // Box has already been marked as not eligible for splitting by expected gain
@@ -158,8 +158,8 @@ where
                 false
             } else {
                 // Splitting by expected gain
-                (e_min, isplit[par], z[(1, par)]) = exgain(&n0, &x, &y, &x1, &x2, f[(0, par)], &f0, &f1, &f2);
-                let fexp = f[(0, par)] + e_min;
+                (e_min, isplit[par], z[1][par]) = exgain(&n0, &x, &y, &x1, &x2, f[0][par], &f0, &f1, &f2);
+                let fexp = f[0][par] + e_min;
                 if fexp < fbest {
                     true
                 } else {
@@ -174,17 +174,17 @@ where
             let i = isplit[par] as usize - 1; // i is used only for indexing => smart to -1 right away
 
             level[par] = 0;
-            if z[(1, par)] == f64::INFINITY {
+            if z[1][par] == f64::INFINITY {
                 m += 1;
-                z[(1, par)] = m as f64;
+                z[1][par] = m as f64;
                 splinit::<N, SMAX>(func, i, s, par, &x0, u, v, &x, &mut xmin, &mut fmi,
                                    &mut ipar, &mut level, &mut ichild, &mut isplit, &mut nogain, &mut f, &mut z,
                                    &mut xbest, &mut fbest, &mut record, &mut nboxes, &mut nbasket, &mut nsweepbest,
                                    &mut nsweep, &mut f0);
                 ncall += 2; // splinit does exactly 2 calls
             } else {
-                z[(0, par)] = x[i];
-                split::<N, SMAX>(func, i, s, par, &x, &mut y, z[(0, par)], z[(1, par)], &mut xmin, &mut fmi, &mut ipar, &mut level,
+                z[0][par] = x[i];
+                split::<N, SMAX>(func, i, s, par, &x, &mut y, z[0][par], z[1][par], &mut xmin, &mut fmi, &mut ipar, &mut level,
                                  &mut ichild, &mut isplit, &mut nogain, &mut f, &mut z, &mut xbest, &mut fbest, &mut record, &mut nboxes,
                                  &mut nbasket, &mut nsweepbest, &mut nsweep);
                 ncall += 1; // split does exactly 1 call
@@ -192,10 +192,10 @@ where
         } else {
             if s + 1 < SMAX {
                 level[par] = s + 1;
-                updtrec(par, s + 1, f.row(0), &mut record);
+                updtrec(par, s + 1, &f[0], &mut record);
             } else {
                 level[par] = 0;
-                add_basket(&mut nbasket, &mut xmin, &mut fmi, &x, f[(0, par)]);
+                add_basket(&mut nbasket, &mut xmin, &mut fmi, &x, f[0][par]);
             }
         }
 
@@ -242,7 +242,7 @@ where
                 }
                 nbasket = nbasket0;
             }
-            s = strtsw::<SMAX>(&mut record, &level, f.row(0), nboxes);
+            s = strtsw::<SMAX>(&mut record, &level, &f[0], nboxes);
             if nsweep - nsweepbest >= nsweeps {
                 return Ok((xbest, fbest, xmin, fmi, ncall, ncloc, ExitFlagEnum::StopNsweepsExceeded));
             }
