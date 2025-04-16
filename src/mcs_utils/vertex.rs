@@ -16,13 +16,13 @@ pub(crate) fn vertex<const N: usize>(
     ichild: &Vec<isize>,
     z: &Matrix2xX<f64>,
     f: &Matrix2xX<f64>,
-    n0: &mut SVector<usize, N>,
+    n0: &mut [usize; N],
     x: &mut SVector<f64, N>,
-    y: &mut SVector<f64, N>,
-    x1: &mut SVector<f64, N>,
-    x2: &mut SVector<f64, N>,
-    f1: &mut SVector<f64, N>,
-    f2: &mut SVector<f64, N>,
+    y: &mut [f64; N],
+    x1: &mut [f64; N],
+    x2: &mut [f64; N],
+    f1: &mut [f64; N],
+    f2: &mut [f64; N],
 ) {
     n0.fill(0);
     x.fill(f64::INFINITY);
@@ -326,17 +326,17 @@ mod tests {
         let ichild = vec![1];
         let z = Matrix2xX::<f64>::from_row_slice(&[0.0, f64::INFINITY]);
         let f = Matrix2xX::<f64>::from_row_slice(&[-0.5, 0.0]);
-        let mut n0 = SVector::<usize, 6>::zeros();
+        let mut n0 = [0; 6];
         let mut x = SVector::<f64, 6>::zeros();
-        let mut y = SVector::<f64, 6>::zeros();
-        let mut x1 = SVector::<f64, 6>::zeros();
-        let mut x2 = SVector::<f64, 6>::zeros();
-        let mut f1 = SVector::<f64, 6>::zeros();
-        let mut f2 = SVector::<f64, 6>::zeros();
+        let mut y = [0.; 6];
+        let mut x1 = [0.; 6];
+        let mut x2 = [0.; 6];
+        let mut f1 = [0.; 6];
+        let mut f2 = [0.; 6];
 
         vertex(j, &u, &v, &v1, &x0, &f0, &ipar, &isplit, &ichild, &z, &f, &mut n0, &mut x, &mut y, &mut x1, &mut x2, &mut f1, &mut f2);
 
-        assert_eq!(n0.as_slice(), [0, 0, 0, 0, 0, 0]);
+        assert_eq!(n0, [0, 0, 0, 0, 0, 0]);
         assert_eq!(x.as_slice(), [0.5, 0.5, 0.5, 0.5, 0.5, 0.5]);
         assert_eq!(y.as_slice(), [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]);
         assert_eq!(x1.as_slice(), [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
@@ -406,13 +406,13 @@ mod tests {
         let ichild = vec![-1, 2];
         let z = Matrix2xX::<f64>::from_row_slice(&[0.2, 0.3, 0.4, 0.5]);
         let f = Matrix2xX::<f64>::from_row_slice(&[-0.3, -0.4, -0.5, -0.6]);
-        let mut n0 = SVector::<usize, 4>::zeros();
+        let mut n0 = [0; 4];
         let mut x = SVector::<f64, 4>::zeros();
-        let mut y = SVector::<f64, 4>::zeros();
-        let mut x1 = SVector::<f64, 4>::zeros();
-        let mut x2 = SVector::<f64, 4>::zeros();
-        let mut f1 = SVector::<f64, 4>::zeros();
-        let mut f2 = SVector::<f64, 4>::zeros();
+        let mut y = [0.; 4];
+        let mut x1 = [0.; 4];
+        let mut x2 = [0.; 4];
+        let mut f1 = [0.; 4];
+        let mut f2 = [0.; 4];
 
         vertex(j, &u, &v, &v1, &x0, &f0, &ipar, &isplit, &ichild, &z, &f, &mut n0, &mut x, &mut y, &mut x1, &mut x2, &mut f1, &mut f2);
 
@@ -486,13 +486,13 @@ mod tests {
         let ichild = vec![-5, -3, -1];
         let z = Matrix2xX::<f64>::from_row_slice(&[2., 1., 2., 3., 4., 5.]);
         let f = Matrix2xX::<f64>::from_row_slice(&[2., 1., 2., 3., 4., 5.]);
-        let mut n0 = SVector::<usize, 5>::zeros();
+        let mut n0 = [0; 5];
         let mut x = SVector::<f64, 5>::zeros();
-        let mut y = SVector::<f64, 5>::zeros();
-        let mut x1 = SVector::<f64, 5>::zeros();
-        let mut x2 = SVector::<f64, 5>::zeros();
-        let mut f1 = SVector::<f64, 5>::zeros();
-        let mut f2 = SVector::<f64, 5>::zeros();
+        let mut y = [0.; 5];
+        let mut x1 = [0.; 5];
+        let mut x2 = [0.; 5];
+        let mut f1 = [0.; 5];
+        let mut f2 = [0.; 5];
 
         vertex(j, &u, &v, &v1, &x0, &f0, &ipar, &isplit, &ichild, &z, &f, &mut n0, &mut x, &mut y, &mut x1, &mut x2, &mut f1, &mut f2);
 
@@ -561,13 +561,13 @@ mod tests {
         let ichild = vec![2, 1, 3];
         let z = Matrix2xX::<f64>::from_row_slice(&[0.25, 0.55, 0.75, 0.35, 0.65, 0.85]);
         let f = Matrix2xX::<f64>::from_row_slice(&[0.30, 0.40, 0.50, 0.35, 0.45, 0.55]);
-        let mut n0 = SVector::<usize, 2>::zeros();
+        let mut n0 = [0; 2];
         let mut x = SVector::<f64, 2>::zeros();
-        let mut y = SVector::<f64, 2>::zeros();
-        let mut x1 = SVector::<f64, 2>::zeros();
-        let mut x2 = SVector::<f64, 2>::zeros();
-        let mut f1 = SVector::<f64, 2>::zeros();
-        let mut f2 = SVector::<f64, 2>::zeros();
+        let mut y = [0.; 2];
+        let mut x1 = [0.; 2];
+        let mut x2 = [0.; 2];
+        let mut f1 = [0.; 2];
+        let mut f2 = [0.; 2];
 
         vertex(j, &u, &v, &v1, &x0, &f0, &ipar, &isplit, &ichild, &z, &f, &mut n0, &mut x, &mut y, &mut x1, &mut x2, &mut f1, &mut f2);
 
@@ -638,13 +638,13 @@ mod tests {
         let ichild = vec![1, -4, 2];
         let z = Matrix2xX::<f64>::from_row_slice(&[0.1, 0.2, 0.3, 0.4, 0.5, 0.6]);
         let f = Matrix2xX::<f64>::from_row_slice(&[-0.1, -0.2, -0.3, -0.4, -0.5, -0.6]);
-        let mut n0 = SVector::<usize, 3>::zeros();
+        let mut n0 = [0; 3];
         let mut x = SVector::<f64, 3>::zeros();
-        let mut y = SVector::<f64, 3>::zeros();
-        let mut x1 = SVector::<f64, 3>::zeros();
-        let mut x2 = SVector::<f64, 3>::zeros();
-        let mut f1 = SVector::<f64, 3>::zeros();
-        let mut f2 = SVector::<f64, 3>::zeros();
+        let mut y = [0.; 3];
+        let mut x1 = [0.; 3];
+        let mut x2 = [0.; 3];
+        let mut f1 = [0.; 3];
+        let mut f2 = [0.; 3];
 
         vertex(j, &u, &v, &v1, &x0, &f0, &ipar, &isplit, &ichild, &z, &f, &mut n0, &mut x, &mut y, &mut x1, &mut x2, &mut f1, &mut f2);
 
@@ -723,13 +723,13 @@ mod tests {
         let ichild = vec![3, 2, 3, 1, 5];
         let z = Matrix2xX::<f64>::from_row_slice(&[1., 2., 3., 4., 5., 1., 2., 3., 4., 5., ]);
         let f = Matrix2xX::<f64>::from_row_slice(&[0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.10]);
-        let mut n0 = SVector::<usize, 7>::zeros();
+        let mut n0 = [0; 7];
         let mut x = SVector::<f64, 7>::zeros();
-        let mut y = SVector::<f64, 7>::zeros();
-        let mut x1 = SVector::<f64, 7>::zeros();
-        let mut x2 = SVector::<f64, 7>::zeros();
-        let mut f1 = SVector::<f64, 7>::zeros();
-        let mut f2 = SVector::<f64, 7>::zeros();
+        let mut y = [0.; 7];
+        let mut x1 = [0.; 7];
+        let mut x2 = [0.; 7];
+        let mut f1 = [0.; 7];
+        let mut f2 = [0.; 7];
 
         vertex(j, &u, &v, &v1, &x0, &f0, &ipar, &isplit, &ichild, &z, &f, &mut n0, &mut x, &mut y, &mut x1, &mut x2, &mut f1, &mut f2);
 
@@ -808,13 +808,13 @@ mod tests {
         let ichild = vec![-3, -2, -3, -1, -5];
         let z = Matrix2xX::<f64>::from_row_slice(&[1., 2., 3., 4., 5., 1., 2., 3., 4., 5., ]);
         let f = Matrix2xX::<f64>::from_row_slice(&[0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.10]);
-        let mut n0 = SVector::<usize, 7>::zeros();
+        let mut n0 = [0; 7];
         let mut x = SVector::<f64, 7>::zeros();
-        let mut y = SVector::<f64, 7>::zeros();
-        let mut x1 = SVector::<f64, 7>::zeros();
-        let mut x2 = SVector::<f64, 7>::zeros();
-        let mut f1 = SVector::<f64, 7>::zeros();
-        let mut f2 = SVector::<f64, 7>::zeros();
+        let mut y = [0.; 7];
+        let mut x1 = [0.; 7];
+        let mut x2 = [0.; 7];
+        let mut f1 = [0.; 7];
+        let mut f2 = [0.; 7];
 
         vertex(j, &u, &v, &v1, &x0, &f0, &ipar, &isplit, &ichild, &z, &f, &mut n0, &mut x, &mut y, &mut x1, &mut x2, &mut f1, &mut f2);
 

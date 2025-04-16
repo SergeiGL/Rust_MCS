@@ -16,7 +16,7 @@ pub(crate) fn strtsw<const SMAX: usize>(
     // s: as in Matlab
 
     // Not SMAX-1 as it'll be hard for generic_const_exprs. Will account for +1 len() later
-    *record = [None; SMAX];
+    record.fill(None);
     let mut s = SMAX;
 
     // Matlab: 1:nboxes takes nboxes elements

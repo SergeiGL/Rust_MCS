@@ -9,7 +9,7 @@ pub(crate) fn split<const N: usize, const SMAX: usize>(
     s: usize, // as in Matlab
     par: usize,  // -1 from Matlab
     x: &SVector<f64, N>,
-    y: &SVector<f64, N>,
+    y: &[f64; N],
     z0: f64,
     z1: f64,
     xmin: &mut Vec<SVector<f64, N>>,
@@ -166,7 +166,7 @@ mod tests {
         let s = 0_usize;
         let par = 5_usize;
         let x = SVector::<f64, 6>::from_row_slice(&[1., 2., 3., 4., 5., 6.]);
-        let y = SVector::<f64, 6>::from_row_slice(&[10., 20., 30., 40., 50., 60.]);
+        let y = [10., 20., 30., 40., 50., 60.];
         let (z0, z1) = (100., 1.);
         let mut xmin = vec![SVector::<f64, 6>::from_row_slice(&[-10., -20., -30., -40., -50., -60.]), SVector::<f64, 6>::from_row_slice(&[-11., -21., -31., -41., -51., -61.])];
         let mut fmi = vec![0., 1., 2., 3., 4., 5.];
@@ -265,7 +265,7 @@ mod tests {
         let s = 3_usize;
         let par = 3_usize;
         let mut x = SVector::<f64, 6>::from_row_slice(&[10.0, 9.0, 8.0, 7.0, 6.0, 5.0]);
-        let mut y = SVector::<f64, 6>::from_row_slice(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
+        let mut y = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
         let (z0, z1) = (5.1, -5.2);
         let mut xmin = vec![SVector::<f64, 6>::from_row_slice(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0])];
         let mut fmi = vec![-1.0, -2.0, -3.0, -4.0, -5.0, -6.0];

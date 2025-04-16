@@ -134,7 +134,13 @@ where
     // VARIABLES USED LATER
     let mut e_min: f64;
     let mut xmin1: SVector<f64, N>;
-    let (mut n0, mut x, mut y, mut x1, mut x2, mut f1, mut f2) = (SVector::<usize, N>::zeros(), SVector::<f64, N>::repeat(f64::NAN), SVector::<f64, N>::repeat(f64::NAN), SVector::<f64, N>::repeat(f64::NAN), SVector::<f64, N>::repeat(f64::NAN), SVector::<f64, N>::repeat(f64::NAN), SVector::<f64, N>::repeat(f64::NAN));
+    let mut n0 = [0; N];
+    let mut x = SVector::<f64, N>::repeat(f64::NAN);
+    let mut y = [f64::NAN; N];
+    let mut x1 = [f64::NAN; N];
+    let mut x2 = [f64::NAN; N];
+    let mut f1 = [f64::NAN; N];
+    let mut f2 = [f64::NAN; N];
     // VARIABLES USED LATER
 
     while s < SMAX && ncall + 1 <= nf {
@@ -142,7 +148,7 @@ where
         let par = record[s - 1].unwrap();
         vertex(par, u, v, &v1, &x0, &f0, &ipar, &isplit, &ichild, &z, &f, &mut n0, &mut x, &mut y, &mut x1, &mut x2, &mut f1, &mut f2);
 
-        let splt = if s > 2 * N * (n0.min() + 1) {
+        let splt = if s > 2 * N * (n0.iter().min().expect("n0 has length N") + 1) {
             // Splitting index and splitting value z[1][par] for splitting by rank
             (isplit[par], z[(1, par)]) = splrnk(&n0, &p, &x, &y);
             true
