@@ -24,18 +24,22 @@ For detailed information about the algorithm, refer to the [original paper](http
 - Provides performance analysis tools
 
 ## GUI interface:
+
 If you are familiar with `Docker`, download user-friendly browser interface:
 
 [Rust_MCS_web](https://github.com/SergeiGL/Rust_MCS_web)
 
-
 ## Manual Setup:
+
 - Add the crate to your `Cargo.toml`
+
 ```toml
 [dependencies]
 Rust_MCS = { git = "https://github.com/SergeiGL/Rust_MCS" }
 ```
+
 - Example usage in `main.rs` file:
+
 ```rust
 use nalgebra::{SVector, SMatrix};
 use Rust_MCS::*;
@@ -55,12 +59,12 @@ fn main() {
     let gamma = 2e-14; // acceptable relative accuracy for local search
 
     let hess = SMatrix::<f64, N, N>::repeat(1.); // sparsity pattern of Hessian
-    
+
     #[inline]
     fn func<const N: usize>(x: &SVector<f64, N>) -> f64 {
         // Implement your function here
     }
-    
+
     let (xbest, fbest, _, _, _, _, exitflag) = mcs::<SMAX, N>(func, &u, &v, nsweeps, nf, local, gamma, &hess).unwrap();
 }
 ```
@@ -68,6 +72,7 @@ fn main() {
 ## API Reference
 
 ### Main Function
+
 ```rust
 // ONLY SIMPLE INITIALIZATION IS SUPPORTED (IinitEnum::Zero / iinit=0 in Matlab)
 pub fn mcs<const SMAX: usize, const N: usize>(
@@ -91,7 +96,7 @@ pub fn mcs<const SMAX: usize, const N: usize>(
     ), String>
 where
     Const<N>: DimMin<Const<N>, Output=Const<N>>,
-{...}
+{ ... }
 ```
 
 ### Types
@@ -105,33 +110,40 @@ pub enum ExitFlagEnum {
 ```
 
 ## Testing
+
 ```bash
 cargo test
 ```
 
 ## Benchmarking
 
-#### Run [divan](https://github.com/nvzqz/divan) `benchmarks`:
+#### Run [criterion](https://github.com/bheisler/criterion.rs) `benchmarks`:
 
 ```bash
 cargo bench
 ```
 
 #### Run `flamegraph`  profiling tool:
+
 - Install [flamegraph](https://github.com/flamegraph-rs/flamegraph)
 - Ensure that `Cargo.toml` file contains:
+
 ```
 [profile.release]
 debug = true
 ```
+
 - Run terminal `as admin`
-- Move to the project directory:
+- Navigate to the Rust_MCS directory:
+
 ```
 cd [*your_path*]\Rust_MCS
 ```
+
 - Run:
+
 ```bash
-cargo flamegraph --unit-test -- tests::test_for_flamegraph_0
+cargo flamegraph --bench benchmarks
 ```
 
 The flame graph will be saved as `flamegraph.svg` in your project directory.
@@ -139,4 +151,5 @@ The flame graph will be saved as `flamegraph.svg` in your project directory.
 My flamegraph: [flamegraph.svg](flamegraph.svg) file.
 
 ## Credits
+
 Original MCS algorithm by [W. Huyer and A. Neumaier](https://arnold-neumaier.at/software/mcs/index.html)

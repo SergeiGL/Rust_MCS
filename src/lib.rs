@@ -33,7 +33,7 @@ pub enum ExitFlagEnum {
     StopNsweepsExceeded,    // flag 3: nsweep - nsweepbest >= nsweeps
 }
 
-const INIT_VEC_CAPACITY: usize = 10_000;
+const INIT_VEC_CAPACITY: usize = 30_000;
 
 // Default values for the input parameters
 // smax = 5*N+10;
@@ -261,35 +261,6 @@ mod tests {
     use approx::assert_relative_eq;
 
     static TOLERANCE: f64 = 1e-11;
-
-    // 1. In cargo.toml uncomment [profile.release] debug = true
-    // 2. Run cmd as admin
-    // 3. cd C:\Users\serge\RustroverProjects\Rust_MCS (or your path)
-    // 4. cargo flamegraph --unit-test -- tests::test_for_flamegraph_0
-    #[cfg(not(debug_assertions))]
-    #[test]
-    fn test_for_flamegraph_0() {
-        // Define your optimization bounds
-        let u = SVector::<f64, 6>::from_row_slice(&[0.; 6]); // lower bounds
-        let v = SVector::<f64, 6>::from_row_slice(&[1.0; 6]); // upper bounds
-
-        let nsweeps = 1_000;  // maximum number of sweeps
-        let nf = 1_000_000;   // maximum number of function evaluations
-
-        // Additional parameters
-        const SMAX: usize = 1_000;                      // number of levels used
-        let local = 100;                                // local search level
-        let gamma = 2e-10;                              // acceptable relative accuracy for local search
-        let hess = SMatrix::<f64, 6, 6>::repeat(1.);    // sparsity pattern of Hessian
-
-        #[inline]
-        fn func<const N: usize>(x: &SVector<f64, N>) -> f64 {
-            1.
-        }
-
-        // Run the optimization
-        let _ = mcs::<SMAX, 6>(func, &u, &v, nsweeps, nf, local, gamma, &hess).unwrap();
-    }
 
     #[test]
     fn test_GUI_example() {

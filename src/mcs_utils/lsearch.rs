@@ -101,9 +101,7 @@ where
     let mut diag = false;
 
     // Compute ind
-    let mut ind_len = (0..N)
-        .filter(|&i| u[i] < xmin[i] && xmin[i] < v[i])
-        .count();
+    let mut ind_len = (0..N).filter(|&i| u[i] < xmin[i] && xmin[i] < v[i]).count();
 
     let max_vector = xmin.abs().zip_map(&xold.abs(), f64::max);
     let mut b = g.abs().dot(&max_vector);
@@ -124,7 +122,7 @@ where
         let (mut x1, mut x2) = neighbor(&xmin, &delta, u, v);
         f = fmi;
 
-        if ind_len < N && (b < gamma * (f0 - f) || gain.abs() < f64::EPSILON) {
+        if ind_len < N && (b < gamma * (f0 - f) || gain == 0.0) {
             let mut ind1 = u.iter().zip(v)
                 .enumerate()
                 .filter_map(|(i, (&u_i, &v_i))| {
@@ -170,14 +168,14 @@ where
             clamp_SVector_mut(&mut xmin, u, v);
 
             // if not sum(ind1):
-            if ind1.iter().fold(0, |acc, &ind1_i| acc + ind1_i) == 0 {
+            if ind1.iter().max().map_or(true, |&max| max == 0) {
                 break;
             }
 
             delta = xmin.abs().scale(EPS_POW_1_3);
 
             for delta_i in delta.iter_mut() {
-                if *delta_i < f64::EPSILON {
+                if *delta_i == 0.0 {
                     *delta_i = EPS_POW_1_3;
                 }
             }
@@ -185,7 +183,7 @@ where
         }
 
         // println!("before triple {xmin:?}\n{fmi}\n{x1:?}\n{x2:?}\n{hess:.15}, {G:.15}");
-        diag = if (r - 1.0).abs() > 0.25 || gain.abs() < f64::EPSILON || b < gamma * (f0 - f) {
+        diag = if (r - 1.0).abs() > 0.25 || gain == 0.0 || b < gamma * (f0 - f) {
             (xmin, fmi, g) = triple(func, &xmin, fmi, &mut x1, &mut x2, u, v, hess, &mut G, true, &mut ncall);
             false
         } else {
@@ -202,17 +200,16 @@ where
             d.scale_mut(2.0)
         }
 
-        (p, _, _) = minq(fmi, &g,
-                         &G,
+        (p, _, _) = minq(fmi, &g, &G,
                          &(u - xmin).zip_map(&-d, f64::max),
                          &(v - xmin).zip_map(&d, f64::min));
 
         let norm = p.norm();
-        if norm.abs() < f64::EPSILON && !diag && ind_len == N {
+        if norm.abs() == 0.0 && !diag && ind_len == N {
             break;
         }
 
-        if norm >= f64::EPSILON {
+        if norm != 0.0 {
             let fpred = fmi + g.dot(&p) + 0.5 * p.dot(&(G * p));
             x = xmin + p;
             let f1 = func(&x);
@@ -220,17 +217,15 @@ where
 
             alist = Vec::from([0.0, 1.0]);
             flist = Vec::from([fmi, f1]);
-
             ncall += gls(func, &xmin, &p, &mut alist, &mut flist, u, v, 1, 0.1, 15);
-
-            let (argmin, &fmi_new) = flist
+            let (i, &fmi_new) = flist
                 .iter()
                 .enumerate()
                 .min_by(|(_, a), (_, b)| a.total_cmp(b))
                 .unwrap();
             fmi = fmi_new;
 
-            xmin = xmin + alist[argmin] * p;
+            xmin = xmin + alist[i] * p;
             clamp_SVector_mut(&mut xmin, u, v);
 
             // Compute gain and r
@@ -244,7 +239,7 @@ where
             };
         } else {
             gain = f - fmi;
-            if gain.abs() < f64::EPSILON {
+            if gain.abs() == 0.0 {
                 r = 0.0;
             }
         }

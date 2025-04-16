@@ -7,7 +7,7 @@ pub(crate) fn updtrec<const SMAX: usize>(j: usize, s: usize, f: MatrixView<f64, 
     // record: -1 from Matlab in terms of values; record.len(): +1 from Matlab
 
     debug_assert!(record.len() >= s + 1); // updtrec: VERY CAREFUL record.len() < s"
-    if record.len() < s + 1 || record[s - 1].is_none() || f[j] < f[record[s - 1].unwrap()] {
+    if record.len() < s + 1 || record[s - 1].is_none() || f[j] < f[record[s - 1].expect("Previous check: record[s - 1].is_none()")] {
         record[s - 1] = Some(j);
     }
 }

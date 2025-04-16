@@ -51,7 +51,7 @@ pub(super) fn lslocal<const N: usize>(
         .collect::<Vec<bool>>();
 
     let mut imin = minima.iter().enumerate()
-        .filter(|(_, minima_i)| **minima_i).map(|(i, _)| i)
+        .filter_map(|(i, &minima_i)| if minima_i { Some(i) } else { None })
         .collect::<Vec<usize>>();
 
     // TODO: Issue: The MATLAB code sorts in ascending order, then reverses the array to get descending order.

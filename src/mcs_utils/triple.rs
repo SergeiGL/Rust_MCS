@@ -11,7 +11,7 @@ pub(super) fn triple<const N: usize>(
     v: &SVector<f64, N>,
     hess: &SMatrix<f64, N, N>,
     G: &mut SMatrix<f64, N, N>,
-    setG: bool,
+    setG: bool, // if G is supplied => setG false
     ncall: &mut usize,
 ) -> (
     SVector<f64, N>,   // xtrip
@@ -20,7 +20,10 @@ pub(super) fn triple<const N: usize>(
 ) {
     let mut g = SVector::<f64, N>::zeros();
 
-    let mut ind: Vec<usize> = Vec::with_capacity(x.len());
+    // nargin always >=9 as hess is always supplied
+
+    // ind: -1 from Matlab
+    let mut ind: Vec<usize> = Vec::with_capacity(N);
     for (i, &xi) in x.iter().enumerate() {
         if (u[i] < xi) && (xi < v[i]) {
             ind.push(i);
@@ -31,25 +34,26 @@ pub(super) fn triple<const N: usize>(
         }
     }
 
-    let mut xtrip = x.clone();
-    let mut xtripnew = x.clone();
-    let mut ftrip = f;
-    let mut ftripnew = f;
-
     if ind.len() <= 1 {
         for i in ind {
             g[i] = 1.0;
             G[(i, i)] = 1.0;
         }
-        return (xtrip, ftrip, g);
+        return (x.clone(), f, g);
     }
 
+    // Equivalent to nargin < 10, if G is supplied => setG false
     if setG {
         *G = SMatrix::<f64, N, N>::zeros();
     }
 
+    let mut xtrip = x.clone();
+    let mut xtripnew = x.clone();
+    let mut ftrip = f;
+    let mut ftripnew = f;
     let mut k1_option: Option<usize> = None;
 
+    // i: -1 from Matlab; used only for indexing
     for &i in ind.iter() {
         let mut x = xtrip.clone();
         f = ftrip;
@@ -95,7 +99,6 @@ pub(super) fn triple<const N: usize>(
                             + g[k] * (x2[k] - xtrip[k])
                             + 0.5 * G[(k, k)] * (x2[k] - xtrip[k]).powi(2);
 
-
                         if q1 <= q2 {
                             x[k] = x1[k];
                         } else {
@@ -105,10 +108,8 @@ pub(super) fn triple<const N: usize>(
                         let f12 = func(&x);
                         *ncall += 1;
 
-                        // println!("{}\n{i} {k}, {x:?}, {xtrip:?}, {f12}, {ftrip}, {g}, {G:?}", G[(1, 4)]);
                         G[(i, k)] = hessian(i, k, &x, &xtrip, f12, ftrip, &g, G);
                         G[(k, i)] = G[(i, k)];
-                        // println!("{}\n", G[(i, k)]);
                         if f12 < ftripnew {
                             ftripnew = f12;
                             xtripnew = x.clone();
@@ -129,7 +130,8 @@ pub(super) fn triple<const N: usize>(
                 x2[i] = xtrip[i];
             }
 
-            if let (true, Some(k1_val)) = (setG, k1_option) {
+            if setG && k1_option.is_some() {
+                let k1_val = k1_option.expect("Upper line checks k1_option.is_some()");
                 if xtripnew[k1_val] == x1[k1_val] {
                     x1[k1_val] = xtrip[k1_val];
                 } else {
@@ -141,7 +143,8 @@ pub(super) fn triple<const N: usize>(
                 if ind.contains(&k) {
                     g[k] += G[(i, k)] * (xtripnew[i] - xtrip[i]);
 
-                    if let (true, Some(k1_val)) = (setG, k1_option) {
+                    if setG && k1_option.is_some() {
+                        let k1_val = k1_option.expect("Upper line checks k1_option.is_some()");
                         g[k] += G[(k1_val, k)] * (xtripnew[k1_val] - xtrip[k1_val]);
                     }
                 }
@@ -159,6 +162,49 @@ pub(super) fn triple<const N: usize>(
 mod tests {
     use super::*;
     use crate::test_functions::hm6;
+
+    #[test]
+    fn test_Matlab_0() {
+        // Matlab Equivalent test
+        //
+        // clearvars;
+        // clear global;
+        // path(path,'jones'); % do not change
+        //
+        // fcn = "feval"; data = "hm6"; % do not touch
+        // x = [0.6, 0.12, 0.7, 0.5, 0.2, 0.0]';
+        // f = 100.;
+        // x1 = [0.34, 0.35, 0.3, 0.31, 0.32, 0.021]';
+        // x2 = [0.434, 0.435, 0.43, 0.431, 0.432, 0.4021]';
+        // u = zeros(6,1);
+        // v = ones(6,1);
+        // hess = ones(6,6);
+        // G = ones(6,6)*0.5;
+        //
+        // format long g;
+        // [xtrip,ftrip,g,G,x1,x2,nf] = triple(fcn,data,x,f,x1,x2,u,v,hess,G)
+
+        let x = SVector::<f64, 6>::from_row_slice(&[0.6, 0.12, 0.7, 0.5, 0.2, 0.0]);
+        let f = 100.;
+        let mut x1 = SVector::<f64, 6>::from_row_slice(&[0.34, 0.35, 0.3, 0.31, 0.32, 0.021]);
+        let mut x2 = SVector::<f64, 6>::from_row_slice(&[0.434, 0.435, 0.43, 0.431, 0.432, 0.4021]);
+        let u = SVector::<f64, 6>::from_row_slice(&[0.; 6]);
+        let v = SVector::<f64, 6>::from_row_slice(&[1.; 6]);
+        let hess = SMatrix::<f64, 6, 6>::repeat(1.);
+        let mut G = SMatrix::<f64, 6, 6>::repeat(0.5);
+        let setG = false;
+        let mut ncall = 0;
+
+        let (xtrip, ftrip, g) = triple(hm6, &x, f, &mut x1, &mut x2, &u, &v, &hess, &mut G, setG, &mut ncall);
+
+        assert_eq!(xtrip.as_slice(), [0.34, 0.435, 0.43, 0.5, 0.32, 0.]);
+        assert_eq!(ftrip, -0.5942936806110015);
+        assert_eq!(g.as_slice(), [-217.79728533463194, -3.7346370449460475, 0.027727004255655913, -0.7290631475289997, 0.028118152010039366, 0.0]);
+        assert_eq!(G.as_slice(), [4636.616122285339, 0.5, 0.5, 0.5, 0.5, 0., 0.5, -12.80102502845137, 0.5, 0.5, 0.5, 0., 0.5, 0.5, 0.2845555594940507, 0.5, 0.5, 0., 0.5, 0.5, 0.5, 4.912890647827656, 0.5, 0., 0.5, 0.5, 0.5, 0.5, 1.3102717202120937, 0., 0., 0., 0., 0., 0., 0., ]);
+        assert_eq!(x1.as_slice(), [0.6, 0.35, 0.3, 0.31, 0.2, 0.021]);
+        assert_eq!(x2.as_slice(), [0.434, 0.12, 0.7, 0.431, 0.432, 0.4021]);
+        assert_eq!(ncall, 10);
+    }
 
     #[test]
     fn test_cover() {

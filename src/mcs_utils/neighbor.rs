@@ -5,26 +5,26 @@ pub(super) fn neighbor<const N: usize>(
     delta: &SVector<f64, N>,
     u: &SVector<f64, N>,
     v: &SVector<f64, N>,
-) -> (SVector<f64, N>, SVector<f64, N>) {
-    // Initialize x1 and x2 as zero vectors
+) -> (
+    SVector<f64, N>, // x1
+    SVector<f64, N>  // x2
+) {
+    // Initialize x1 and x2
     let mut x1 = SVector::<f64, N>::zeros();
     let mut x2 = SVector::<f64, N>::zeros();
 
-    // Iterate over each component once
     for i in 0..N {
         let xi = x[i];
         let delta_i = delta[i];
         let u_i = u[i];
         let v_i = v[i];
 
-        // Compute x1[i]
         x1[i] = if xi == u_i {
             xi + 2.0 * delta_i
         } else {
             u_i.max(xi - delta_i)
         };
 
-        // Compute x2[i]
         x2[i] = if xi == v_i {
             xi - 2.0 * delta_i
         } else {
@@ -39,6 +39,31 @@ pub(super) fn neighbor<const N: usize>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_matlab() {
+        // Matlab equivalent test
+        //
+        // clearvars;
+        // clear global;
+        //
+        // x = [0.0, 0.01, 1.2, 0.03, 0.04, 0.65];
+        // delta =  [0.134, 0.24, 0.21, 0.12, 0.75, 0.422];
+        // u = [0.0, 0.01, 0.02, 0.03, 0.04, 0.05];
+        // v = [0.0, 1.1, 1.2, 1.3, 0.04, 1.5];
+        //
+        // format long g;
+        // [x1,x2] = neighbor(x,delta,u,v)
+
+        let x = SVector::<f64, 6>::from_row_slice(&[0.0, 0.01, 1.2, 0.03, 0.04, 0.65]);
+        let delta = SVector::<f64, 6>::from_row_slice(&[0.134, 0.24, 0.21, 0.12, 0.75, 0.422]);
+        let u = SVector::<f64, 6>::from_row_slice(&[0.0, 0.01, 0.02, 0.03, 0.04, 0.05]);
+        let v = SVector::<f64, 6>::from_row_slice(&[0.0, 1.1, 1.2, 1.3, 0.04, 1.5]);
+
+        let (x1, x2) = neighbor(&x, &delta, &u, &v);
+        assert_eq!(x1.as_slice(), [0.268, 0.49, 0.99, 0.27, 1.54, 0.22800000000000004]);
+        assert_eq!(x2.as_slice(), [-0.268, 0.25, 0.78, 0.15, -1.46, 1.072])
+    }
 
     #[test]
     fn test_0() {

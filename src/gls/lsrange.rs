@@ -25,15 +25,16 @@ pub(super) fn lsrange<const N: usize>(
     // end;
     let scale = x.iter()
         .zip(p)
-        .filter(|(_, p_i)| **p_i != 0.0)
-        .map(
-            |(x_i, pp_i)|
-                match x_i.abs() / pp_i.abs() { // the only situation when scale==0 is when x_i==0 (as x_i.abs() / pp_i.abs() >=0)
-                    0.0 => 1.0 / pp_i.abs(),
-                    num => num
+        .filter_map(|(x_i, &p_i)|
+            if p_i != 0.0 {
+                match x_i.abs() / p_i.abs() { // the only situation when scale==0 is when x_i==0 (as x_i.abs() / pp_i.abs() >=0)
+                    0.0 => Some(1.0 / p_i.abs()),
+                    num => Some(num)
                 }
-        )
-        .min_by(|a, b| a.total_cmp(b)).unwrap();
+            } else {
+                None
+            }
+        ).min_by(|a, b| a.total_cmp(b)).unwrap();
 
     if !bend {
         // find range of useful alp in truncated line search

@@ -36,7 +36,7 @@ pub(crate) fn vertex<const N: usize>(
     let mut m = par;
 
     while m != 0 {  // -1 from Matlab as j is -1 from Matlab
-        debug_assert!(ipar[m] != None);
+        debug_assert!(ipar[m].is_some());
         debug_assert!(ipar[m].unwrap() >= 1);
 
         let ipar_m = ipar[m].unwrap() - 1; // -1 as we will use at as index; Rust index is -1 from Matlab
@@ -78,17 +78,17 @@ pub(crate) fn vertex<const N: usize>(
             let half_abs_ichild_m = abs_ichild_m as f64 / 2.;
             let floor = half_abs_ichild_m.floor() as usize;
             let ceil = half_abs_ichild_m.ceil() as usize;
-            // j1, j2: as in Matlab;
-            // j1_plus_j3, j1_plus_2_j3, j1_minus_j3: -1 from matlab
+            // j2: as in Matlab
+            // j1, j1_plus_j3, j1_plus_2_j3, j1_minus_j3: -1 from matlab
             let (j1, j2, j1_plus_j3, j1_plus_2_j3, j1_minus_j3) = if u[i] < x0[(i, 0)] {
                 let j1 = ceil;
                 let j2 = floor;
                 if (half_abs_ichild_m < (j1 as f64) && j1 > 1) || (j1 == 3) {
                     // (j2, j1 - 1 - 1, j1 - 2 - 1, j1 + 1 - 1)
-                    (j1, j2, j1 - 2, j1 - 3, j1)
+                    (j1 - 1, j2, j1 - 2, j1 - 3, j1)
                 } else {
                     // (j2, j1 + 1 - 1, j1 + 2 - 1, j1 - 1 - 1)
-                    (j1, j2, j1, j1 + 1, j1 - 2)
+                    (j1 - 1, j2, j1, j1 + 1, j1 - 2)
                 }
             } else {
                 let j1 = floor + 1;
@@ -96,16 +96,16 @@ pub(crate) fn vertex<const N: usize>(
                 if ((half_abs_ichild_m + 1.) > (j1 as f64)) && (j1 < 3) {
                     // (j2, j1 + 1 - 1, j1 + 2 - 1, j1 - 1 - 1)
                     if j1 < 2 {
-                        (j1, j2, j1, j1 + 1, 0) // TODO: FIX this
+                        (j1 - 1, j2, j1, j1 + 1, 0) // TODO: FIX this
                     } else {
-                        (j1, j2, j1, j1 + 1, j1 - 2)
+                        (j1 - 1, j2, j1, j1 + 1, j1 - 2)
                     }
                 } else {
                     // (j2, j1 - 1 - 1, j1 - 2 - 1, j1 + 1 - 1)
                     if j1 < 3 {
-                        (j1, j2, j1 - 2, 0, j1)  // TODO: FIX this
+                        (j1 - 1, j2, j1 - 2, 0, j1)  // TODO: FIX this
                     } else {
-                        (j1, j2, j1 - 2, j1 - 3, j1)
+                        (j1 - 1, j2, j1 - 2, j1 - 3, j1)
                     }
                 }
             };
@@ -117,12 +117,12 @@ pub(crate) fn vertex<const N: usize>(
                 z[(1, ipar_m)] as usize - 1
             };
 
-            if j1 != 2 || (x[i] != f64::INFINITY && x[i] != x0[(i, 1)]) {
+            if j1 != 1 || (x[i] != f64::INFINITY && x[i] != x0[(i, 1)]) {
                 fold = updtf(i, &x1, &x2, f1, f2, fold, f0[(1, k)]);
             }
 
-            if x[i] == f64::INFINITY || x[i] == x0[(i, j1 - 1)] {
-                x[i] = x0[(i, j1 - 1)];
+            if x[i] == f64::INFINITY || x[i] == x0[(i, j1)] {
+                x[i] = x0[(i, j1)];
                 match (x1[i], x2[i]) {
                     (f64::INFINITY, _) => {
                         vert3(j1, &x0, &f0, i, k, &mut x1[i], &mut x2[i], &mut f1[i], &mut f2[i]);
@@ -131,7 +131,7 @@ pub(crate) fn vertex<const N: usize>(
                         if x1[i] != x0[(i, j1_plus_j3)] {
                             x2[i] = x0[(i, j1_plus_j3)];
                             f2[i] += f0[(j1_plus_j3, k)];
-                        } else if j1 != 1 && j1 != 3 {
+                        } else if j1 != 0 && j1 != 2 {
                             x2[i] = x0[(i, j1_minus_j3)];
                             f2[i] += f0[(j1_minus_j3, k)];
                         } else {
@@ -142,6 +142,8 @@ pub(crate) fn vertex<const N: usize>(
                     _ => {}
                 }
             } else {
+                debug_assert!(i < N && j1 < 3 && j1_plus_j3 < 3 && j1_plus_j3 < N);
+
                 match (x1[i], x2[i]) {
                     (f64::INFINITY, _) => {
                         x1[i] = x0[(i, j1)];
@@ -158,7 +160,7 @@ pub(crate) fn vertex<const N: usize>(
                         } else if x[i] != x0[(i, j1_plus_j3)] {
                             x2[i] = x0[(i, j1_plus_j3)];
                             f2[i] += f0[(j1_plus_j3, k)];
-                        } else if j1 != 1 && j1 != 3 {
+                        } else if j1 != 0 && j1 != 2 {
                             x2[i] = x0[(i, j1_plus_j3)];
                             f2[i] += f0[(j1_plus_j3, k)];
                         } else {
@@ -186,7 +188,7 @@ pub(crate) fn vertex<const N: usize>(
     for i in 0..N {
         if x[i] == f64::INFINITY {
             x[i] = x0[(i, 1)];
-            vert3(2, &x0, &f0, i, i, &mut x1[i], &mut x2[i], &mut f1[i], &mut f2[i]);
+            vert3(1, &x0, &f0, i, i, &mut x1[i], &mut x2[i], &mut f1[i], &mut f2[i]);
         }
 
         if y[i] == f64::INFINITY {
@@ -242,7 +244,7 @@ fn vert2(x: f64, z_j: f64, z_j1: f64, f_j: f64, f_j1: f64,
 // L is always 3 in Matlab
 #[inline]
 fn vert3<const N: usize>(
-    j: usize, // as in Matlab
+    j: usize, // -1 from Matlab
     x0: &SMatrix<f64, N, 3>,
     f0: &Matrix3xX<f64>,
     i: usize, // -1 from Matlab
@@ -253,9 +255,9 @@ fn vert3<const N: usize>(
     f2: &mut f64,
 ) {
     let (k1, k2) = match j {
-        1 => (1, 2),
-        3 => (0, 1), // (3-2-1, 3-1-1)
-        _ => (j - 2, j)
+        0 => (1, 2),
+        2 => (0, 1), // (3-2-1, 3-1-1)
+        _ => (j - 1, j + 1)
     };
     *x1 = x0[(i, k1)];
     *x2 = x0[(i, k2)];

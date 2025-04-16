@@ -21,7 +21,7 @@ pub(crate) fn exgain<const N: usize>(
     f64        // splval
 ) {
     let mut emin = f64::INFINITY;
-    let mut isplit = 0;
+    let mut isplit = 1; // cannot be 0;
     let mut splval = f64::INFINITY;
 
     for i in 0..N { // i: -1 from Matlab

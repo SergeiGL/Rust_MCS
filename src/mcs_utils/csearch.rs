@@ -17,9 +17,12 @@ pub(super) fn csearch<const N: usize>(
     SMatrix<f64, N, N>,  // G
     usize                // nfcsearch
 ) {
-    let (mut nfcsearch, smaxls, small) = (0_usize, 6_usize, 0.1_f64);
+    // TODO: hess is always 1 as nargin always < 7 < 8? Moreover hess is not returned ?
 
     let mut x = clamp_SVector(x, u, v);
+
+    let (mut nfcsearch, smaxls, small) = (0_usize, 6_usize, 0.1_f64);
+
     let (mut xmin, mut xminnew) = (x.clone(), x.clone());
     let (mut fmi, mut fminew) = (f, f);
     let (mut x1, mut x2): (SVector<f64, N>, SVector<f64, N>) = (SVector::zeros(), SVector::zeros());
@@ -86,42 +89,44 @@ pub(super) fn csearch<const N: usize>(
 
         if linesearch {
             nfcsearch += gls(func, &xmin, &p, &mut alist, &mut flist, u, v, 1, small, smaxls);
+            let mut j;
 
-            let (mut j, min_f) = flist
+            (j, fminew) = flist
                 .iter()
                 .enumerate()
                 .min_by(|(_, val_1), (_, val_2)| val_1.total_cmp(val_2))
+                .map(|(j, fminew)| (j, *fminew))
                 .unwrap();
-            fminew = *min_f;
 
             if fminew == fmi {
-                j = alist.iter().position(|&x| x == 0.0).unwrap_or(0);
+                j = alist.iter().position(|&alist_i| alist_i == 0.0).unwrap();
             }
 
+            // Process both arrays in a single pass with swap-and-truncate pattern
             let alist_j = alist[j];
+            let mut write_idx = 0;
+            for read_idx in 0..alist.len() {
+                let a_i = alist[read_idx];
+                // Check if this element should be kept
+                if (a_i - alist_j).abs() >= delta || read_idx == j {
+                    // Keep this element by moving it to the write position
+                    if read_idx != write_idx {
+                        alist.swap(read_idx, write_idx);
+                        flist.swap(read_idx, write_idx);
+                    }
+                    write_idx += 1;
+                }
+            }
 
-            let retain_filter = |a_i: f64, k: usize| (a_i - alist_j).abs() >= delta || k == j;
-            let mut index = 0_usize; // Track the index for retain closure
-            flist.retain(|_| {
-                let keep = retain_filter(alist[index], index);
-                index += 1;
-                keep
-            });
+            // Truncate both vectors to the new size
+            alist.truncate(write_idx);
+            flist.truncate(write_idx);
 
-            index = 0;
-            alist.retain(|&a_i| {
-                let keep = retain_filter(a_i, index);
-                index += 1;
-                keep
-            });
-
-
-            // Find the new index of the minimum in flist
-            let (j, min_f) = flist.iter()
+            (j, fminew) = flist.iter()
                 .enumerate()
                 .min_by(|(_, val_1), (_, val_2)| val_1.total_cmp(val_2))
+                .map(|(j, fminew)| (j, *fminew))
                 .unwrap();
-            fminew = *min_f;
 
             // println!("xminnew[i] ={} {} ; {i}, {j}", xmin[i], alist[4]);
             xminnew[i] = xmin[i] + alist[j];
@@ -174,7 +179,7 @@ pub(super) fn csearch<const N: usize>(
         // println!("polint_x: {:?}, polint_f: {:?}", polint_x, polint_f);
         (g[i], G[(i, i)]) = polint1(&[xmin[i], x1[i], x2[i]], &[fmi, f1, f2]);
 
-        x = xmin.clone();
+        x = xmin;
 
         if f1 <= f2 {
             x[i] = x1[i];
@@ -208,7 +213,6 @@ pub(super) fn csearch<const N: usize>(
             }
             x[k] = xmin[k];
         }
-        // println!("bef{g:?}");
 
         if fminew <= fmi {
             if x1[i] == xminnew[i] {
@@ -248,6 +252,73 @@ mod tests {
     static TOLERANCE: f64 = 1e-12;
 
     #[test]
+    fn test_matlab_0() {
+        // Matlab Equivalent test
+        //
+        // clearvars; clear global;
+        // fcn = "feval"; data = "hm6"; path(path,'jones'); stop = [100];
+        // x = [1.2, -0.1, 0.0, -0.01, 1.0, 1.6]';
+        // f = 100.;
+        // u = zeros(6,1);
+        // v = ones(6,1);
+        // hess = ones(6,6);
+        //
+        // format long g;
+        // [xmin,fmi,g,G,nfcsearch] = csearch(fcn,data,x,f,u,v,hess)
+
+        let x = SVector::<f64, 6>::from_row_slice(&[1.2, -0.1, 0.0, -0.01, 1.0, 1.6]);
+        let f = 100.;
+        let u = SVector::<f64, 6>::from_row_slice(&[0.0; 6]);
+        let v = SVector::<f64, 6>::from_row_slice(&[1.0; 6]);
+
+        let (xmin, fmi, g, G, nfcsearch) = csearch(hm6, &x, f, &u, &v);
+
+        assert_relative_eq!(xmin.as_slice(), [0.,0.171229504985996,0.75728402737634,0.250004541590839,0.333331314848516,0.695335531985148].as_slice(), epsilon = TOLERANCE);
+        assert_relative_eq!(fmi, -2.16939912649297, epsilon = TOLERANCE);
+        assert_relative_eq!(g.as_slice(), [0.437359199626315,-3.22197789089883,1.75837841612486,-3.76358531848627, 0.189362876830768, 1.08053992507632].as_slice(), epsilon = TOLERANCE);
+        assert_relative_eq!(G.as_slice(), [
+                    -0.00126223495093886 ,     0.000715238883325839 ,         0.54035017594183   ,     0.0130243025356302   ,     0.0656954295588853 ,       -0.219595714873091,
+                    0.000715238883325839  ,     0.00682787168712506  ,       0.115595291020514    ,     -13.6053920417095    ,   -0.0549827859164636  ,      -0.181199475327673,
+                    0.54035017594183   ,      0.115595291020514   ,        2.0032818047489     ,    0.017904718685595     ,     1.48579944105136   ,      -6.97028826467059,
+                    0.0130243025356302    ,     -13.6053920417095    ,     0.017904718685595      ,    1.26511906055634      ,    3.73591628610961    ,      5.17472626468738,
+                    0.0656954295588853     ,  -0.0549827859164636     ,     1.48579944105136       ,   3.73591628610961       ,   2.82375017035131     ,     2.72729224432554,
+                    -0.219595714873091      ,  -0.181199475327673      ,   -6.97028826467059        ,  5.17472626468738        ,  2.72729224432554      ,    9.98582878734768,
+                ].as_slice(), epsilon = TOLERANCE);
+        assert_eq!(nfcsearch, 46);
+    }
+
+
+    #[test]
+    fn test_matlab_1() {
+        // Matlab Equivalent test
+        //
+        // clearvars; clear global;
+        // fcn = "feval"; data = "hm6"; path(path,'jones'); stop = [100];
+        // x = [1.1, -0.1, 0.1, -0.01, 0.9, 1.2]';
+        // f = -10.;
+        // u = zeros(6,1);
+        // v = ones(6,1)*1.1;
+        // hess = ones(6,6);
+        //
+        // format long g;
+        // [xmin,fmi,g,G,nfcsearch] = csearch(fcn,data,x,f,u,v,hess)
+
+        let x = SVector::<f64, 6>::from_row_slice(&[1.1, -0.1, 0.1, -0.01, 0.9, 1.2]);
+        let f = -10.;
+        let u = SVector::<f64, 6>::from_row_slice(&[0.0; 6]);
+        let v = SVector::<f64, 6>::from_row_slice(&[1.1; 6]);
+
+        let (xmin, fmi, g, G, nfcsearch) = csearch(hm6, &x, f, &u, &v);
+
+        assert_relative_eq!(xmin.as_slice(), [1.1, 0., 0.1, 0., 0.9,1.1].as_slice(), epsilon = TOLERANCE);
+        assert_relative_eq!(fmi, -10., epsilon = TOLERANCE);
+        assert_relative_eq!(g.as_slice(), [-2251900.249836313, 2477090.2751214015, -199.99907414611474, 2477090.274831074, 16.809552839333453, -2251900.249730433            ].as_slice(), epsilon = TOLERANCE);
+        assert_relative_eq!(G.as_slice(), [-225381602838.39246, 61979940780.77809, 30025317.92886204, 61979940780.77958, -9997831.201668503, -56345400709.60008, 61979940780.77809, -272711739436.39044, -33027849.721561164, -68177934859.09798, 10997614.30979206, 61979940780.778145, 30025317.92886204, -33027849.721561164, 47999.673545437836, -33027849.721762765, 5327.643081804327, 30025317.928907093, 61979940780.77958, -68177934859.09798, -33027849.721762765, -272711739436.3917, 10997614.322017025, 61979940780.780174, -9997831.201668503, 10997614.30979206, 5327.643081804327, 10997614.322017025, 3995.7066291470805, -9997831.20623445, -56345400709.60008, 61979940780.778145, 30025317.928907093, 61979940780.780174, -9997831.20623445, -225381602838.3932].as_slice(), epsilon = TOLERANCE);
+        assert_eq!(nfcsearch, 33);
+    }
+
+
+    #[test]
     fn test_5() {
         // Matlab Equivalent test
         //
@@ -271,10 +342,8 @@ mod tests {
 
         assert_relative_eq!(xmin.as_slice(), [0.20094711239564478, 0.1495167421889697, 0.45913871, 0.2559626362565819, 0.33160230910548794, 0.6275210838397162].as_slice(), epsilon = TOLERANCE);
         assert_relative_eq!(fmi, -3.2661659570240427, epsilon = TOLERANCE);
-        assert_relative_eq!(g.as_slice(), SVector::<f64, 6>::from_row_slice(&[0.0114919524849414, 0.10990155244416452, -0.5975771816968102, -0.8069326056544469, 1.8713998467574906, -1.4958051414638653]).as_slice(), epsilon = TOLERANCE);
-        assert_relative_eq!(G.as_slice(), SMatrix::<f64, 6, 6>::from_row_slice(&[
-            23.12798652584253, 0.0808647397791913, 1.75381629525258, -1.90128293323017, 1.786461227928722, -0.7406818881368897, 0.0808647397791913, 18.5767212985667, -0.5909985456367552, 0.801357349181761, -0.9992079198192292, 0.18105617066417665, 1.75381629525258, -0.5909985456367552, 24.556579083791647, 3.3716142085157075, -3.5009378170621, 0.09958957165243534, -1.90128293323017, 0.801357349181761, 3.3716142085157075, 48.678472018407895, -1.0333246379474361, 0.9233898437178975, 1.786461227928722, -0.9992079198192292, -3.5009378170621, -1.0333246379474361, 89.37343113076405, 4.016171463396038, -0.7406818881368897, 0.18105617066417665, 0.09958957165243534, 0.9233898437178975, 4.016171463396038, 48.17000841044073
-        ]).as_slice(), epsilon = TOLERANCE);
+        assert_relative_eq!(g.as_slice(), [0.0114919524849414, 0.10990155244416452, -0.5975771816968102, -0.8069326056544469, 1.8713998467574906, -1.4958051414638653].as_slice(), epsilon = TOLERANCE);
+        assert_relative_eq!(G.as_slice(), [23.12798652584253, 0.0808647397791913, 1.75381629525258, -1.90128293323017, 1.786461227928722, -0.7406818881368897, 0.0808647397791913, 18.5767212985667, -0.5909985456367552, 0.801357349181761, -0.9992079198192292, 0.18105617066417665, 1.75381629525258, -0.5909985456367552, 24.556579083791647, 3.3716142085157075, -3.5009378170621, 0.09958957165243534, -1.90128293323017, 0.801357349181761, 3.3716142085157075, 48.678472018407895, -1.0333246379474361, 0.9233898437178975, 1.786461227928722, -0.9992079198192292, -3.5009378170621, -1.0333246379474361, 89.37343113076405, 4.016171463396038, -0.7406818881368897, 0.18105617066417665, 0.09958957165243534, 0.9233898437178975, 4.016171463396038, 48.17000841044073].as_slice(), epsilon = TOLERANCE);
         assert_eq!(nfcsearch, 50);
     }
 

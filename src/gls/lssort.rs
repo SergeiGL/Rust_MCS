@@ -113,17 +113,13 @@ pub(super) fn lssort(
 
     let unitlen = if nmin > 1 {
         alist.iter().enumerate()
-            .filter(|&(i, _)| minima[i])
-            .fold(None, |acc, (_, x)| {
-                let curr_diff = (x - abest).abs();
-                if curr_diff > f64::EPSILON {
-                    match acc {
-                        None => Some(curr_diff),
-                        Some(acc_diff) => if curr_diff >= acc_diff { Some(acc_diff) } else { Some(curr_diff) }
-                    }
-                } else { acc }
+            .filter_map(|(i, &alist_i)| {
+                if minima[i] && alist_i != abest {
+                    Some((alist_i - abest).abs())
+                } else { None }
             })
-            .unwrap_or(0.0)
+            .min_by(|a, b| a.total_cmp(b))
+            .unwrap()
     } else {
         (abest - alist[0]).max(alist[s - 1] - abest)
     };

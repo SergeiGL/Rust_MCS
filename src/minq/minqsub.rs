@@ -131,7 +131,9 @@ where
     }
 
 
-    let p_nonzero_ind_vec = p.iter().enumerate().filter(|&(_, p_i)| p_i.abs() > f64::EPSILON).map(|(ind, _)| ind).collect::<Vec<_>>();
+    let p_nonzero_ind_vec = p.iter().enumerate()
+        .filter_map(|(ind, &p_i)| if p_i != 0.0 { Some(ind) } else { None })
+        .collect::<Vec<usize>>();
 
     if p_nonzero_ind_vec.is_empty() {
         *unfix = true;
@@ -141,7 +143,7 @@ where
     (*alpu, *alpo) = (f64::NEG_INFINITY, f64::INFINITY);
     for &i in p_nonzero_ind_vec.iter() {
         let (p_i, o_i, u_i) = (p[i], (xo[i] - x[i]) / p[i], (xu[i] - x[i]) / p[i]);
-        match p_i.partial_cmp(&0.0).unwrap() {
+        match p_i.total_cmp(&0.0) {
             Ordering::Less => {
                 *alpu = alpu.max(o_i);
                 *alpo = alpo.min(u_i);

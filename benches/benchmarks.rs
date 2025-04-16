@@ -1,28 +1,50 @@
+use criterion::{criterion_group, criterion_main, Criterion};
 use nalgebra::{SMatrix, SVector};
 use Rust_MCS::*;
 
-#[divan::bench(
-    max_time = 200, // seconds
-)]
-fn bench_mcs() {
-    let u = SVector::<f64, 6>::from_row_slice(&[0.; 6]);
-    let v = SVector::<f64, 6>::from_row_slice(&[1.0; 6]);
-    const SMAX: usize = 2_000;
-    let nsweeps = 1_000;  // maximum number of sweeps
-    let nf = 1_000_000; // maximum number of function evaluations
-    let local = 200;
-    let gamma = 2e-12;
-    let hess = SMatrix::<f64, 6, 6>::repeat(1.);
 
-    // Use black_box to prevent the compiler from optimizing the function call away
-    divan::black_box(mcs::<SMAX, 6>(hm6, &u, &v, nsweeps, nf, local, gamma, &hess).unwrap());
+criterion_group! {
+    name = benches;
+    config = Criterion::default().sample_size(10);
+    targets = bench_mcs
 }
+criterion_main!(benches);
 
 
-fn main() {
-    // This runs all benchmarks annotated with #[divan::bench]
-    divan::main();
-    // ╰─ bench_mcs  3.868 s       │ 4.602 s       │ 4.149 s       │ 4.18 s        │ 60      │ 60
+fn bench_mcs(c: &mut Criterion) {
+    // Matlab equivalent test
+    // clearvars;
+    // clear global;
+    //
+    // path(path,'jones');
+    // fcn = "feval"; % do not change
+    // data = "hm6"; %  do not change
+    // prt = 0; % do not change
+    // iinit = 0; % do not change; Simple initialization list aka IinitEnum::Zero here
+    // u = [0; 0; 0; 0; 0; 0];
+    // v = [1; 1; 1; 1; 1; 1];
+    // smax = 100;
+    // nf = 1000000;
+    // stop = [1000]; % nsweeps
+    // local = 100;
+    // gamma= 2e-10;
+    // hess = ones(6,6); % 6x6 matrix for hm6
+    //
+    // format long g;
+    // [xbest,fbest,xmin,fmi,ncall,ncloc,flag]=mcs(fcn,data,u,v,prt,smax,nf,stop,iinit,local,gamma,hess)
+
+    let u = SVector::<f64, 6>::from_row_slice(&[0.; 6]); // lower bounds
+    let v = SVector::<f64, 6>::from_row_slice(&[1.0; 6]); // upper bounds
+
+    let nsweeps = 1_000;  // maximum number of sweeps
+    let nf = 1_000_000;   // maximum number of function evaluations
+
+    const SMAX: usize = 1_000; // number of levels used
+    let local = 100;   // local search level
+    let gamma = 2e-10;  // acceptable relative accuracy for local search
+    let hess = SMatrix::<f64, 6, 6>::repeat(1.);    // sparsity pattern of Hessian
+
+    c.bench_function("bench_mcs", |b| b.iter(|| mcs::<SMAX, 6>(hm6, &u, &v, nsweeps, nf, local, gamma, &hess).unwrap()));
 }
 
 

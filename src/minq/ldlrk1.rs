@@ -61,9 +61,11 @@ pub(super) fn ldlrk1<const N: usize>(
 
             // p(1:k)=L(1:k,1:k)'\p(1:k);
             // this solution variable is needed for the borrow checker as p here is borrowed as immut and later will be borrowed as mut
-            let solution = L.view_range(0..k + 1, 0..k + 1).transpose().lu().solve(
-                &p.rows(0, k + 1)
-            ).unwrap(); // TODO: not sure about .transpose() here. No such in Python version
+            let solution = L.view_range(0..k + 1, 0..k + 1)
+                .transpose() // TODO: not sure about .transpose() here. No such in Python version
+                .lu()
+                .solve(&p.rows(0, k + 1))
+                .unwrap();
 
             p.rows_mut(0, k + 1).copy_from(&solution);
 

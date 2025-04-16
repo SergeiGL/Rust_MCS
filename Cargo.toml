@@ -9,7 +9,7 @@ nalgebra = "*"
 
 
 [dev-dependencies]
-divan = "*"
+criterion = "*"
 approx = "*"
 
 [[bench]]
