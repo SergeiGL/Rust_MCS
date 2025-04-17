@@ -13,9 +13,9 @@ pub(crate) fn chkloc<const N: usize>(
 
 #[inline]
 pub(crate) fn fbestloc<const N: usize>(
-    fmi: &Vec<f64>,
+    fmi: &[f64],
     fbest: &mut f64,
-    xmin: &Vec<SVector<f64, N>>,
+    xmin: &[SVector<f64, N>],
     xbest: &mut SVector<f64, N>,
     nbasket0: usize,
 ) {

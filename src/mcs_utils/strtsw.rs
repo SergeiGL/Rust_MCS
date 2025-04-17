@@ -1,8 +1,8 @@
 #[inline]
 pub(crate) fn strtsw<const SMAX: usize>(
     record: &mut [Option<usize>; SMAX],  // -1 from Matlab
-    level: &Vec<usize>, // as in Matlab
-    f: &Vec<f64>,
+    level: &[usize], // as in Matlab
+    f: &[f64],
     nboxes: usize, // as from Matlab
 ) ->
     usize  // s
@@ -21,16 +21,12 @@ pub(crate) fn strtsw<const SMAX: usize>(
     for j in 0..nboxes {
         let level_val = level[j];
         if level_val != 0 {
-            if level_val < s { // both s and level are as in Matlab
-                s = level_val;
-            };
+            s = s.min(level_val); // both s and level are as in Matlab
 
             let record_el = &mut record[level_val - 1];
-            *record_el = Some(match *record_el {
-                None => j,
-                Some(val) if f[j] < f[val] => j,
-                Some(val) => val,
-            });
+            if record_el.is_none() || f[j] < f[record_el.expect("Prev check: record_el.is_none() ")] {
+                *record_el = Some(j);
+            }
         }
     }
     s

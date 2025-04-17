@@ -1,5 +1,5 @@
 #[inline]
-pub(crate) fn updtrec<const SMAX: usize>(j: usize, s: usize, f: &Vec<f64>, record: &mut [Option<usize>; SMAX]) {
+pub(crate) fn updtrec<const SMAX: usize>(j: usize, s: usize, f: &[f64], record: &mut [Option<usize>; SMAX]) {
     // s: as in Matlab
     // j: -1 from Matlab
     // record: -1 from Matlab in terms of values; record.len(): +1 from Matlab
