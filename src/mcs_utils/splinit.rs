@@ -13,7 +13,7 @@ pub(crate) fn splinit<const N: usize, const SMAX: usize>(
     x: &SVector<f64, N>,
     xmin: &mut Vec<SVector<f64, N>>,
     fmi: &mut Vec<f64>,
-    ipar: &mut Vec<Option<usize>>,
+    ipar: &mut Vec<usize>,
     level: &mut Vec<usize>,
     ichild: &mut Vec<isize>,
     isplit: &mut Vec<isize>,
@@ -185,7 +185,7 @@ mod tests {
         let mut x = SVector::<f64, 6>::from_row_slice(&[0.0; 6]);
         let mut xmin = vec![SVector::<f64, 6>::from_row_slice(&[0.0; 6])];
         let mut fmi = vec![0.0];
-        let mut ipar = vec![Some(0); 10];
+        let mut ipar = vec![0; 10];
         let mut level = vec![0; 10];
         let mut ichild = vec![0; 10];
         let mut f = [vec![0.0; 10], vec![0.0; 10]];
@@ -209,7 +209,7 @@ mod tests {
         assert_eq!(f0.as_slice(), [-0.00508911288366444, 0.0, -0.00508911288366444]);
         assert_eq!(xmin, [SVector::<f64, 6>::from_row_slice(&[0.0; 6]); 4]);
         assert_eq!(fmi, [0.0, -0.00508911288366444, 0.0, -0.00508911288366444]);
-        assert_eq!(ipar, [Some(0); 10]); // same as in Matlab
+        assert_eq!(ipar, [0; 10]); // same as in Matlab
         assert_eq!(level, [0; 10]); // same as in Matlab
         assert_eq!(ichild, [0; 10]); // same as in Matlab
         assert_eq!(f, [vec![0.0; 10], vec![0.0; 10]]);
@@ -298,7 +298,7 @@ mod tests {
         let mut x = SVector::<f64, 6>::from_row_slice(&[0.0; 6]);
         let mut xmin = vec![SVector::<f64, 6>::from_row_slice(&[1.0; 6]); 3];
         let mut fmi = vec![10.0, 10.0, 10.0];
-        let mut ipar = vec![Some(1); 10];
+        let mut ipar = vec![1; 10];
         let mut level = vec![1; 10];
         let mut ichild = vec![1; 10];
         let mut f = [vec![1.0; 10], vec![1.0; 10]];
@@ -322,7 +322,7 @@ mod tests {
         assert_eq!(f0.as_slice(), [-0.00508911288366444, 1.0, -0.00508911288366444]);
         assert_eq!(xmin, [SVector::<f64, 6>::from_row_slice(&[1., 1., 1., 1., 1., 1.]), SVector::<f64, 6>::from_row_slice(&[1., 1., 1., 1., 1., 1.]), SVector::<f64, 6>::from_row_slice(&[1., 1., 1., 1., 1., 1.]), SVector::<f64, 6>::from_row_slice(&[0., 0., 0., 0., 0., 0.]), SVector::<f64, 6>::from_row_slice(&[0., 0., 0., 0., 0., 0.]), SVector::<f64, 6>::from_row_slice(&[0., 0., 0., 0., 0., 0.])]);
         assert_eq!(fmi, [10., 10., 10., -0.00508911288366444, 1.0, -0.00508911288366444]);
-        assert_eq!(ipar, [Some(1); 10]); // same as in Rust
+        assert_eq!(ipar, [1; 10]); // same as in Rust
         assert_eq!(level, [1; 10]);
         assert_eq!(ichild, [1; 10]);
         assert_eq!(f, [vec![1.0; 10], vec![1.0; 10]]);
@@ -408,7 +408,7 @@ mod tests {
         let mut x = SVector::<f64, 6>::from_row_slice(&[5.0; 6]);
         let mut xmin = vec![SVector::<f64, 6>::from_row_slice(&[1.0; 6])];
         let mut fmi = vec![0.0];
-        let mut ipar = vec![Some(0); 10];
+        let mut ipar = vec![0; 10];
         let mut level = vec![0; 10];
         let mut ichild = vec![1; 10];
         let mut f = [vec![0.0; 10], vec![0.0; 10]];
@@ -437,7 +437,7 @@ mod tests {
         assert_eq!(f0.as_slice(), [-8.679282323749578e-298, 0.0, -8.679282323749578e-298]);
         assert_eq!(xmin, [SVector::<f64, 6>::from_row_slice(&[1., 1., 1., 1., 1., 1.])]);
         assert_eq!(fmi, [0.0]);
-        assert_eq!(ipar, [Some(0), Some(0), Some(5), Some(5), Some(5), Some(5), Some(5), Some(0), Some(0), Some(0), ]);
+        assert_eq!(ipar, [0, 0, 5, 5, 5, 5, 5, 0, 0, 0, ]);
         assert_eq!(level, [0, 0, 3, 3, 4, 4, 3, 0, 0, 0]);
         assert_eq!(ichild, [1, 1, -1, -2, -3, -4, -5, 1, 1, 1]);
         assert_eq!(f, expected_f);

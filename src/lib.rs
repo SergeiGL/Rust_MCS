@@ -80,7 +80,7 @@ where
 
     let mut isplit = vec![0_isize; INIT_VEC_CAPACITY]; // can be any negative or positive integer number
     let mut level = vec![0_usize; INIT_VEC_CAPACITY]; // the same numeration as in matlab
-    let mut ipar = vec![Some(0); INIT_VEC_CAPACITY]; // as in Matlab; can be >=0 or -1 (None)
+    let mut ipar = vec![0_usize; INIT_VEC_CAPACITY]; // as in Matlab; -1 == usize::MAX
     let mut f = [vec![0_f64; INIT_VEC_CAPACITY], vec![0_f64; INIT_VEC_CAPACITY]];
     let mut z = [vec![0_f64; INIT_VEC_CAPACITY], vec![0_f64; INIT_VEC_CAPACITY]];
     let mut ichild = vec![0_isize; INIT_VEC_CAPACITY]; // can be negative

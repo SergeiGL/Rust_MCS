@@ -2,7 +2,7 @@ use crate::mcs_utils::updtrec::updtrec;
 
 pub(super) fn genbox<const SMAX: usize>(
     nboxes: &mut usize,
-    ipar: &mut Vec<Option<usize>>,
+    ipar: &mut Vec<usize>,
     level: &mut Vec<usize>,
     ichild: &mut Vec<isize>,
     isplit: &mut Vec<isize>,
@@ -21,7 +21,7 @@ pub(super) fn genbox<const SMAX: usize>(
         let new_capacity = 2 * level.capacity();
 
         level.resize(new_capacity, 0_usize);
-        ipar.resize(new_capacity, Some(0_usize));
+        ipar.resize(new_capacity, 0_usize);
         isplit.resize(new_capacity, 0isize);
         ichild.resize(new_capacity, 0_isize);
         nogain.resize(new_capacity, false);
@@ -33,7 +33,7 @@ pub(super) fn genbox<const SMAX: usize>(
         z[1].resize(new_capacity, 0_f64);
     }
 
-    ipar[*nboxes] = Some(ipar_upd + 1); // ipar_upd -1 from Matlab as comes from record, ipar as in Matlab
+    ipar[*nboxes] = ipar_upd + 1; // ipar_upd -1 from Matlab as comes from record, ipar as in Matlab
     level[*nboxes] = level_upd;
     ichild[*nboxes] = ichild_upd;
     f[0][*nboxes] = f_upd;

@@ -10,7 +10,7 @@ pub(crate) fn vertex<const N: usize>(
     v1: &SVector<f64, N>,
     x0: &SMatrix<f64, N, 3>,
     f0: &Matrix3xX<f64>,
-    ipar: &[Option<usize>],
+    ipar: &[usize],
     isplit: &[isize],
     ichild: &[isize],
     z: &[Vec<f64>; 2],
@@ -35,10 +35,10 @@ pub(crate) fn vertex<const N: usize>(
     let mut m = par;
 
     while m != 0 {  // -1 from Matlab as j is -1 from Matlab
-        debug_assert!(ipar[m].is_some());
-        debug_assert!(ipar[m].unwrap() >= 1);
+        debug_assert!(ipar[m] != usize::MAX);
+        debug_assert!(ipar[m] >= 1);
 
-        let ipar_m = ipar[m].unwrap() - 1; // -1 as we will use at as index; Rust index is -1 from Matlab
+        let ipar_m = ipar[m] - 1; // -1 as we will use at as index; Rust index is -1 from Matlab
 
         debug_assert!(isplit[ipar_m].abs() >= 1);
         let i = isplit[ipar_m].abs() as usize - 1; // -1 as we will use at as index; Rust index is -1 from Matlab
@@ -179,8 +179,8 @@ pub(crate) fn vertex<const N: usize>(
             }
         }
         m = match ipar[m] { // ipar[m] is same as in Matlab, BUT m is -1 from Matlab! => need to -1
-            None | Some(0) | Some(1) => 0, // stop the cycle
-            Some(two_or_more) => two_or_more - 1
+            usize::MAX | 0 | 1 => 0, // stop the cycle
+            two_or_more => two_or_more - 1
         };
     }
 
@@ -320,7 +320,7 @@ mod tests {
             -0.6, -0.9, -0.4, -0.6, -0.9, -0.4,
             -0.7, -1.0, -0.5, -0.7, -1.0, -0.5,
         ]);
-        let ipar = vec![Some(0)];
+        let ipar = vec![0];
         let isplit = vec![-1];
         let ichild = vec![1];
         let z = [vec![0.0], vec![f64::INFINITY]];
@@ -400,7 +400,7 @@ mod tests {
             -0.5, -0.6, -0.7, -0.8,
             -0.9, -1.0, -1.1, -1.2,
         ]);
-        let ipar = vec![Some(3), Some(1)];
+        let ipar = vec![3, 1];
         let isplit = vec![2, -3];
         let ichild = vec![-1, 2];
         let z = [vec![0.2, 0.3], vec![0.4, 0.5]];
@@ -480,7 +480,7 @@ mod tests {
             0.11, 0.12, 0.13, 0.14, 0.15,
             0.21, 0.22, 0.23, 0.24, 0.25,
         ]);
-        let ipar = vec![Some(4), Some(5), Some(1)];
+        let ipar = vec![4, 5, 1];
         let isplit = vec![1, 3, -5];
         let ichild = vec![-5, -3, -1];
         let z = [vec![2., 1., 2.], vec![3., 4., 5.]];
@@ -555,7 +555,7 @@ mod tests {
             0.35, 0.55,
             0.65, 0.85,
         ]);
-        let ipar = vec![Some(3), Some(2), Some(1)];
+        let ipar = vec![3, 2, 1];
         let isplit = vec![1, 0, 2];
         let ichild = vec![2, 1, 3];
         let z = [vec![0.25, 0.55, 0.75], vec![0.35, 0.65, 0.85]];
@@ -632,7 +632,7 @@ mod tests {
             -0.5, -0.6, -0.7,
             -0.8, -0.9, -1.0,
         ]);
-        let ipar = vec![Some(3), Some(1), Some(0)];
+        let ipar = vec![3, 1, 0];
         let isplit = vec![-1, 2, 0];
         let ichild = vec![1, -4, 2];
         let z = [vec![0.1, 0.2, 0.3], vec![0.4, 0.5, 0.6]];
@@ -717,7 +717,7 @@ mod tests {
             0.20, 0.21, 0.22, 0.23, 0.24, 0.25, 0.26,
             0.30, 0.31, 0.32, 0.33, 0.34, 0.35, 0.36,
         ]);
-        let ipar = vec![Some(2), Some(1), Some(3), Some(4), Some(2)];
+        let ipar = vec![2, 1, 3, 4, 2];
         let isplit = vec![1, 3, 2, 3, 1];
         let ichild = vec![3, 2, 3, 1, 5];
         let z = [vec![1., 2., 3., 4., 5.], vec![1., 2., 3., 4., 5., ]];
@@ -802,7 +802,7 @@ mod tests {
             0.20, 0.21, 0.22, 0.23, 0.24, 0.25, 0.26,
             0.30, 0.31, 0.32, 0.33, 0.34, 0.35, 0.36,
         ]);
-        let ipar = vec![Some(2), Some(1), Some(3), Some(4), Some(2)];
+        let ipar = vec![2, 1, 3, 4, 2];
         let isplit = vec![1, 3, 2, 3, 1];
         let ichild = vec![-3, -2, -3, -1, -5];
         let z = [vec![1., 2., 3., 4., 5.], vec![1., 2., 3., 4., 5., ]];

@@ -14,7 +14,7 @@ pub(crate) fn split<const N: usize, const SMAX: usize>(
     z1: f64,
     xmin: &mut Vec<SVector<f64, N>>,
     fmi: &mut Vec<f64>,
-    ipar: &mut Vec<Option<usize>>,
+    ipar: &mut Vec<usize>,
     level: &mut Vec<usize>,
     ichild: &mut Vec<isize>,
     isplit: &mut Vec<isize>,
@@ -170,7 +170,7 @@ mod tests {
         let (z0, z1) = (100., 1.);
         let mut xmin = vec![SVector::<f64, 6>::from_row_slice(&[-10., -20., -30., -40., -50., -60.]), SVector::<f64, 6>::from_row_slice(&[-11., -21., -31., -41., -51., -61.])];
         let mut fmi = vec![0., 1., 2., 3., 4., 5.];
-        let mut ipar = vec![Some(0); 10];
+        let mut ipar = vec![0; 10];
         let mut level = vec![0; 10];
         let mut ichild = vec![-1; 10];
         let mut f = [vec![1.0; 10], vec![1.0; 10]];
@@ -194,7 +194,7 @@ mod tests {
 
         assert_eq!(xmin, [SVector::<f64, 6>::from_row_slice(&[-10., -20., -30., -40., -50., -60.]), SVector::<f64, 6>::from_row_slice(&[-11., -21., -31., -41., -51., -61.])]);
         assert_eq!(fmi, [0., 1., 2., 3., 4., 5.]);
-        assert_eq!(ipar, [Some(0), Some(6), Some(6), Some(6), Some(0), Some(0), Some(0), Some(0), Some(0), Some(0)]);
+        assert_eq!(ipar, [0, 6, 6, 6, 0, 0, 0, 0, 0, 0]);
         assert_eq!(level, [0, 2, 1, 2, 0, 0, 0, 0, 0, 0]);
         assert_eq!(ichild, [-1, 1, 2, 3, -1, -1, -1, -1, -1, -1]);
         assert_eq!(f, expected_f);
@@ -270,7 +270,7 @@ mod tests {
         let (z0, z1) = (5.1, -5.2);
         let mut xmin = vec![SVector::<f64, 6>::from_row_slice(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0])];
         let mut fmi = vec![-1.0, -2.0, -3.0, -4.0, -5.0, -6.0];
-        let mut ipar = vec![Some(1); 6];
+        let mut ipar = vec![1; 6];
         let mut level = vec![1; 6];
         let mut ichild = vec![1; 6];
         let mut f = [vec![1.0; 10], vec![1.0; 10]];
@@ -294,7 +294,7 @@ mod tests {
 
         assert_eq!(xmin, [SVector::<f64, 6>::from_row_slice(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0])]);
         assert_eq!(fmi, [-1.0, -2.0, -3.0, -4.0, -5.0, -6.0]);
-        assert_eq!(ipar, [Some(1), Some(1), Some(4), Some(4), Some(4), Some(1)]);
+        assert_eq!(ipar, [1, 1, 4, 4, 4, 1]);
         assert_eq!(level, [1, 1, 5, 4, 4, 1]);
         assert_eq!(ichild, [1, 1, 1, 2, 3, 1]);
         assert_eq!(f, expected_f);
