@@ -66,7 +66,7 @@ pub fn mcs<const SMAX: usize, const N: usize>(
 where
     Const<N>: DimMin<Const<N>, Output=Const<N>>,
 {
-    // record: -1 from Matlab and has .len() +1 from Matlab
+    // record: -1 from Matlab: 0 -> usize::MAX; and has .len() +1 from Matlab
     // p: -1 from Matlab
 
     if v <= u { return Err(format!("Error MCS main: v should be > u:\nv = {v:?}\nu = {u:?}")); }
@@ -124,9 +124,8 @@ where
 
     // stop(1) in matlab is nsweeps; always > 0 => flag won't change
 
-    // record(i): -1 from Matlab; points to the best non-split box at level i; record.len() is +1 from Matlab and from what is needed due to generic_const_exprs
-    // record: Matlab 0 === Rust None
-    let mut record = [None; SMAX];
+    // record: -1 from Matlab; 0 -> usize::MAX; points to the best non-split box at level i; record.len() is +1 from Matlab and from what is needed due to generic_const_exprs
+    let mut record = [usize::MAX; SMAX];
     // s: same as in Matlab;
     let mut s = strtsw::<SMAX>(&mut record, &level, &f[0], nboxes);
     nsweep += 1;
@@ -144,8 +143,9 @@ where
     // VARIABLES USED LATER
 
     while s < SMAX && ncall + 1 <= nf {
-        // par: -1 from Matlab as record -1 from Matlab
-        let par = record[s - 1].unwrap();
+        // par: -1 from Matlab as record -1 from Matlab; 0 -> usize::MAX
+        debug_assert!(record[s - 1] != usize::MAX);
+        let par = record[s - 1];
         vertex(par, u, v, &v1, &x0, &f0, &ipar, &isplit, &ichild, &z, &f, &mut n0, &mut x, &mut y, &mut x1, &mut x2, &mut f1, &mut f2);
 
         let splt = if s > 2 * N * (n0.iter().min().expect("n0 has length N") + 1) {
@@ -202,7 +202,7 @@ where
         // Update s to split boxes
         s += 1;
         while s < SMAX {
-            if record[s - 1].is_none() {
+            if record[s - 1] == usize::MAX {
                 s += 1;
             } else {
                 break;

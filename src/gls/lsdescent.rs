@@ -2,7 +2,6 @@ use crate::gls::lssort::lssort;
 use nalgebra::SVector;
 use std::cmp::Ordering;
 
-#[inline]
 pub(super) fn lsdescent<const N: usize>(
     func: fn(&SVector<f64, N>) -> f64,
     x: &SVector<f64, N>,

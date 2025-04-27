@@ -4,7 +4,6 @@ use crate::gls::lssort::lssort;
 use crate::gls::quartic::quartic;
 use nalgebra::{Matrix3, SVector};
 
-#[inline]
 pub(super) fn lsquart<const N: usize>(
     func: fn(&SVector<f64, N>) -> f64,
     nloc: usize,

@@ -12,8 +12,6 @@ enum CasEnum {
     UseHigherOrderPredictor5,    // 5
 }
 
-
-#[inline]
 pub(super) fn lslocal<const N: usize>(
     func: fn(&SVector<f64, N>) -> f64,
     nloc: usize,

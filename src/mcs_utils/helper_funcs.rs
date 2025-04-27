@@ -1,6 +1,5 @@
 use nalgebra::SVector;
 
-
 #[inline]
 pub(crate) fn clamp_SVector_mut<const N: usize>(svec: &mut SVector<f64, N>, min: &SVector<f64, N>, max: &SVector<f64, N>) {
     *svec = svec.sup(min).inf(max);
@@ -23,7 +22,6 @@ pub(super) fn update_fbest_xbest_nsweepbest<const N: usize>(
 }
 
 // used in basket and basket1
-#[inline]
 pub(super) fn get_sorted_indices<const N: usize>(nbasket: usize, x: &SVector<f64, N>, xmin: &[SVector<f64, N>]) -> Vec<usize> {
     let mut indices: Vec<usize> = (0..nbasket).collect();
     debug_assert!(nbasket <= xmin.len());

@@ -2,7 +2,6 @@ use crate::add_basket;
 use crate::mcs_utils::genbox::genbox;
 use nalgebra::{Matrix3xX, SMatrix, SVector};
 
-#[inline]
 pub(crate) fn splinit<const N: usize, const SMAX: usize>(
     func: fn(&SVector<f64, N>) -> f64,
     i: usize, // -1 from Matlab
@@ -23,7 +22,7 @@ pub(crate) fn splinit<const N: usize, const SMAX: usize>(
     z: &mut [Vec<f64>; 2],
     xbest: &mut SVector<f64, N>,
     fbest: &mut f64,
-    record: &mut [Option<usize>; SMAX],
+    record: &mut [usize; SMAX],
     nboxes: &mut usize,
     nbasket: &mut usize,
     nsweepbest: &mut usize,
@@ -193,7 +192,7 @@ mod tests {
         let mut z = [vec![0.0; 10], vec![0.0; 10]];
         let mut xbest = SVector::<f64, 6>::from_row_slice(&[0.0; 6]);
         let mut fbest = 10.0;
-        let mut record = [None; 2];
+        let mut record = [usize::MAX; 2];
         let mut nboxes = 2_usize;
         let mut nbasket = 1;
         let mut nsweepbest = 0_usize;
@@ -214,7 +213,7 @@ mod tests {
         assert_eq!(level, [0; 10]); // same as in Matlab
         assert_eq!(ichild, [0; 10]); // same as in Matlab
         assert_eq!(f, [vec![0.0; 10], vec![0.0; 10]]);
-        assert_eq!(record, [None; 2]);
+        assert_eq!(record, [usize::MAX; 2]);
         assert_eq!(nboxes, 2);
         assert_eq!(nbasket, 4);
         assert_eq!(nsweepbest, 1);
@@ -306,7 +305,7 @@ mod tests {
         let mut z = [vec![1.0; 10], vec![1.0; 10]];
         let mut xbest = SVector::<f64, 6>::from_row_slice(&[1.0; 6]);
         let mut fbest = 0.0;
-        let mut record = [None; 1];
+        let mut record = [usize::MAX; 1];
         let mut nboxes = 3_usize;
         let mut nbasket = 3;
         let mut nsweepbest = 4_usize;
@@ -327,7 +326,7 @@ mod tests {
         assert_eq!(level, [1; 10]);
         assert_eq!(ichild, [1; 10]);
         assert_eq!(f, [vec![1.0; 10], vec![1.0; 10]]);
-        assert_eq!(record, [None]);
+        assert_eq!(record, [usize::MAX]);
         assert_eq!(nboxes, 3);
         assert_eq!(nbasket, 6);
         assert_eq!(nsweepbest, 5);
@@ -416,7 +415,7 @@ mod tests {
         let mut z = [vec![0.0; 10], vec![0.0; 10]];
         let mut xbest = SVector::<f64, 6>::from_row_slice(&[0.0; 6]);
         let mut fbest = 0.0;
-        let mut record = [None; 9];
+        let mut record = [usize::MAX; 9];
         let mut nboxes = 2_usize;
         let mut nbasket = 0;
         let mut nsweepbest = 1_usize;
@@ -442,7 +441,7 @@ mod tests {
         assert_eq!(level, [0, 0, 3, 3, 4, 4, 3, 0, 0, 0]);
         assert_eq!(ichild, [1, 1, -1, -2, -3, -4, -5, 1, 1, 1]);
         assert_eq!(f, expected_f);
-        assert_eq!(record, [None, None, Some(2), Some(4), None, None, None, None, None]); // -1 from Matlab
+        assert_eq!(record, [usize::MAX, usize::MAX, 2, 4, usize::MAX, usize::MAX, usize::MAX, usize::MAX, usize::MAX]); // -1 from Matlab
         assert_eq!(nboxes, 7);
         assert_eq!(nbasket, 0);
         assert_eq!(nsweepbest, 2);

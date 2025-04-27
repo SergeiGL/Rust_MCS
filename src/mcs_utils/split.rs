@@ -23,7 +23,7 @@ pub(crate) fn split<const N: usize, const SMAX: usize>(
     z: &mut [Vec<f64>; 2],
     xbest: &mut SVector<f64, N>,
     fbest: &mut f64,
-    record: &mut [Option<usize>; SMAX],
+    record: &mut [usize; SMAX],
     nboxes: &mut usize,
     nbasket: &mut usize,
     nsweepbest: &mut usize,
@@ -177,7 +177,7 @@ mod tests {
         let mut z = [vec![1.0; 10], vec![1.0; 10]];
         let mut xbest = SVector::<f64, 6>::from_row_slice(&[0.0; 6]);
         let mut fbest = 10.0;
-        let mut record = [Some(0), Some(1), Some(2), Some(3), Some(4), Some(5), Some(6), None];
+        let mut record = [0, 1, 2, 3, 4, 5, 6, usize::MAX];
         let mut nboxes = 1_usize;
         let mut nbasket = 0;
         let mut nsweepbest = 0_usize;
@@ -200,7 +200,7 @@ mod tests {
         assert_eq!(f, expected_f);
         assert_eq!(xbest.as_slice(), [1., 1., 3., 4., 5., 6.]);
         assert_eq!(fbest, -9.93492055883314e-188);
-        assert_eq!(record, [Some(2), Some(3), Some(2), Some(3), Some(4), Some(5), Some(6), None]);
+        assert_eq!(record, [2, 3, 2, 3, 4, 5, 6, usize::MAX]);
         assert_eq!(nboxes, 4);
         assert_eq!(nbasket, 0);
         assert_eq!(nsweepbest, 1);
@@ -277,7 +277,7 @@ mod tests {
         let mut z = [vec![1.0; 10], vec![1.0; 10]];
         let mut xbest = SVector::<f64, 6>::from_row_slice(&[1.0; 6]);
         let mut fbest = 0.0;
-        let mut record = [Some(1), Some(2), Some(3), Some(4), Some(5), Some(6), Some(7)];
+        let mut record = [1, 2, 3, 4, 5, 6, 7];
         let mut nboxes = 2_usize;
         let mut nbasket = 1;
         let mut nsweepbest = 3_usize;
@@ -300,7 +300,7 @@ mod tests {
         assert_eq!(f, expected_f);
         assert_eq!(xbest.as_slice(), [1.; 6]);
         assert_eq!(fbest, 0.0);
-        assert_eq!(record, [Some(1), Some(2), Some(3), Some(3), Some(5), Some(6), Some(7)]);
+        assert_eq!(record, [1, 2, 3, 3, 5, 6, 7]);
         assert_eq!(nboxes, 5);
         assert_eq!(nbasket, 1);
         assert_eq!(nsweepbest, 3);

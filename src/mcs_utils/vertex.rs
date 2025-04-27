@@ -3,7 +3,6 @@ use nalgebra::{Matrix3xX, SMatrix, SVector};
 
 // l is always full of 1 (2 in Matlab);
 // L is always full of 2 (3 in Matlab)
-#[inline]
 pub(crate) fn vertex<const N: usize>(
     par: usize, // -1 from Matlab
     u: &SVector<f64, N>,

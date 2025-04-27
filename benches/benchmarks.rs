@@ -5,7 +5,7 @@ use Rust_MCS::*;
 
 criterion_group! {
     name = benches;
-    config = Criterion::default().sample_size(10);
+    config = Criterion::default().sample_size(10).measurement_time(std::time::Duration::new(60, 0));
     targets = bench_mcs
 }
 criterion_main!(benches);

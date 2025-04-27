@@ -54,7 +54,6 @@ use std::cmp::Ordering;
 /// # Note
 /// This function is part of an iterative process and should be called repeatedly until convergence
 /// is achieved or an error condition is detected.
-#[inline]
 pub(super) fn minqsub<const N: usize>(
     nsub: &mut usize,
     free: &mut SVector<bool, N>,

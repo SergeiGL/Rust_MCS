@@ -4,7 +4,6 @@ use nalgebra::{Matrix3xX, SVector};
 
 // l is always full of 1;
 // L is always full of 2
-#[inline]
 pub(crate) fn exgain<const N: usize>(
     n0: &[usize; N],
     x: &SVector<f64, N>,

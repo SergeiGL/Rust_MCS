@@ -2,7 +2,6 @@ use crate::gls::lsnew::lsnew;
 use crate::gls::lssort::lssort;
 use nalgebra::SVector;
 
-#[inline]
 pub(super) fn lssep<const N: usize>(
     func: fn(&SVector<f64, N>) -> f64,
     nloc: usize,
