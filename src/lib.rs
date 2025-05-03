@@ -1,6 +1,6 @@
 #![allow(non_snake_case)]
 
-use nalgebra::{Const, DimMin, SMatrix, SVector};
+use nalgebra::{SMatrix, SVector};
 
 #[cfg(test)]
 mod test_functions;
@@ -63,8 +63,6 @@ pub fn mcs<const SMAX: usize, const N: usize>(
         usize,                 // ncloc
         ExitFlagEnum,          // ExitFlag
     ), String>
-where
-    Const<N>: DimMin<Const<N>, Output=Const<N>>,
 {
     // record: -1 from Matlab: 0 -> usize::MAX; and has .len() +1 from Matlab
     // p: -1 from Matlab

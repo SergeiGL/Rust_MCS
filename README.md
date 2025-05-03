@@ -94,9 +94,9 @@ pub fn mcs<const SMAX: usize, const N: usize>(
         usize,                 // ncloc; Number of local searches
         ExitFlagEnum,          // ExitFlag; Exit status
     ), String>
-where
-    Const<N>: DimMin<Const<N>, Output=Const<N>>,
-{ ... }
+{
+    ...
+}
 ```
 
 ### Types

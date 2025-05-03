@@ -8,7 +8,7 @@ use crate::minq::getalp::getalp;
 use crate::minq::minqsub::minqsub;
 
 use crate::mcs_utils::helper_funcs::clamp_SVector_mut;
-use nalgebra::{Const, DimMin, SMatrix, SVector};
+use nalgebra::{SMatrix, SVector};
 
 
 // Returned from MINQ
@@ -62,10 +62,7 @@ pub fn minq<const N: usize>(
     SVector<f64, N>,  // x
     f64,              // fct
     IerEnum           // ier
-)
-where
-    Const<N>: DimMin<Const<N>, Output=Const<N>>,
-{
+) {
     // Maximal number of iterations this limits the work to about 1+4*maxit/n matrix multiplies; usually at most 2*n iterations are needed for convergence
     let maxit = 3 * N;
     // Maximal number of iterative refinement steps

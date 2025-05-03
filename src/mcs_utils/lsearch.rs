@@ -1,7 +1,7 @@
 use crate::gls::gls;
 use crate::mcs_utils::{csearch::csearch, helper_funcs::*, neighbor::neighbor, triple::triple};
 use crate::minq::minq;
-use nalgebra::{Const, DimMin, SMatrix, SVector};
+use nalgebra::{SMatrix, SVector};
 
 const EPS_POW_1_3: f64 = 0.000006055454452393343;
 
@@ -20,10 +20,7 @@ pub(crate) fn lsearch<const N: usize>(
     SVector<f64, N>, // xmin
     f64,             // fmi
     usize,           // ncall
-)
-where
-    Const<N>: DimMin<Const<N>, Output=Const<N>>,
-{
+) {
 
     // flag will always be true as nsweeps != 0 => no need
     // ncloc: === 1;

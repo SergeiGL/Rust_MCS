@@ -2,7 +2,7 @@ use crate::minq::getalp::getalp;
 use crate::minq::ldldown::ldldown;
 use crate::minq::ldlup::ldlup;
 use crate::minq::IerEnum;
-use nalgebra::{Const, DimMin, SMatrix, SVector};
+use nalgebra::{DMatrix, SMatrix, SVector};
 use std::cmp::Ordering;
 
 /// Performs a single iteration of the MINQ algorithm for bound-constrained quadratic minimization
@@ -73,10 +73,7 @@ pub(super) fn minqsub<const N: usize>(
     lba: &mut bool,
     uba: &mut bool,
     ier: &mut IerEnum,
-)
-where
-    Const<N>: DimMin<Const<N>, Output=Const<N>>,
-{
+) {
     let mut p = SVector::<f64, N>::zeros();
 
     *nsub += 1;
@@ -125,8 +122,9 @@ where
         }
 
         // p=-L'\((L\p)./dd);
-        let rhs = L.lu().solve(&p).unwrap().component_div(d);
-        p = -L.transpose().lu().solve(&rhs).unwrap();
+        let L_d: DMatrix<f64> = DMatrix::from_column_slice(N, N, L.as_slice()); // TODO: possibly room for optimizations
+        let rhs = L_d.clone().lu().solve(&p).unwrap().component_div(d);
+        p = -L_d.transpose().lu().solve(&rhs).unwrap();
     }
 
 
