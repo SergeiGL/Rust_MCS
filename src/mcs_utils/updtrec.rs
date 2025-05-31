@@ -1,5 +1,5 @@
 #[inline]
-pub(crate) fn updtrec<const SMAX: usize>(j: usize, s: usize, f: &[f64], record: &mut [usize; SMAX]) {
+pub(crate) fn updtrec(j: usize, s: usize, f: &[f64], record: &mut [usize]) {
     // s: as in Matlab
     // j: -1 from Matlab
     // record: -1 from Matlab in terms of values; record.len(): +1 from Matlab
@@ -33,7 +33,7 @@ mod tests {
         let j = 3;
         let s = 3;
         let f = vec![-0.5, -0.6, -0.7, -2.0, -4.0];
-        let mut record = [0, 1, 2, 3, 4, usize::MAX];
+        let mut record = vec![0, 1, 2, 3, 4, usize::MAX];
 
         updtrec(j, s, &f, &mut record);
         assert_eq!(record, [0, 1, 3, 3, 4, usize::MAX]);
@@ -57,7 +57,7 @@ mod tests {
         let j = 2;
         let s = 2;
         let f = vec![-0.5, -0.6, -0.7, -2.0, -4.0];
-        let mut record = [0, 0, 0, 0, 0, usize::MAX];
+        let mut record = vec![0, 0, 0, 0, 0, usize::MAX];
 
         updtrec(j, s, &f, &mut record);
         assert_eq!(record, [0, 2, 0, 0, 0, usize::MAX]);
@@ -81,7 +81,7 @@ mod tests {
         let j = 3;
         let s = 2;
         let f = vec![-0.5, -0.6, -0.7, -2.0, -1.0];
-        let mut record = [0, 0, 2, 0, 0, usize::MAX];
+        let mut record = vec![0, 0, 2, 0, 0, usize::MAX];
 
         updtrec(j, s, &f, &mut record);
         assert_eq!(record, [0, 3, 2, 0, 0, usize::MAX]);
@@ -105,7 +105,7 @@ mod tests {
         let j = 2;
         let s = 2;
         let f = vec![-0.5, -0.6, -0.7, -2.0, -4.0];
-        let mut record = [0, 0, 2, 0, 0, usize::MAX];
+        let mut record = vec![0, 0, 2, 0, 0, usize::MAX];
 
         updtrec(j, s, &f, &mut record);
         assert_eq!(record, [0, 2, 2, 0, 0, usize::MAX]);
@@ -129,7 +129,7 @@ mod tests {
         let j = 3;
         let s = 3;
         let f = vec![-0.5, -0.6, -0.7, -2.0, -1.0];
-        let mut record = [0, 0, 2, 0, 0, usize::MAX];
+        let mut record = vec![0, 0, 2, 0, 0, usize::MAX];
 
         updtrec(j, s, &f, &mut record);
         assert_eq!(record, [0, 0, 3, 0, 0, usize::MAX]);
@@ -153,7 +153,7 @@ mod tests {
         let j = 3;
         let s = 3;
         let f = vec![-0.5, -0.6, -0.7, -2.0, -1.0];
-        let mut record = [usize::MAX; 6];
+        let mut record = vec![usize::MAX; 6];
 
         updtrec(j, s, &f, &mut record);
         assert_eq!(record, [usize::MAX, usize::MAX, 3, usize::MAX, usize::MAX, usize::MAX]);

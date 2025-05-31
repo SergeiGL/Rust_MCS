@@ -16,6 +16,6 @@ approx = "*"
 name = "benchmarks"
 harness = false
 
-# For cargo flamegraph
+# For cargo flamegraph --bench benchmarks
 #[profile.release]
 #debug = true

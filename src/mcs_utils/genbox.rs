@@ -1,6 +1,6 @@
 use crate::mcs_utils::updtrec::updtrec;
 
-pub(super) fn genbox<const SMAX: usize>(
+pub(super) fn genbox(
     nboxes: &mut usize,
     ipar: &mut Vec<usize>,
     level: &mut Vec<usize>,
@@ -13,7 +13,7 @@ pub(super) fn genbox<const SMAX: usize>(
     level_upd: usize, // s + smth
     ichild_upd: isize,
     f_upd: f64,
-    record: &mut [usize; SMAX],
+    record: &mut [usize],
 ) {
     // Do [*nboxes] before *nboxes += 1
     // nboxes: -1 from Matlab

@@ -44,7 +44,7 @@ const INIT_VEC_CAPACITY: usize = 30_000;
 // hess = ones(N,N);
 //
 // ONLY SIMPLE INITIALIZATION IS SUPPORTED (IinitEnum::Zero / iinit=0 in Matlab)
-pub fn mcs<const SMAX: usize, const N: usize>(
+pub fn mcs<const N: usize>(
     func: fn(&SVector<f64, N>) -> f64,
     u: &SVector<f64, N>,
     v: &SVector<f64, N>,
@@ -52,6 +52,7 @@ pub fn mcs<const SMAX: usize, const N: usize>(
     nf: usize,
     local: usize,
     gamma: f64,
+    smax: usize,
     hess: &SMatrix<f64, N, N>,
 ) ->
     Result<(
@@ -123,9 +124,12 @@ pub fn mcs<const SMAX: usize, const N: usize>(
     // stop(1) in matlab is nsweeps; always > 0 => flag won't change
 
     // record: -1 from Matlab; 0 -> usize::MAX; points to the best non-split box at level i; record.len() is +1 from Matlab and from what is needed due to generic_const_exprs
-    let mut record = [usize::MAX; SMAX];
+    let mut record = vec![usize::MAX; smax];
+    debug_assert_eq!(record.capacity(), smax);
+    debug_assert_eq!(record.len(), smax);
+
     // s: same as in Matlab;
-    let mut s = strtsw::<SMAX>(&mut record, &level, &f[0], nboxes);
+    let mut s = strtsw(&mut record, &level, &f[0], nboxes);
     nsweep += 1;
 
     // VARIABLES USED LATER
@@ -140,7 +144,7 @@ pub fn mcs<const SMAX: usize, const N: usize>(
     let mut f2 = [f64::NAN; N];
     // VARIABLES USED LATER
 
-    while s < SMAX && ncall + 1 <= nf {
+    while s < smax && ncall + 1 <= nf {
         // par: -1 from Matlab as record -1 from Matlab; 0 -> usize::MAX
         debug_assert!(record[s - 1] != usize::MAX);
         let par = record[s - 1];
@@ -175,20 +179,20 @@ pub fn mcs<const SMAX: usize, const N: usize>(
             if z[1][par] == f64::INFINITY {
                 m += 1;
                 z[1][par] = m as f64;
-                splinit::<N, SMAX>(func, i, s, par, &x0, u, v, &x, &mut xmin, &mut fmi,
-                                   &mut ipar, &mut level, &mut ichild, &mut isplit, &mut nogain, &mut f, &mut z,
-                                   &mut xbest, &mut fbest, &mut record, &mut nboxes, &mut nbasket, &mut nsweepbest,
-                                   &mut nsweep, &mut f0);
+                splinit::<N>(func, i, s, par, &x0, u, v, &x, &mut xmin, &mut fmi,
+                             &mut ipar, &mut level, &mut ichild, &mut isplit, &mut nogain, &mut f, &mut z,
+                             &mut xbest, &mut fbest, &mut record, smax, &mut nboxes, &mut nbasket, &mut nsweepbest,
+                             &mut nsweep, &mut f0);
                 ncall += 2; // splinit does exactly 2 calls
             } else {
                 z[0][par] = x[i];
-                split::<N, SMAX>(func, i, s, par, &x, &mut y, z[0][par], z[1][par], &mut xmin, &mut fmi, &mut ipar, &mut level,
-                                 &mut ichild, &mut isplit, &mut nogain, &mut f, &mut z, &mut xbest, &mut fbest, &mut record, &mut nboxes,
-                                 &mut nbasket, &mut nsweepbest, &mut nsweep);
+                split::<N>(func, i, s, par, &x, &mut y, z[0][par], z[1][par], &mut xmin, &mut fmi, &mut ipar, &mut level,
+                           &mut ichild, &mut isplit, &mut nogain, &mut f, &mut z, &mut xbest, &mut fbest, &mut record, smax, &mut nboxes,
+                           &mut nbasket, &mut nsweepbest, &mut nsweep);
                 ncall += 1; // split does exactly 1 call
             }
         } else {
-            if s + 1 < SMAX {
+            if s + 1 < smax {
                 level[par] = s + 1;
                 updtrec(par, s + 1, &f[0], &mut record);
             } else {
@@ -199,7 +203,7 @@ pub fn mcs<const SMAX: usize, const N: usize>(
 
         // Update s to split boxes
         s += 1;
-        while s < SMAX {
+        while s < smax {
             if record[s - 1] == usize::MAX {
                 s += 1;
             } else {
@@ -207,7 +211,7 @@ pub fn mcs<const SMAX: usize, const N: usize>(
             }
         }
 
-        if s == SMAX { // if smax is reached, a new sweep is started
+        if s == smax { // if smax is reached, a new sweep is started
             if local != 0 {
                 // f(1:3) in Matlab equals &f[0..3] in Rust. Note that 3 does not change
                 fmi[nbasket0..nbasket].sort_by(|a, b| a.total_cmp(b));
@@ -240,7 +244,7 @@ pub fn mcs<const SMAX: usize, const N: usize>(
                 }
                 nbasket = nbasket0;
             }
-            s = strtsw::<SMAX>(&mut record, &level, &f[0], nboxes);
+            s = strtsw(&mut record, &level, &f[0], nboxes);
             if nsweep - nsweepbest >= nsweeps {
                 return Ok((xbest, fbest, xmin, fmi, ncall, ncloc, ExitFlagEnum::StopNsweepsExceeded));
             }
@@ -295,7 +299,6 @@ mod tests {
         // format long g;
         // [xbest,fbest,xmin,fmi,ncall,ncloc,flag]=mcs(fcn,data,u,v,prt,smax,nf,stop,iinit,local,gamma,hess)
 
-        const SMAX: usize = 1_000; // number of levels used
         const N: usize = 6; // number of dimensions
 
         // Optimization Bounds:
@@ -307,6 +310,7 @@ mod tests {
 
         let local = 50;    // local search level
         let gamma = 2e-14; // acceptable relative accuracy for local search
+        let smax = 1_000; // number of levels used
 
         let hess = SMatrix::<f64, N, N>::repeat(1.); // sparsity pattern of Hessian
 
@@ -319,7 +323,7 @@ mod tests {
             sum
         }
 
-        let (xbest, fbest, xmin, fmi, ncall, ncloc, ExitFlag) = mcs::<SMAX, 6>(func, &u, &v, nsweeps, nf, local, gamma, &hess).unwrap();
+        let (xbest, fbest, xmin, fmi, ncall, ncloc, ExitFlag) = mcs::<N>(func, &u, &v, nsweeps, nf, local, gamma, smax, &hess).unwrap();
 
         assert_relative_eq!(xbest.as_slice(), [0.12345, 0.12345, 0.12345, 0.12345, 0.12345, 0.12345].as_slice(), epsilon = TOLERANCE);
         assert_relative_eq!(fbest, 0.0, epsilon = TOLERANCE);
@@ -355,17 +359,18 @@ mod tests {
         // format long g;
         // [xbest,fbest,xmin,fmi,ncall,ncloc,flag]=mcs(fcn,data,u,v,prt,smax,nf,stop,iinit,local,gamma,hess)
 
-        let u = SVector::<f64, 6>::from_row_slice(&[0.; 6]);
-        let v = SVector::<f64, 6>::from_row_slice(&[1.0; 6]);
-        const SMAX: usize = 20;
+        const N: usize = 6;
+        let u = SVector::<f64, N>::from_row_slice(&[0.; N]);
+        let v = SVector::<f64, N>::from_row_slice(&[1.0; N]);
         let nf = 1000; // maximum number of function evaluations
         let nsweeps = 18;  // maximum number of sweeps
         // stop(1) - nsweeps
         let local = 50;
         let gamma = 2e-6;
-        let hess = SMatrix::<f64, 6, 6>::repeat(1.);
+        let smax = 20;
+        let hess = SMatrix::<f64, N, N>::repeat(1.);
 
-        let (xbest, fbest, _, fmi, ncall, ncloc, ExitFlag) = mcs::<SMAX, 6>(hm6, &u, &v, nsweeps, nf, local, gamma, &hess).unwrap();
+        let (xbest, fbest, _, fmi, ncall, ncloc, ExitFlag) = mcs::<N>(hm6, &u, &v, nsweeps, nf, local, gamma, smax, &hess).unwrap();
 
         assert_relative_eq!(xbest.as_slice(), [0.201689511010837, 0.150010691921827, 0.476873974679078, 0.275332430524218, 0.311651616585802, 0.657300534081583].as_slice(), epsilon = TOLERANCE);
         assert_relative_eq!(fbest, -3.32236801141551, epsilon = TOLERANCE);

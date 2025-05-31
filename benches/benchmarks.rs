@@ -39,12 +39,12 @@ fn bench_mcs(c: &mut Criterion) {
     let nsweeps = 1_000;  // maximum number of sweeps
     let nf = 1_000_000;   // maximum number of function evaluations
 
-    const SMAX: usize = 1_000; // number of levels used
     let local = 100;   // local search level
     let gamma = 2e-10;  // acceptable relative accuracy for local search
+    let smax = 1_000; // number of levels used
     let hess = SMatrix::<f64, 6, 6>::repeat(1.);    // sparsity pattern of Hessian
 
-    c.bench_function("bench_mcs", |b| b.iter(|| mcs::<SMAX, 6>(hm6, &u, &v, nsweeps, nf, local, gamma, &hess).unwrap()));
+    c.bench_function("bench_mcs", |b| b.iter(|| mcs::<6>(hm6, &u, &v, nsweeps, nf, local, gamma, smax, &hess).unwrap()));
 }
 
 

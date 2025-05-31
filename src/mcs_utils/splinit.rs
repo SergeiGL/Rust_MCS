@@ -2,7 +2,7 @@ use crate::add_basket;
 use crate::mcs_utils::genbox::genbox;
 use nalgebra::{Matrix3xX, SMatrix, SVector};
 
-pub(crate) fn splinit<const N: usize, const SMAX: usize>(
+pub(crate) fn splinit<const N: usize>(
     func: fn(&SVector<f64, N>) -> f64,
     i: usize, // -1 from Matlab
     s: usize,
@@ -22,7 +22,8 @@ pub(crate) fn splinit<const N: usize, const SMAX: usize>(
     z: &mut [Vec<f64>; 2],
     xbest: &mut SVector<f64, N>,
     fbest: &mut f64,
-    record: &mut [usize; SMAX],
+    record: &mut [usize],
+    smax: usize,
     nboxes: &mut usize,
     nbasket: &mut usize,
     nsweepbest: &mut usize,
@@ -60,7 +61,7 @@ pub(crate) fn splinit<const N: usize, const SMAX: usize>(
     // else
     //   splval2 = v(i);
     // end
-    if s + 1 < SMAX {
+    if s + 1 < smax {
         let mut nchild: usize = 0;
 
         if u[i] < x0[(i, 0)] {
@@ -69,7 +70,7 @@ pub(crate) fn splinit<const N: usize, const SMAX: usize>(
         };
         for j in 0..2 { // j: -1 from Matlab
             nchild += 1;
-            if (f0[(j, f0_col_indx)] <= f0[(j + 1, f0_col_indx)]) || (s + 2 < SMAX) {
+            if (f0[(j, f0_col_indx)] <= f0[(j + 1, f0_col_indx)]) || (s + 2 < smax) {
                 let level0 = if f0[(j, f0_col_indx)] <= f0[(j + 1, f0_col_indx)] { s + 1 } else { s + 2 };
                 genbox(nboxes, ipar, level, ichild, isplit, nogain, f, z, par, level0, -(nchild as isize), f0[(j, f0_col_indx)], record);
             } else {
@@ -77,7 +78,7 @@ pub(crate) fn splinit<const N: usize, const SMAX: usize>(
                 add_basket(nbasket, xmin, fmi, &x, f0[(j, f0_col_indx)]);
             }
             nchild += 1;
-            if (f0[(j + 1, f0_col_indx)] < f0[(j, f0_col_indx)]) || (s + 2 < SMAX) {
+            if (f0[(j + 1, f0_col_indx)] < f0[(j, f0_col_indx)]) || (s + 2 < smax) {
                 let level0 = if f0[(j + 1, f0_col_indx)] < f0[(j, f0_col_indx)] { s + 1 } else { s + 2 };
                 genbox(nboxes, ipar, level, ichild, isplit, nogain, f, z, par, level0, -(nchild as isize), f0[(j + 1, f0_col_indx)], record);
             } else {
@@ -192,7 +193,8 @@ mod tests {
         let mut z = [vec![0.0; 10], vec![0.0; 10]];
         let mut xbest = SVector::<f64, 6>::from_row_slice(&[0.0; 6]);
         let mut fbest = 10.0;
-        let mut record = [usize::MAX; 2];
+        let mut record = vec![usize::MAX; 2];
+        let smax = 2;
         let mut nboxes = 2_usize;
         let mut nbasket = 1;
         let mut nsweepbest = 0_usize;
@@ -201,7 +203,7 @@ mod tests {
 
         splinit(hm6, i, s, par, &x0, &u, &v, &mut x, &mut xmin,
                 &mut fmi, &mut ipar, &mut level, &mut ichild, &mut vec![], &mut vec![], &mut f, &mut z, &mut xbest,
-                &mut fbest, &mut record, &mut nboxes, &mut nbasket,
+                &mut fbest, &mut record, smax, &mut nboxes, &mut nbasket,
                 &mut nsweepbest, &mut nsweep, &mut f0);
 
         assert_eq!(xbest.as_slice(), [0.0; 6]);
@@ -305,7 +307,8 @@ mod tests {
         let mut z = [vec![1.0; 10], vec![1.0; 10]];
         let mut xbest = SVector::<f64, 6>::from_row_slice(&[1.0; 6]);
         let mut fbest = 0.0;
-        let mut record = [usize::MAX; 1];
+        let mut record = vec![usize::MAX; 1];
+        let smax = 1;
         let mut nboxes = 3_usize;
         let mut nbasket = 3;
         let mut nsweepbest = 4_usize;
@@ -314,7 +317,7 @@ mod tests {
 
         splinit(hm6, i, s, par, &x0, &u, &v, &mut x, &mut xmin,
                 &mut fmi, &mut ipar, &mut level, &mut ichild, &mut vec![], &mut vec![], &mut f, &mut z, &mut xbest,
-                &mut fbest, &mut record, &mut nboxes, &mut nbasket,
+                &mut fbest, &mut record, smax, &mut nboxes, &mut nbasket,
                 &mut nsweepbest, &mut nsweep, &mut f0);
 
         assert_eq!(xbest.as_slice(), [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
@@ -415,7 +418,8 @@ mod tests {
         let mut z = [vec![0.0; 10], vec![0.0; 10]];
         let mut xbest = SVector::<f64, 6>::from_row_slice(&[0.0; 6]);
         let mut fbest = 0.0;
-        let mut record = [usize::MAX; 9];
+        let mut record = vec![usize::MAX; 9];
+        let smax = 9;
         let mut nboxes = 2_usize;
         let mut nbasket = 0;
         let mut nsweepbest = 1_usize;
@@ -424,7 +428,7 @@ mod tests {
 
         splinit(hm6, i, s, par, &x0, &u, &v, &mut x, &mut xmin,
                 &mut fmi, &mut ipar, &mut level, &mut ichild, &mut vec![], &mut vec![], &mut f, &mut z, &mut xbest,
-                &mut fbest, &mut record, &mut nboxes, &mut nbasket,
+                &mut fbest, &mut record, smax, &mut nboxes, &mut nbasket,
                 &mut nsweepbest, &mut nsweep, &mut f0);
 
         let expected_f = [
