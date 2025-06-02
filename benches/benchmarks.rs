@@ -31,7 +31,10 @@ fn bench_mcs(c: &mut Criterion) {
     // hess = ones(6,6); % 6x6 matrix for hm6
     //
     // format long g;
+    // tic;
     // [xbest,fbest,xmin,fmi,ncall,ncloc,flag]=mcs(fcn,data,u,v,prt,smax,nf,stop,iinit,local,gamma,hess)
+    // time_ms = toc * 1000;
+    // fprintf('MCS execution time: %.2f ms\n', time_ms);
 
     let u = SVector::<f64, 6>::from_row_slice(&[0.; 6]); // lower bounds
     let v = SVector::<f64, 6>::from_row_slice(&[1.0; 6]); // upper bounds
