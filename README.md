@@ -1,7 +1,29 @@
 # MCS Algorithm Rust Implementation
 
 A fast Rust implementation of the Multilevel Coordinate Search (MCS) algorithm for derivative-free optimization, originally developed by Huyer and
-Neumaier. This implementation provides significant performance improvements over the original MATLAB and existing Python versions.
+Neumaier.
+
+This implementation provides significant performance improvements (>500x) over the original MATLAB and existing Python versions.
+
+
+> 📚 **Detailed Information**  
+> For an in-depth overview, see [My Diploma Paper (PDF)](Paper.pdf)!
+
+### Related Repositories
+
+You may find these related projects useful as well:
+
+- **GUI interface for browser**  
+  🔗 [SergeiGL/Rust_MCS_web](https://github.com/SergeiGL/Rust_MCS_web)
+
+- **Python3 Connector**  
+  🔗 [SergeiGL/Rust_MCS_Python](https://github.com/SergeiGL/Rust_MCS_Python)
+
+- **C++ Connector**  
+  🔗 [SergeiGL/Rust_MCS_Cpp](https://github.com/SergeiGL/Rust_MCS_Cpp)
+
+- **Sharpe Ratio Optimization Example**  
+  🔗 [SergeiGL/Rust_MCS_Sharpe_Ratio](https://github.com/SergeiGL/Rust_MCS_Sharpe_Ratio)
 
 ## Overview
 
@@ -11,8 +33,6 @@ requiring derivatives. The algorithm works by:
 - Splitting boxes with large unexplored territory (global search)
 - Splitting boxes with promising function values (local search)
 - Using a sophisticated balance between these two strategies
-
-For detailed information about the algorithm, refer to the [original paper](https://arnold-neumaier.at/ms/mcs.pdf).
 
 ## Features
 
